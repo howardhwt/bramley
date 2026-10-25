@@ -24,13 +24,12 @@
 
 // Top Shelf
 #define SHELF_ART_Y 74.0f
-#define SHELF_ART_H 250.0f
-#define SHELF_ART_MAX_W 420.0f
 
 // Rows of icons
-#define ROWS_TOP 400.0f
-#define ROW_PITCH 186.0f
-#define ROW_TITLE_H 30.0f
+#define ROW_TITLE_H 38.0f
+#define ROW_BOTTOM 36.0f
+#define GRID_GAP_Y 26.0f
+#define GRID_COLS 4
 #define ICON_W 200.0f
 #define ICON_H 120.0f
 #define ICON_GAP 30.0f
@@ -47,6 +46,10 @@ typedef struct {
 	Spring* scale;
 	LTex* title;
 } RowView;
+
+// A large Top Shelf, one row in full view with the next one peeking in at the bottom edge, and
+// Apps wrapping into lines of GRID_COLS like the tvOS app grid.
+static const float rows_top = 500.0f, shelf_art_h = 340.0f, shelf_art_max_w = 500.0f;
 
 static Row rows[MAX_ROWS];
 static RowView views[MAX_ROWS];
@@ -183,15 +186,43 @@ static Card* focused_card(void) {
 	return &rows[focus_row].cards[focus_col[focus_row]];
 }
 
-static float row_y(int r) {
-	return ROWS_TOP + r * ROW_PITCH - rows_scroll.x;
+static int row_is_grid(int r) {
+	return rows[r].count > 0 && rows[r].cards[0].kind == CARD_TOOL;
 }
 
-static float icon_x(int r, int c) {
-	return MARGIN_X + c * (ICON_W + ICON_GAP) - views[r].scroll.x;
+static int row_lines(int r) {
+	return row_is_grid(r) ? (rows[r].count + GRID_COLS - 1) / GRID_COLS : 1;
+}
+
+static float row_height(int r) {
+	int lines = row_lines(r);
+	return ROW_TITLE_H + lines * ICON_H + (lines - 1) * GRID_GAP_Y + ROW_BOTTOM;
+}
+
+// Top of row r before vertical scrolling.
+static float row_top(int r) {
+	float y = rows_top;
+	for (int i = 0; i < r; i++) y += row_height(i);
+	return y;
+}
+
+static float row_y(int r) {
+	return row_top(r) - rows_scroll.x;
+}
+
+// Top-left of icon c in row r at rest (unscaled), after scrolling.
+static void icon_pos(int r, int c, float* x, float* y) {
+	if (row_is_grid(r)) {
+		*x = MARGIN_X + (c % GRID_COLS) * (ICON_W + ICON_GAP);
+		*y = row_y(r) + ROW_TITLE_H + (c / GRID_COLS) * (ICON_H + GRID_GAP_Y);
+	} else {
+		*x = MARGIN_X + c * (ICON_W + ICON_GAP) - views[r].scroll.x;
+		*y = row_y(r) + ROW_TITLE_H;
+	}
 }
 
 static float scroll_target(int r) {
+	if (row_is_grid(r)) return 0;
 	float pitch = ICON_W + ICON_GAP;
 	int visible = (int)((SCREEN_W - 2 * MARGIN_X + ICON_GAP) / pitch);
 	int first = focus_col[r] - (visible - 2);
@@ -202,11 +233,39 @@ static float scroll_target(int r) {
 	return target > max_scroll ? max_scroll : target;
 }
 
+// Scrolls the rows only as far as needed to keep the focused icon and its row title on screen.
 static float rows_scroll_target(void) {
-	// Two rows fit under the Top Shelf; keep the focused row as the first or second.
-	float target = (focus_row >= 1 ? focus_row - 1 : 0) * ROW_PITCH;
-	float max_scroll = (row_count > 2 ? row_count - 2 : 0) * ROW_PITCH;
-	return target > max_scroll ? max_scroll : target;
+	static float target = 0;
+	int c = focus_col[focus_row];
+	float line_top = row_top(focus_row) + (row_is_grid(focus_row) ? (c / GRID_COLS) * (ICON_H + GRID_GAP_Y) : 0);
+	float want_top = line_top, want_bottom = line_top + ROW_TITLE_H + ICON_H + 24;
+	if (want_top - target < rows_top) target = want_top - rows_top;
+	if (want_bottom - target > SCREEN_H) target = want_bottom - SCREEN_H;
+	if (target < 0) target = 0;
+	return target;
+}
+
+// Moves focus with the D-pad. Grid rows move by line; other rows move along the row.
+static void move_focus(int dx, int dy) {
+	int r = focus_row, c = focus_col[r], n = rows[r].count;
+	if (row_is_grid(r)) {
+		if (dx > 0 && c + 1 < n && (c + 1) % GRID_COLS) c++;
+		else if (dx < 0 && c % GRID_COLS) c--;
+		else if (dy > 0 && c + GRID_COLS < n) c += GRID_COLS;
+		else if (dy > 0 && c / GRID_COLS < (n - 1) / GRID_COLS) c = n - 1;
+		else if (dy < 0 && c >= GRID_COLS) c -= GRID_COLS;
+		else if (dy != 0) {
+			if (dy > 0 && r < row_count - 1) focus_row++;
+			if (dy < 0 && r > 0) focus_row--;
+			return;
+		}
+		focus_col[r] = c;
+		return;
+	}
+	if (dx > 0 && c < n - 1) focus_col[r]++;
+	else if (dx < 0 && c > 0) focus_col[r]--;
+	else if (dy > 0 && r < row_count - 1) focus_row++;
+	else if (dy < 0 && r > 0) focus_row--;
 }
 
 static void card_colors(const Card* card, float top[4], float bottom[4]) {
@@ -226,12 +285,11 @@ static void layout_rows(void) {
 // Loads at most one image or label per frame, for icons on screen, so startup stays fast.
 static int load_next_art(void) {
 	for (int r = 0; r < row_count; r++) {
-		float y = row_y(r);
-		if (y > SCREEN_H || y + ROW_PITCH < ROWS_TOP - ROW_PITCH) continue;
 		for (int c = 0; c < rows[r].count; c++) {
 			Card* card = &rows[r].cards[c];
-			float x = icon_x(r, c);
-			if (x > SCREEN_W || x + ICON_W < 0) continue;
+			float x, y;
+			icon_pos(r, c, &x, &y);
+			if (x > SCREEN_W || x + ICON_W < 0 || y > SCREEN_H || y + ICON_H < 0) continue;
 			if (!card->art_tried && card->art_path[0]) {
 				card->art = ltex_load(card->art_path, card->art_is_pixel);
 				card->art_tried = 1;
@@ -295,7 +353,7 @@ static int update_shelf(void) {
 	shelf.pill_a = ltex_text(LFONT_LABEL, text, 0);
 	if (card->kind == CARD_RECENT && card->can_resume) shelf.pill_x = ltex_text(LFONT_LABEL, "X   Resume save", 0);
 	shelf.art_label = ltex_text(card->kind == CARD_CONSOLE ? LFONT_HERO : LFONT_TITLE,
-	                            card->kind == CARD_CONSOLE ? card->tag : card->name, (int)SHELF_ART_MAX_W - 40);
+	                            card->kind == CARD_CONSOLE ? card->tag : card->name, (int)shelf_art_max_w - 40);
 	shine_t = 0.0f;
 	shelf_fade.x = 0.0f;
 	shelf_fade.v = 0.0f;
@@ -332,8 +390,13 @@ static void draw_icon(int r, int c, float row_alpha) {
 	int focused = r == focus_row && c == focus_col[r];
 	float s = view->scale[c].x, lift = (s - 1.0f) / (FOCUS_SCALE - 1.0f);
 	float w = ICON_W * s, h = ICON_H * s;
-	float cx = icon_x(r, c) + ICON_W * 0.5f - parallax_x.x * 6;
-	float cy = row_y(r) + ROW_TITLE_H + ICON_H * 0.5f - parallax_y.x * 4 - lift * 6;
+	float ix, iy;
+	icon_pos(r, c, &ix, &iy);
+	// Icons scrolling up under the Top Shelf fade out.
+	if (iy < rows_top) row_alpha *= fmaxf(0.0f, 1.0f - (rows_top - iy) / 90.0f);
+	if (row_alpha <= 0.01f) return;
+	float cx = ix + ICON_W * 0.5f - parallax_x.x * 6;
+	float cy = iy + ICON_H * 0.5f - parallax_y.x * 4 - lift * 6;
 	float x = cx - w * 0.5f, y = cy - h * 0.5f, radius = ICON_RADIUS * s;
 	if (x > SCREEN_W || x + w < 0) return;
 
@@ -364,23 +427,23 @@ static void draw_shelf(void) {
 	float a = shelf_fade.x;
 
 	// Art box: landscape for screenshots and wide art, narrower for square or tall box art.
-	float art_w = SHELF_ART_MAX_W;
+	float art_w = shelf_art_max_w;
 	if (card->art) {
 		float aspect = (float)card->art->w / card->art->h;
-		art_w = fminf(fmaxf(SHELF_ART_H * aspect, 180), SHELF_ART_MAX_W);
+		art_w = fminf(fmaxf(shelf_art_h * aspect, 180), shelf_art_max_w);
 	}
 	float art_x = MARGIN_X, art_y = SHELF_ART_Y + (1.0f - a) * 10;
-	lgfx_draw_shadow(art_x, art_y, art_w, SHELF_ART_H, 14, 0.7f * a);
+	lgfx_draw_shadow(art_x, art_y, art_w, shelf_art_h, 14, 0.7f * a);
 	if (card->art) {
-		lgfx_draw_tex(card->art, art_x, art_y, art_w, SHELF_ART_H, 22, a);
+		lgfx_draw_tex(card->art, art_x, art_y, art_w, shelf_art_h, 22, a);
 	} else {
 		float top[4], bottom[4];
 		card_colors(card, top, bottom);
 		top[3] = bottom[3] = a;
-		lgfx_draw_gradient(art_x, art_y, art_w, SHELF_ART_H, 22, top, bottom);
+		lgfx_draw_gradient(art_x, art_y, art_w, shelf_art_h, 22, top, bottom);
 		LTex* label = shelf.art_label;
 		if (label)
-			lgfx_draw_tex(label, art_x + (art_w - label->w) * 0.5f, art_y + (SHELF_ART_H - label->h) * 0.5f, label->w,
+			lgfx_draw_tex(label, art_x + (art_w - label->w) * 0.5f, art_y + (shelf_art_h - label->h) * 0.5f, label->w,
 			              label->h, 0, a);
 	}
 
@@ -388,7 +451,7 @@ static void draw_shelf(void) {
 	if (shelf.kicker) lgfx_draw_tex(shelf.kicker, tx, ty, shelf.kicker->w, shelf.kicker->h, 0, 0.6f * a);
 	if (shelf.title) lgfx_draw_tex(shelf.title, tx, ty + 30, shelf.title->w, shelf.title->h, 0, a);
 	if (shelf.detail) lgfx_draw_tex(shelf.detail, tx, ty + 92, shelf.detail->w, shelf.detail->h, 0, 0.72f * a);
-	float px = tx, py = SHELF_ART_Y + SHELF_ART_H - 48;
+	float px = tx, py = SHELF_ART_Y + shelf_art_h - 48;
 	if (shelf.pill_a) {
 		draw_pill(shelf.pill_a, px, py);
 		px += shelf.pill_a->w + 36 + 14;
@@ -421,19 +484,19 @@ static void draw_frame(void) {
 
 	// Darken the lower half so the rows read clearly over any wallpaper.
 	const float clear[4] = { 0, 0, 0, 0 }, dark[4] = { 0, 0, 0, 0.45f };
-	lgfx_draw_gradient(0, ROWS_TOP - 60, SCREEN_W, SCREEN_H - ROWS_TOP + 60, 0, clear, dark);
+	lgfx_draw_gradient(0, rows_top - 60, SCREEN_W, SCREEN_H - rows_top + 60, 0, clear, dark);
 
 	if (row_count > 0) {
 		draw_shelf();
 		for (int r = 0; r < row_count; r++) {
 			float y = row_y(r);
-			if (y > SCREEN_H || y < ROWS_TOP - ROW_PITCH * 0.6f) continue;
-			// Rows scrolling up under the Top Shelf fade out.
-			float row_alpha = y >= ROWS_TOP - 1 ? 1.0f : fmaxf(0.0f, 1.0f - (ROWS_TOP - y) / (ROW_PITCH * 0.6f));
+			if (y > SCREEN_H || y + row_height(r) < rows_top - 90) continue;
+			float title_alpha = y >= rows_top - 1 ? 1.0f : fmaxf(0.0f, 1.0f - (rows_top - y) / 60.0f);
+			float row_alpha = 1.0f;
 			RowView* view = &views[r];
-			if (view->title)
+			if (view->title && title_alpha > 0.01f)
 				lgfx_draw_tex(view->title, MARGIN_X - parallax_x.x * 3, y, view->title->w, view->title->h, 0,
-				              (r == focus_row ? 0.85f : 0.5f) * row_alpha);
+				              (r == focus_row ? 0.85f : 0.5f) * title_alpha);
 			for (int c = 0; c < rows[r].count; c++)
 				if (!(r == focus_row && c == focus_col[r])) draw_icon(r, c, row_alpha);
 			if (r == focus_row) draw_icon(r, focus_col[r], row_alpha); // focused icon on top of its neighbours
@@ -502,10 +565,10 @@ int main(int argc, char* argv[]) {
 		}
 
 		if (row_count > 0 && !quit) {
-			if (PAD_justRepeated(BTN_RIGHT) && focus_col[focus_row] < rows[focus_row].count - 1) focus_col[focus_row]++;
-			else if (PAD_justRepeated(BTN_LEFT) && focus_col[focus_row] > 0) focus_col[focus_row]--;
-			else if (PAD_justRepeated(BTN_DOWN) && focus_row < row_count - 1) focus_row++;
-			else if (PAD_justRepeated(BTN_UP) && focus_row > 0) focus_row--;
+			if (PAD_justRepeated(BTN_RIGHT)) move_focus(1, 0);
+			else if (PAD_justRepeated(BTN_LEFT)) move_focus(-1, 0);
+			else if (PAD_justRepeated(BTN_DOWN)) move_focus(0, 1);
+			else if (PAD_justRepeated(BTN_UP)) move_focus(0, -1);
 
 			Card* card = focused_card();
 			if (PAD_justPressed(BTN_A)) {
