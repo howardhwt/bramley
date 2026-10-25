@@ -16,6 +16,7 @@
 #include "config.h"
 #include "lgfx.h"
 #include "ldata.h"
+#include "lradio.h"
 
 #define SCREEN_W 1024
 #define SCREEN_H 768
@@ -776,21 +777,45 @@ static const char* qm_labels[QM_COUNT] = { "Wi-Fi", "Bluetooth", "Settings", "Sl
 static struct {
 	int open;
 	int focus;
-	int wifi, bluetooth;
+	RadioStatus radio[RADIO_COUNT];
+	int radio_version;
 	Spring slide;   // 0 closed, 1 open
 	LTex* labels[QM_COUNT];
-	LTex* states[2];
+	LTex* states[RADIO_COUNT];
 	LTex* clock;
 	LTex* battery;
 	int closing;
 } qm;
 
-static void qm_update_states(void) {
-	qm.wifi = WIFI_supported() ? WIFI_enabled() : -1;
-	qm.bluetooth = BT_supported() ? BT_enabled() : -1;
-	for (int i = 0; i < 2; i++) ltex_free(qm.states[i]);
-	int on[2] = { qm.wifi, qm.bluetooth };
-	for (int i = 0; i < 2; i++) qm.states[i] = ltex_text(LFONT_SMALL, on[i] < 0 ? "Not available" : on[i] ? "On" : "Off", 0);
+static int radio_lit(RadioState s) {
+	return s == RADIO_TURNING_ON || s == RADIO_ON || s == RADIO_CONNECTED;
+}
+
+// Rebuilds the tile subtitles when the radio worker reports a change. Returns 1 if it did.
+static int qm_update_states(int force) {
+	RadioStatus now[RADIO_COUNT];
+	int version = 0;
+	for (int i = 0; i < RADIO_COUNT; i++) version = lradio_get(i, &now[i]);
+	if (!force && version == qm.radio_version) return 0;
+	qm.radio_version = version;
+	for (int i = 0; i < RADIO_COUNT; i++) {
+		qm.radio[i] = now[i];
+		char text[96];
+		switch (now[i].state) {
+		case RADIO_UNAVAILABLE: snprintf(text, sizeof(text), "Not available"); break;
+		case RADIO_OFF: snprintf(text, sizeof(text), "Off"); break;
+		case RADIO_TURNING_ON: snprintf(text, sizeof(text), "Turning On..."); break;
+		case RADIO_TURNING_OFF: snprintf(text, sizeof(text), "Turning Off..."); break;
+		case RADIO_ON: snprintf(text, sizeof(text), i == RADIO_WIFI ? "On, not connected" : "On"); break;
+		case RADIO_CONNECTED:
+			if (now[i].detail[0]) snprintf(text, sizeof(text), "%s", now[i].detail);
+			else snprintf(text, sizeof(text), "Connected");
+			break;
+		}
+		ltex_free(qm.states[i]);
+		qm.states[i] = ltex_text(LFONT_SMALL, text, (int)QM_TILE_W - 36);
+	}
+	return 1;
 }
 
 static void open_quick_menu(void) {
@@ -815,13 +840,15 @@ static void open_quick_menu(void) {
 	qm.clock = ltex_text(LFONT_HERO, text, 0);
 	snprintf(text, sizeof(text), "Battery %d%%%s", PWR_getBattery(), PWR_isCharging() ? ", charging" : "");
 	qm.battery = ltex_text(LFONT_BODY, text, 0);
-	qm_update_states();
+	lradio_set_polling(1);
+	qm_update_states(1);
 	shine_t = 0.0f;
 }
 
 static void free_quick_menu(void) {
+	lradio_set_polling(0);
 	for (int i = 0; i < QM_COUNT; i++) ltex_free(qm.labels[i]);
-	for (int i = 0; i < 2; i++) ltex_free(qm.states[i]);
+	for (int i = 0; i < RADIO_COUNT; i++) ltex_free(qm.states[i]);
 	ltex_free(qm.clock);
 	ltex_free(qm.battery);
 	memset(&qm, 0, sizeof(qm));
@@ -873,15 +900,19 @@ static void draw_quick_menu(void) {
 		float x, y, w = i <= QM_BLUETOOTH ? QM_TILE_W : QM_W - 48, h = i <= QM_BLUETOOTH ? QM_TILE_H : QM_ITEM_H;
 		qm_item_pos(i, px, &x, &y);
 		int focused = i == qm.focus;
-		int on = i == QM_WIFI ? qm.wifi == 1 : i == QM_BLUETOOTH ? qm.bluetooth == 1 : 0;
+		RadioState rs = i <= QM_BLUETOOTH ? qm.radio[i].state : RADIO_OFF;
+		int on = i <= QM_BLUETOOTH && radio_lit(rs);
+		// A radio that is switching pulses until the worker reports it done.
+		int switching = rs == RADIO_TURNING_ON || rs == RADIO_TURNING_OFF;
+		float pulse = switching ? 0.75f + 0.25f * sinf(SDL_GetTicks() / 160.0f) : 1.0f;
 		float s = focused ? 1.04f : 1.0f;
 		float cx = x + w * 0.5f, cy = y + h * 0.5f;
 		w *= s;
 		h *= s;
 		x = cx - w * 0.5f;
 		y = cy - h * 0.5f;
-		if (on) lgfx_draw_fill(x, y, w, h, 18, 0.18f, 0.48f, 1.0f, 0.95f);
-		else lgfx_draw_fill(x, y, w, h, 18, 1, 1, 1, focused ? 0.24f : 0.08f);
+		if (on) lgfx_draw_fill(x, y, w, h, 18, 0.18f, 0.48f, 1.0f, 0.95f * pulse);
+		else lgfx_draw_fill(x, y, w, h, 18, 1, 1, 1, (focused ? 0.24f : 0.08f) * (switching ? pulse * 1.6f : 1.0f));
 		LTex* label = qm.labels[i];
 		if (i <= QM_BLUETOOTH) {
 			if (label) lgfx_draw_tex(label, x + 18, y + h - 58, label->w, label->h, 0, 1);
@@ -942,6 +973,7 @@ int main(int argc, char* argv[]) {
 	PAD_reset();
 
 	lgfx_init(SCREEN_W, SCREEN_H);
+	lradio_start();
 	wallpaper = load_wallpaper();
 
 	row_count = ldata_load_rows(rows, MAX_ROWS);
@@ -987,12 +1019,10 @@ int main(int argc, char* argv[]) {
 			else if (PAD_justPressed(BTN_A)) {
 				switch (qm.focus) {
 				case QM_WIFI:
-					if (qm.wifi >= 0) WIFI_enable(!WIFI_enabled());
-					qm_update_states();
+					lradio_toggle(RADIO_WIFI);
 					break;
 				case QM_BLUETOOTH:
-					if (qm.bluetooth >= 0) BT_enable(!BT_enabled());
-					qm_update_states();
+					lradio_toggle(RADIO_BLUETOOTH);
 					break;
 				case QM_SETTINGS:
 					if (ldata_launch_tool("Settings")) quit = 1;
@@ -1061,6 +1091,9 @@ int main(int argc, char* argv[]) {
 		int animating = 0;
 		if (qm.open) {
 			animating |= spring_step(&qm.slide, qm.closing ? 0.0f : 1.0f, dt);
+			animating |= qm_update_states(0);
+			for (int i = 0; i < RADIO_COUNT; i++)
+				if (qm.radio[i].state == RADIO_TURNING_ON || qm.radio[i].state == RADIO_TURNING_OFF) animating = 1;
 			if (shine_t < 1.0f) {
 				shine_t = fminf(1.0f, shine_t + dt / SHINE_SECONDS);
 				animating = 1;
@@ -1115,6 +1148,7 @@ int main(int argc, char* argv[]) {
 
 	if (lib.open) close_library();
 	free_quick_menu();
+	lradio_stop();
 	ldata_free_rows(rows, row_count);
 	for (int r = 0; r < row_count; r++) {
 		ltex_free(views[r].title);
