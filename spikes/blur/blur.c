@@ -8,7 +8,9 @@
  *
  * D-pad left/right (or arrow keys) switches mode. B, MENU, Esc or Q quits.
  * --auto runs FULL 60 s, HALF 30 s, QUARTER 30 s, NONE 15 s and exits.
- * Every 5 seconds the average fps, worst frame and slow frame count go to the log.
+ * --novsync asks for swap interval 0, so fps is no longer capped at the refresh rate.
+ * Every 5 seconds the average fps, worst frame, slow frame count and render time go to the log.
+ * Render time is measured with glFinish, so it shows how much of the 16.7 ms frame the GPU uses.
  */
 #include <SDL.h>
 #include <math.h>
@@ -340,17 +342,18 @@ static void hud_render(Uint32 *px, const char *l1, const char *l2)
 
 int main(int argc, char **argv)
 {
-	int auto_mode = 0;
+	int auto_mode = 0, vsync = 1;
 	const char *log_path = DEFAULT_LOG, *bmp_path = NULL, *shot_prefix = NULL;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--auto")) auto_mode = 1;
+		else if (!strcmp(argv[i], "--novsync")) vsync = 0;
 		else if (!strcmp(argv[i], "--log") && i + 1 < argc) log_path = argv[++i];
 		else if (!strcmp(argv[i], "--wallpaper") && i + 1 < argc) bmp_path = argv[++i];
 		else if (!strcmp(argv[i], "--shot") && i + 1 < argc) shot_prefix = argv[++i];
 	}
 	log_fp = fopen(log_path, "a");
-	logline("=== blur spike start, %s", auto_mode ? "auto" : "manual");
+	logline("=== blur spike start, %s, %s", auto_mode ? "auto" : "manual", vsync ? "vsync" : "novsync");
 
 	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK) < 0) {
 		logline("SDL_Init failed: %s", SDL_GetError());
@@ -376,11 +379,11 @@ int main(int argc, char **argv)
 	SDL_GLContext ctx = SDL_GL_CreateContext(win);
 	if (!ctx) { logline("SDL_GL_CreateContext failed: %s", SDL_GetError()); return 1; }
 	SDL_GL_MakeCurrent(win, ctx);
-	int swap = SDL_GL_SetSwapInterval(1);
+	int swap = SDL_GL_SetSwapInterval(vsync);
 	int dw, dh;
 	SDL_GL_GetDrawableSize(win, &dw, &dh);
-	logline("SDL video driver: %s, drawable %dx%d, swap interval 1 %s", SDL_GetCurrentVideoDriver(), dw, dh,
-	        swap == 0 ? "accepted" : "rejected");
+	logline("SDL video driver: %s, drawable %dx%d, swap interval %d %s", SDL_GetCurrentVideoDriver(), dw, dh,
+	        vsync, swap == 0 ? "accepted" : "rejected");
 	logline("GL_VENDOR: %s", glGetString(GL_VENDOR));
 	logline("GL_RENDERER: %s", glGetString(GL_RENDERER));
 	logline("GL_VERSION: %s", glGetString(GL_VERSION));
@@ -417,7 +420,7 @@ int main(int argc, char **argv)
 	Uint64 t0 = SDL_GetPerformanceCounter(), last = t0;
 	double mode_start = 0, win_start = 0, hud_start = 0;
 	int win_frames = 0, win_slow = 0, hud_frames = 0;
-	double win_worst = 0, hud_fps = 0;
+	double win_worst = 0, hud_fps = 0, win_render = 0, win_render_max = 0, render_ms = 0;
 
 	while (running) {
 		int new_mode = mode;
@@ -447,24 +450,29 @@ int main(int argc, char **argv)
 		}
 
 		/* Count the frame that just finished, then roll the 5 s window. */
-		if (dt > 0 && t > 0.5) {
+		if (dt > 0) {
 			win_frames++;
 			hud_frames++;
 			if (dt > win_worst) win_worst = dt;
 			if (dt > 1.25 / 60.0) win_slow++;
+			win_render += render_ms;
+			if (render_ms > win_render_max) win_render_max = render_ms;
 		}
 		if (win_frames && (t - win_start >= 5.0 || new_mode != mode || !running)) {
-			logline("t=%5.1fs mode=%s avg_fps=%.1f worst_ms=%.1f slow_frames=%d/%d", t, mode_name[mode],
-			        win_frames / (t - win_start), win_worst * 1000, win_slow, win_frames);
-			win_start = t; win_frames = 0; win_slow = 0; win_worst = 0;
+			logline("t=%5.1fs mode=%s avg_fps=%.1f worst_ms=%.1f slow_frames=%d/%d render_ms avg=%.2f max=%.2f",
+			        t, mode_name[mode], win_frames / (t - win_start), win_worst * 1000, win_slow, win_frames,
+			        win_render / win_frames, win_render_max);
+			win_start = t; win_frames = 0; win_slow = 0; win_worst = 0; win_render = 0; win_render_max = 0;
 		}
 		if (new_mode != mode) {
 			mode = new_mode;
 			mode_start = win_start = t;
 			win_frames = win_slow = 0;
-			win_worst = 0;
+			win_worst = win_render = win_render_max = 0;
 		}
 		if (!running) break;
+
+		Uint64 render_start = SDL_GetPerformanceCounter();
 
 		/* 1. Scene: wallpaper plus a row of moving tiles, rendered fresh every frame. */
 		bind_target(&scene);
@@ -543,6 +551,8 @@ int main(int argc, char **argv)
 		glBindTexture(GL_TEXTURE_2D, hud);
 		draw_rect(p_tex, 8.0f / W, (H - 8.0f - HUD_H) / H, (float)HUD_W / W, (float)HUD_H / H);
 		glDisable(GL_BLEND);
+		glFinish();
+		render_ms = (SDL_GetPerformanceCounter() - render_start) * 1000.0 / freq;
 
 		/* --shot PREFIX saves one BMP per mode, 3 s after the mode starts. */
 		if (shot_prefix && shot_mode != mode && t - mode_start >= 3.0) {
