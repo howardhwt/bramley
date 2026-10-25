@@ -24,7 +24,9 @@ An Apple-inspired launcher for NextUI on the TrimUI Brick Hammer (platform `tg50
 
 - Toolchain: NextUI builds inside Docker (OrbStack works). `make PLATFORM=tg5040 shell` enters the toolchain container. Check the NextUI README for the current full build steps.
 - Desktop: the `desktop` platform target builds a window on macOS. Use it to tune motion and blur before going to the device.
-- Deploy: swap the SD card for now. Wi-Fi push or `adb` comes later.
+- Deploy: push to the device with `adb` over USB-C. Push only the files being tested, and say which files and paths before each push. SD card swaps are the fallback.
+- Test on the Mac first (desktop build, or an arm64 Linux container for device binaries) before anything goes to the device.
+- Measure GPU cost on the device with stress runs that repeat the work K times per frame. On the GE8300, swap interval 0 is ignored and glFinish waits for the display, so fps and glFinish timing alone cannot show headroom.
 - Spikes and experiments live in `spikes/`, never in the launcher source.
 
 ## Writing
