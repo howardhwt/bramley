@@ -15,6 +15,13 @@ static int fb_w, fb_h;
 static GLuint vao, vbo, p_tex, p_fill, p_shine;
 static LTex* shadow;
 static TTF_Font* fonts[LFONT_COUNT];
+static int font_sizes[LFONT_COUNT];
+
+// Inter has no Chinese, Japanese or Korean characters. NextUI's own fonts do, so text that Inter
+// cannot draw is drawn with the first of these that has every character, at the same size.
+static const char* fallback_files[] = { "font1.ttf", "font2.ttf" };
+#define FALLBACK_COUNT (int)(sizeof(fallback_files) / sizeof(fallback_files[0]))
+static TTF_Font* fallbacks[LFONT_COUNT][FALLBACK_COUNT];
 
 static const char* vs_src =
 	"in vec2 a_pos;\n"
@@ -185,6 +192,39 @@ static TTF_Font* open_font(const char* file, int size) {
 	return font;
 }
 
+// Next UTF-8 code point, or -1 at the end of the string.
+static int next_codepoint(const char** p) {
+	const unsigned char* s = (const unsigned char*)*p;
+	if (!*s) return -1;
+	int c = *s, n = c < 0x80 ? 0 : c < 0xE0 ? 1 : c < 0xF0 ? 2 : 3;
+	c &= n == 0 ? 0x7F : n == 1 ? 0x1F : n == 2 ? 0x0F : 0x07;
+	s++;
+	for (int i = 0; i < n && (*s & 0xC0) == 0x80; i++, s++) c = (c << 6) | (*s & 0x3F);
+	*p = (const char*)s;
+	return c;
+}
+
+static int font_has_text(TTF_Font* f, const char* text) {
+	int c;
+	while ((c = next_codepoint(&text)) >= 0)
+		if (c > 0x20 && (c > 0xFFFF || !TTF_GlyphIsProvided(f, (Uint16)c))) return 0;
+	return 1;
+}
+
+static TTF_Font* font_for(int font, const char* text) {
+	TTF_Font* f = fonts[font];
+	if (!f || font_has_text(f, text)) return f;
+	for (int i = 0; i < FALLBACK_COUNT; i++) {
+		if (!fallbacks[font][i]) {
+			char path[256];
+			snprintf(path, sizeof(path), "%s/%s", RES_PATH, fallback_files[i]);
+			fallbacks[font][i] = TTF_OpenFont(path, font_sizes[font]);
+		}
+		if (fallbacks[font][i] && font_has_text(fallbacks[font][i], text)) return fallbacks[font][i];
+	}
+	return f;
+}
+
 void lgfx_init(int w, int h) {
 	static const float quad[8] = { 0, 0, 1, 0, 0, 1, 1, 1 };
 
@@ -212,17 +252,25 @@ void lgfx_init(int w, int h) {
 	shadow = make_shadow();
 
 	if (!TTF_WasInit()) TTF_Init();
-	fonts[LFONT_SMALL] = open_font("Inter-Regular.ttf", 18);
-	fonts[LFONT_LABEL] = open_font("Inter-SemiBold.ttf", 19);
-	fonts[LFONT_BODY] = open_font("Inter-Regular.ttf", 23);
-	fonts[LFONT_TITLE] = open_font("Inter-Bold.ttf", 30);
-	fonts[LFONT_HERO] = open_font("Inter-Bold.ttf", 46);
+	static const struct { const char* file; int size; } spec[LFONT_COUNT] = {
+		[LFONT_SMALL] = { "Inter-Regular.ttf", 18 },  [LFONT_LABEL] = { "Inter-SemiBold.ttf", 19 },
+		[LFONT_BODY] = { "Inter-Regular.ttf", 23 },   [LFONT_TITLE] = { "Inter-Bold.ttf", 30 },
+		[LFONT_HERO] = { "Inter-Bold.ttf", 46 },
+	};
+	for (int i = 0; i < LFONT_COUNT; i++) {
+		font_sizes[i] = spec[i].size;
+		fonts[i] = open_font(spec[i].file, spec[i].size);
+	}
 }
 
 void lgfx_quit(void) {
 	for (int i = 0; i < LFONT_COUNT; i++) {
 		if (fonts[i]) TTF_CloseFont(fonts[i]);
 		fonts[i] = NULL;
+		for (int j = 0; j < FALLBACK_COUNT; j++) {
+			if (fallbacks[i][j]) TTF_CloseFont(fallbacks[i][j]);
+			fallbacks[i][j] = NULL;
+		}
 	}
 	ltex_free(shadow);
 	glDeleteBuffers(1, &vbo);
@@ -276,7 +324,7 @@ LTex* ltex_load(const char* path, int pixel_art) {
 
 // Renders text in white. Text wider than max_w is cut and ends in an ellipsis.
 LTex* ltex_text(int font, const char* text, int max_w) {
-	TTF_Font* f = fonts[font];
+	TTF_Font* f = font_for(font, text ? text : "");
 	if (!f || !text || !text[0]) return NULL;
 
 	char buf[256];
@@ -300,7 +348,7 @@ LTex* ltex_text(int font, const char* text, int max_w) {
 }
 
 LTex* ltex_text_wrapped(int font, const char* text, int max_w, int max_lines, int centered) {
-	TTF_Font* f = fonts[font];
+	TTF_Font* f = font_for(font, text ? text : "");
 	if (!f || !text || !text[0] || max_lines < 1) return NULL;
 
 	char lines[8][256];
