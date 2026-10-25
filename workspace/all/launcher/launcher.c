@@ -494,7 +494,7 @@ static void draw_status(void) {
 #define COVER_GAP 40.0f
 #define LIB_TOP 132.0f
 #define LIB_LINE (COVER_H + 64.0f)
-#define LIBRARY_LAST_PATH "/tmp/launcher_last"
+#define LAST_FOCUS_PATH "/tmp/launcher_last"
 
 static struct {
 	int open;
@@ -705,31 +705,30 @@ static void draw_library(void) {
 	}
 }
 
-// Remembers where in the library a game was started, so the launcher returns there after the game.
-static void save_last(void) {
-	char text[600];
-	snprintf(text, sizeof(text), "%s\n%d", lib.console->path, lib.focus);
-	putFile(LIBRARY_LAST_PATH, text);
+// Where focus goes when the launcher starts again after something it launched. After a game the
+// player lands on Continue Playing, where the game just played is first; after a Pak, focus
+// returns to that Pak's icon.
+static void remember_launch(const Card* card) {
+	if (card->kind == CARD_TOOL) putFile(LAST_FOCUS_PATH, (char*)card->path);
+	else putFile(LAST_FOCUS_PATH, "game");
 }
 
-static void restore_last(void) {
-	if (!exists(LIBRARY_LAST_PATH)) return;
+static void restore_focus(void) {
+	if (!exists(LAST_FOCUS_PATH)) return;
 	char text[600];
-	getFile(LIBRARY_LAST_PATH, text, sizeof(text));
-	unlink(LIBRARY_LAST_PATH);
-	char* nl = strchr(text, '\n');
-	if (!nl) return;
-	*nl = '\0';
-	int focus = atoi(nl + 1);
-	for (int r = 0; r < row_count; r++)
-		for (int c = 0; c < rows[r].count; c++)
-			if (rows[r].cards[c].kind == CARD_CONSOLE && exactMatch(rows[r].cards[c].path, text)) {
+	getFile(LAST_FOCUS_PATH, text, sizeof(text));
+	unlink(LAST_FOCUS_PATH);
+	for (int r = 0; r < row_count; r++) {
+		for (int c = 0; c < rows[r].count; c++) {
+			Card* card = &rows[r].cards[c];
+			int match = exactMatch(text, "game") ? card->kind == CARD_RECENT : exactMatch(card->path, text);
+			if (match) {
 				focus_row = r;
 				focus_col[r] = c;
-				open_library(&rows[r].cards[c], focus);
-				lib.fade.x = 1.0f;
 				return;
 			}
+		}
+	}
 }
 
 static void draw_frame(void) {
@@ -795,7 +794,7 @@ int main(int argc, char* argv[]) {
 		focus_row = 0;
 	}
 	if (row_count == 0) show_toast("No games or Paks found");
-	restore_last();
+	restore_focus();
 
 	int quit = 0, dirty = 1, show_setting = 0;
 	Uint32 last = SDL_GetTicks();
@@ -833,11 +832,11 @@ int main(int argc, char* argv[]) {
 				close_library();
 				shelf.row = -1; // rebuild the Top Shelf for the console card
 			} else if (PAD_justPressed(BTN_A)) {
-				save_last();
+				remember_launch(game);
 				ldata_launch(game, 0);
 				quit = 1;
 			} else if (PAD_justPressed(BTN_X) && game->can_resume) {
-				save_last();
+				remember_launch(game);
 				ldata_launch(game, 1);
 				quit = 1;
 			}
@@ -851,10 +850,12 @@ int main(int argc, char* argv[]) {
 			if (PAD_justPressed(BTN_A)) {
 				if (card->kind == CARD_CONSOLE) open_library(card, 0);
 				else {
+					remember_launch(card);
 					ldata_launch(card, 0);
 					quit = 1;
 				}
 			} else if (PAD_justPressed(BTN_X) && card->kind == CARD_RECENT && card->can_resume) {
+				remember_launch(card);
 				ldata_launch(card, 1);
 				quit = 1;
 			}
