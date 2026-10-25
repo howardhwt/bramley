@@ -5,7 +5,7 @@
 
 #include "lgfx.h"
 
-typedef enum { CARD_RECENT, CARD_CONSOLE, CARD_TOOL } CardKind;
+typedef enum { CARD_RECENT, CARD_CONSOLE, CARD_TOOL, CARD_GAME } CardKind;
 
 typedef struct {
 	CardKind kind;
@@ -20,6 +20,7 @@ typedef struct {
 	LTex* art;
 	LTex* label;
 	int art_tried;
+	int resume_checked;  // games: can_resume is looked up only when the game is focused
 } Card;
 
 typedef struct {
@@ -31,6 +32,13 @@ typedef struct {
 // Loads Continue Playing, Consoles and Apps. Empty rows are left out.
 int ldata_load_rows(Row* rows, int max_rows);
 void ldata_free_rows(Row* rows, int count);
+
+// Lists the games in a console folder, sorted by name, with box art paths. The caller frees
+// the array with ldata_free_games(). Folders count as a game when they hold a .m3u or .cue.
+Card* ldata_load_games(const Card* console, int* count);
+void ldata_free_games(Card* games, int count);
+// Looks up whether a game has a manual save, once.
+void ldata_check_resume(Card* game);
 
 // Each writes /tmp/next for MinUI.pak/launch.sh to run after the launcher exits.
 // resume: 1 resumes the last manual save, 0 starts from the default state, as stock does.

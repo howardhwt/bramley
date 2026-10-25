@@ -80,7 +80,9 @@ static struct {
 } status = { -1, -1 };
 
 // Development aid: LAUNCHER_DEBUG_KEYS="R R D S" presses Right, Right, Down, then saves a
-// screenshot (S) to $LAUNCHER_DEBUG_SHOT-<n>.bmp, one step every 0.6 s. Unused on the device.
+// screenshot. Lower case presses buttons on the desktop key map: a = A, b = B, x = X, l = L1, r = R1.
+// Upper case S saves a
+// screenshot to $LAUNCHER_DEBUG_SHOT-<n>.bmp. One step every 0.6 s. Unused on the device.
 static void debug_step(void) {
 	static const char* keys;
 	static Uint32 next;
@@ -99,7 +101,8 @@ static void debug_step(void) {
 	next = SDL_GetTicks() + 600;
 	while (*keys == ' ') keys++;
 	char k = *keys ? *keys++ : 0;
-	SDL_Keycode code = k == 'R' ? SDLK_RIGHT : k == 'L' ? SDLK_LEFT : k == 'U' ? SDLK_UP : k == 'D' ? SDLK_DOWN : 0;
+	SDL_Keycode code = k == 'R' ? SDLK_RIGHT : k == 'L' ? SDLK_LEFT : k == 'U' ? SDLK_UP : k == 'D' ? SDLK_DOWN
+	                 : k == 'a' ? SDLK_s : k == 'b' ? SDLK_a : k == 'x' ? SDLK_w : k == 'l' ? SDLK_TAB : k == 'r' ? SDLK_b : 0;
 	if (code) {
 		SDL_Event e = { 0 };
 		e.type = SDL_KEYDOWN;
@@ -233,16 +236,13 @@ static float scroll_target(int r) {
 	return target > max_scroll ? max_scroll : target;
 }
 
-// Scrolls the rows only as far as needed to keep the focused icon and its row title on screen.
+// The focused row (or grid line) always takes the one full-view spot under the Top Shelf; rows
+// above it scroll out of view and the next one peeks in at the bottom edge.
 static float rows_scroll_target(void) {
-	static float target = 0;
 	int c = focus_col[focus_row];
 	float line_top = row_top(focus_row) + (row_is_grid(focus_row) ? (c / GRID_COLS) * (ICON_H + GRID_GAP_Y) : 0);
-	float want_top = line_top, want_bottom = line_top + ROW_TITLE_H + ICON_H + 24;
-	if (want_top - target < rows_top) target = want_top - rows_top;
-	if (want_bottom - target > SCREEN_H) target = want_bottom - SCREEN_H;
-	if (target < 0) target = 0;
-	return target;
+	float target = line_top - rows_top;
+	return target < 0 ? 0 : target;
 }
 
 // Moves focus with the D-pad. Grid rows move by line; other rows move along the row.
@@ -345,9 +345,11 @@ static int update_shelf(void) {
 	}
 	for (char* p = kicker; *p; p++) *p = (*p >= 'a' && *p <= 'z') ? *p - 32 : *p;
 
-	shelf.kicker = ltex_text(LFONT_LABEL, kicker, 420);
-	shelf.title = ltex_text(LFONT_HERO, card->name, 440);
-	shelf.detail = ltex_text(LFONT_BODY, detail, 440);
+	// The text column starts right of the widest art box, so long titles wrap onto a second line.
+	int text_w = (int)(SCREEN_W - MARGIN_X - (MARGIN_X + shelf_art_max_w + 40));
+	shelf.kicker = ltex_text(LFONT_LABEL, kicker, text_w);
+	shelf.title = ltex_text_wrapped(LFONT_HERO, card->name, text_w, 2, 0);
+	shelf.detail = ltex_text(LFONT_BODY, detail, text_w);
 	char text[64];
 	snprintf(text, sizeof(text), "A   %s", pill_a);
 	shelf.pill_a = ltex_text(LFONT_LABEL, text, 0);
@@ -449,8 +451,12 @@ static void draw_shelf(void) {
 
 	float tx = art_x + art_w + 40, ty = SHELF_ART_Y + 26 + (1.0f - a) * 6;
 	if (shelf.kicker) lgfx_draw_tex(shelf.kicker, tx, ty, shelf.kicker->w, shelf.kicker->h, 0, 0.6f * a);
-	if (shelf.title) lgfx_draw_tex(shelf.title, tx, ty + 30, shelf.title->w, shelf.title->h, 0, a);
-	if (shelf.detail) lgfx_draw_tex(shelf.detail, tx, ty + 92, shelf.detail->w, shelf.detail->h, 0, 0.72f * a);
+	float detail_y = ty + 92;
+	if (shelf.title) {
+		lgfx_draw_tex(shelf.title, tx, ty + 30, shelf.title->w, shelf.title->h, 0, a);
+		detail_y = ty + 30 + shelf.title->h + 6;
+	}
+	if (shelf.detail) lgfx_draw_tex(shelf.detail, tx, detail_y, shelf.detail->w, shelf.detail->h, 0, 0.72f * a);
 	float px = tx, py = SHELF_ART_Y + shelf_art_h - 48;
 	if (shelf.pill_a) {
 		draw_pill(shelf.pill_a, px, py);
@@ -478,6 +484,254 @@ static void draw_status(void) {
 	}
 }
 
+
+///////////////////////////////////////
+// Game library: a grid of covers for one console.
+
+#define LIB_COLS 5
+#define COVER_W 150.0f
+#define COVER_H 200.0f
+#define COVER_GAP 40.0f
+#define LIB_TOP 132.0f
+#define LIB_LINE (COVER_H + 64.0f)
+#define LIBRARY_LAST_PATH "/tmp/launcher_last"
+
+static struct {
+	int open;
+	Card* console;
+	Card* games;
+	int count;
+	int focus;
+	Spring* scale;
+	Spring scroll, fade;
+	float scroll_goal;
+	LTex* header;
+	LTex* subtitle;
+	LTex* caption;
+	LTex* hints;
+	int caption_for;
+	LTex* letter;
+	double letter_until;
+} lib = { .caption_for = -1 };
+
+static float lib_margin(void) {
+	return (SCREEN_W - (LIB_COLS * COVER_W + (LIB_COLS - 1) * COVER_GAP)) * 0.5f;
+}
+
+static void cover_pos(int i, float* x, float* y) {
+	*x = lib_margin() + (i % LIB_COLS) * (COVER_W + COVER_GAP);
+	*y = LIB_TOP + (i / LIB_COLS) * LIB_LINE - lib.scroll.x;
+}
+
+static void close_library(void) {
+	ldata_free_games(lib.games, lib.count);
+	free(lib.scale);
+	ltex_free(lib.header);
+	ltex_free(lib.subtitle);
+	ltex_free(lib.caption);
+	ltex_free(lib.hints);
+	ltex_free(lib.letter);
+	memset(&lib, 0, sizeof(lib));
+	lib.caption_for = -1;
+	shine_t = 1.0f;
+}
+
+static void open_library(Card* console, int focus) {
+	if (lib.open) close_library();
+	lib.games = ldata_load_games(console, &lib.count);
+	if (!lib.count) {
+		ldata_free_games(lib.games, 0);
+		lib.games = NULL;
+		show_toast("No games in this folder");
+		return;
+	}
+	lib.open = 1;
+	lib.console = console;
+	lib.focus = focus >= 0 && focus < lib.count ? focus : 0;
+	lib.scale = calloc(lib.count, sizeof(Spring));
+	for (int i = 0; i < lib.count; i++) lib.scale[i].x = 1.0f;
+	lib.caption_for = -1;
+	lib.header = ltex_text(LFONT_HERO, console->name, 640);
+	char text[64];
+	snprintf(text, sizeof(text), "%d %s", lib.count, lib.count == 1 ? "game" : "games");
+	lib.subtitle = ltex_text(LFONT_BODY, text, 0);
+	// Start with the focused line at the top of the grid.
+	lib.scroll_goal = (lib.focus / LIB_COLS) * LIB_LINE;
+	lib.scroll.x = lib.scroll_goal;
+	lib.fade.x = 0.0f;
+}
+
+static char first_letter(const Card* game) {
+	char c = game->name[0];
+	if (c >= 'a' && c <= 'z') c -= 32;
+	return (c >= 'A' && c <= 'Z') ? c : '#';
+}
+
+// R1 goes to the first game of the next letter, L1 to the start of this letter or the previous one.
+static void jump_letter(int dir) {
+	int i = lib.focus;
+	char here = first_letter(&lib.games[i]);
+	if (dir > 0) {
+		while (i < lib.count - 1 && first_letter(&lib.games[i]) == here) i++;
+	} else {
+		while (i > 0 && first_letter(&lib.games[i - 1]) == here) i--;
+		if (i == lib.focus && i > 0) {
+			char prev = first_letter(&lib.games[i - 1]);
+			i--;
+			while (i > 0 && first_letter(&lib.games[i - 1]) == prev) i--;
+		}
+	}
+	if (i == lib.focus) return;
+	lib.focus = i;
+	char text[4] = { first_letter(&lib.games[i]), 0 };
+	ltex_free(lib.letter);
+	lib.letter = ltex_text(LFONT_HERO, text, 0);
+	lib.letter_until = SDL_GetTicks() / 1000.0 + 0.7;
+}
+
+static void lib_move(int dx, int dy) {
+	int c = lib.focus, n = lib.count;
+	if (dx > 0 && c + 1 < n && (c + 1) % LIB_COLS) c++;
+	else if (dx < 0 && c % LIB_COLS) c--;
+	else if (dy > 0 && c + LIB_COLS < n) c += LIB_COLS;
+	else if (dy > 0 && c / LIB_COLS < (n - 1) / LIB_COLS) c = n - 1;
+	else if (dy < 0 && c >= LIB_COLS) c -= LIB_COLS;
+	lib.focus = c;
+}
+
+// Keeps the focused line between the header and the bottom edge, scrolling only when needed.
+static float lib_scroll_target(void) {
+	float line_top = LIB_TOP + (lib.focus / LIB_COLS) * LIB_LINE;
+	if (line_top - lib.scroll_goal < LIB_TOP) lib.scroll_goal = line_top - LIB_TOP;
+	if (line_top + COVER_H + 56 - lib.scroll_goal > SCREEN_H) lib.scroll_goal = line_top + COVER_H + 56 - SCREEN_H;
+	if (lib.scroll_goal < 0) lib.scroll_goal = 0;
+	return lib.scroll_goal;
+}
+
+static int lib_update_caption(void) {
+	if (lib.caption_for == lib.focus) return 0;
+	lib.caption_for = lib.focus;
+	Card* game = &lib.games[lib.focus];
+	ldata_check_resume(game);
+	ltex_free(lib.caption);
+	ltex_free(lib.hints);
+	lib.caption = ltex_text(LFONT_LABEL, game->name, (int)(COVER_W + COVER_GAP) * 2);
+	lib.hints = ltex_text(LFONT_SMALL, game->can_resume ? "A  Play     X  Resume save     L1 R1  A-Z     B  Back"
+	                                                     : "A  Play     L1 R1  A-Z     B  Back", 0);
+	shine_t = 0.0f;
+	return 1;
+}
+
+// Loads one cover or title card per frame, for covers on screen.
+static int lib_load_next(void) {
+	for (int i = 0; i < lib.count; i++) {
+		float x, y;
+		cover_pos(i, &x, &y);
+		if (y > SCREEN_H || y + COVER_H < 0) continue;
+		Card* game = &lib.games[i];
+		if (!game->art_tried && game->art_path[0]) {
+			game->art = ltex_load(game->art_path, game->art_is_pixel);
+			game->art_tried = 1;
+			return 1;
+		}
+		if (!game->art && !game->label) {
+			game->label = ltex_text_wrapped(LFONT_LABEL, game->name, (int)COVER_W - 24, 3, 1);
+			return 1;
+		}
+	}
+	return 0;
+}
+
+static void draw_cover(int i, float alpha) {
+	Card* game = &lib.games[i];
+	float s = lib.scale[i].x, lift = (s - 1.0f) / (FOCUS_SCALE - 1.0f);
+	float x0, y0;
+	cover_pos(i, &x0, &y0);
+	if (y0 < LIB_TOP) alpha *= fmaxf(0.0f, 1.0f - (LIB_TOP - y0) / 100.0f);
+	if (alpha <= 0.01f || y0 > SCREEN_H) return;
+	y0 += (1.0f - lib.fade.x) * 30;
+	float w = COVER_W * s, h = COVER_H * s;
+	float cx = x0 + COVER_W * 0.5f, cy = y0 + COVER_H * 0.5f - lift * 8;
+	float x = cx - w * 0.5f, y = cy - h * 0.5f, radius = 14 * s;
+
+	lgfx_draw_shadow(x, y, w, h, lift * 12, (0.45f + lift * 0.4f) * alpha);
+	if (game->art) {
+		lgfx_draw_tex(game->art, x, y, w, h, radius, alpha);
+	} else {
+		float top[4], bottom[4];
+		card_colors(game, top, bottom);
+		top[3] = bottom[3] = alpha;
+		lgfx_draw_gradient(x, y, w, h, radius, top, bottom);
+		if (game->label) {
+			float lw = game->label->w * s, lh = game->label->h * s;
+			lgfx_draw_tex(game->label, cx - lw * 0.5f, cy - lh * 0.5f, lw, lh, 0, alpha);
+		}
+	}
+	if (i == lib.focus && shine_t < 1.0f) lgfx_draw_shine(x, y, w, h, radius, shine_t);
+}
+
+static void draw_library(void) {
+	float a = lib.fade.x;
+	const float shade_top[4] = { 0, 0, 0, 0.35f }, shade_bottom[4] = { 0, 0, 0, 0.55f };
+	lgfx_draw_gradient(0, 0, SCREEN_W, SCREEN_H, 0, shade_top, shade_bottom);
+
+	for (int i = 0; i < lib.count; i++)
+		if (i != lib.focus) draw_cover(i, a);
+	draw_cover(lib.focus, a);
+
+	if (lib.caption) {
+		float x, y;
+		cover_pos(lib.focus, &x, &y);
+		float cx = x + COVER_W * 0.5f - lib.caption->w * 0.5f;
+		cx = fmaxf(MARGIN_X, fminf(cx, SCREEN_W - MARGIN_X - lib.caption->w));
+		float cy = y + COVER_H * FOCUS_SCALE + 2 + (1.0f - a) * 30;
+		if (cy + lib.caption->h < SCREEN_H) lgfx_draw_tex(lib.caption, cx, cy, lib.caption->w, lib.caption->h, 0, a);
+	}
+
+	// Header over the grid, on a soft band so covers scrolling under it stay out of the way.
+	const float band_top[4] = { 0, 0, 0, 0.55f }, band_bottom[4] = { 0, 0, 0, 0 };
+	lgfx_draw_gradient(0, 0, SCREEN_W, LIB_TOP + 40, 0, band_top, band_bottom);
+	if (lib.header) lgfx_draw_tex(lib.header, MARGIN_X, 22, lib.header->w, lib.header->h, 0, a);
+	if (lib.subtitle && lib.header)
+		lgfx_draw_tex(lib.subtitle, MARGIN_X + lib.header->w + 18, 22 + lib.header->h - lib.subtitle->h - 6,
+		              lib.subtitle->w, lib.subtitle->h, 0, 0.65f * a);
+	if (lib.hints) lgfx_draw_tex(lib.hints, SCREEN_W - MARGIN_X - lib.hints->w, 76, lib.hints->w, lib.hints->h, 0, 0.6f * a);
+
+	if (lib.letter && SDL_GetTicks() / 1000.0 < lib.letter_until) {
+		float size = 120, x = (SCREEN_W - size) * 0.5f, y = (SCREEN_H - size) * 0.5f;
+		lgfx_draw_fill(x, y, size, size, 28, 0.1f, 0.1f, 0.12f, 0.8f);
+		lgfx_draw_tex(lib.letter, x + (size - lib.letter->w) * 0.5f, y + (size - lib.letter->h) * 0.5f, lib.letter->w,
+		              lib.letter->h, 0, 1);
+	}
+}
+
+// Remembers where in the library a game was started, so the launcher returns there after the game.
+static void save_last(void) {
+	char text[600];
+	snprintf(text, sizeof(text), "%s\n%d", lib.console->path, lib.focus);
+	putFile(LIBRARY_LAST_PATH, text);
+}
+
+static void restore_last(void) {
+	if (!exists(LIBRARY_LAST_PATH)) return;
+	char text[600];
+	getFile(LIBRARY_LAST_PATH, text, sizeof(text));
+	unlink(LIBRARY_LAST_PATH);
+	char* nl = strchr(text, '\n');
+	if (!nl) return;
+	*nl = '\0';
+	int focus = atoi(nl + 1);
+	for (int r = 0; r < row_count; r++)
+		for (int c = 0; c < rows[r].count; c++)
+			if (rows[r].cards[c].kind == CARD_CONSOLE && exactMatch(rows[r].cards[c].path, text)) {
+				focus_row = r;
+				focus_col[r] = c;
+				open_library(&rows[r].cards[c], focus);
+				lib.fade.x = 1.0f;
+				return;
+			}
+}
+
 static void draw_frame(void) {
 	lgfx_begin_frame();
 	lgfx_draw_wallpaper(wallpaper, parallax_x.x * 12, parallax_y.x * 8);
@@ -486,7 +740,9 @@ static void draw_frame(void) {
 	const float clear[4] = { 0, 0, 0, 0 }, dark[4] = { 0, 0, 0, 0.45f };
 	lgfx_draw_gradient(0, rows_top - 60, SCREEN_W, SCREEN_H - rows_top + 60, 0, clear, dark);
 
-	if (row_count > 0) {
+	if (lib.open) {
+		draw_library();
+	} else if (row_count > 0) {
 		draw_shelf();
 		for (int r = 0; r < row_count; r++) {
 			float y = row_y(r);
@@ -539,6 +795,7 @@ int main(int argc, char* argv[]) {
 		focus_row = 0;
 	}
 	if (row_count == 0) show_toast("No games or Paks found");
+	restore_last();
 
 	int quit = 0, dirty = 1, show_setting = 0;
 	Uint32 last = SDL_GetTicks();
@@ -564,7 +821,27 @@ int main(int argc, char* argv[]) {
 			else if (PAD_justPressed(BTN_FN3)) quit = ldata_run_fn_action(2);
 		}
 
-		if (row_count > 0 && !quit) {
+		if (lib.open && !quit) {
+			Card* game = &lib.games[lib.focus];
+			if (PAD_justRepeated(BTN_RIGHT)) lib_move(1, 0);
+			else if (PAD_justRepeated(BTN_LEFT)) lib_move(-1, 0);
+			else if (PAD_justRepeated(BTN_DOWN)) lib_move(0, 1);
+			else if (PAD_justRepeated(BTN_UP)) lib_move(0, -1);
+			else if (PAD_justRepeated(BTN_R1)) jump_letter(1);
+			else if (PAD_justRepeated(BTN_L1)) jump_letter(-1);
+			else if (PAD_justPressed(BTN_B)) {
+				close_library();
+				shelf.row = -1; // rebuild the Top Shelf for the console card
+			} else if (PAD_justPressed(BTN_A)) {
+				save_last();
+				ldata_launch(game, 0);
+				quit = 1;
+			} else if (PAD_justPressed(BTN_X) && game->can_resume) {
+				save_last();
+				ldata_launch(game, 1);
+				quit = 1;
+			}
+		} else if (row_count > 0 && !quit) {
 			if (PAD_justRepeated(BTN_RIGHT)) move_focus(1, 0);
 			else if (PAD_justRepeated(BTN_LEFT)) move_focus(-1, 0);
 			else if (PAD_justRepeated(BTN_DOWN)) move_focus(0, 1);
@@ -572,7 +849,7 @@ int main(int argc, char* argv[]) {
 
 			Card* card = focused_card();
 			if (PAD_justPressed(BTN_A)) {
-				if (card->kind == CARD_CONSOLE) show_toast("Game library arrives in Milestone 2");
+				if (card->kind == CARD_CONSOLE) open_library(card, 0);
 				else {
 					ldata_launch(card, 0);
 					quit = 1;
@@ -585,7 +862,19 @@ int main(int argc, char* argv[]) {
 		if (quit) break;
 
 		int animating = 0;
-		if (row_count > 0) {
+		if (lib.open) {
+			animating |= lib_update_caption();
+			for (int i = 0; i < lib.count; i++)
+				animating |= spring_step(&lib.scale[i], i == lib.focus ? FOCUS_SCALE : 1.0f, dt);
+			animating |= spring_step(&lib.scroll, lib_scroll_target(), dt);
+			animating |= spring_step(&lib.fade, 1.0f, dt);
+			if (shine_t < 1.0f) {
+				shine_t = fminf(1.0f, shine_t + dt / SHINE_SECONDS);
+				animating = 1;
+			}
+			if (lib.letter && SDL_GetTicks() / 1000.0 < lib.letter_until + 0.1) animating = 1;
+			animating |= lib_load_next();
+		} else if (row_count > 0) {
 			animating |= update_shelf();
 			for (int r = 0; r < row_count; r++) {
 				animating |= spring_step(&views[r].scroll, scroll_target(r), dt);
@@ -617,6 +906,7 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
+	if (lib.open) close_library();
 	ldata_free_rows(rows, row_count);
 	for (int r = 0; r < row_count; r++) {
 		ltex_free(views[r].title);

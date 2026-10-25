@@ -299,6 +299,83 @@ LTex* ltex_text(int font, const char* text, int max_w) {
 	return tex;
 }
 
+LTex* ltex_text_wrapped(int font, const char* text, int max_w, int max_lines, int centered) {
+	TTF_Font* f = fonts[font];
+	if (!f || !text || !text[0] || max_lines < 1) return NULL;
+
+	char lines[8][256];
+	int count = 0;
+	char words[512];
+	snprintf(words, sizeof(words), "%s", text);
+	char* rest = words;
+	if (max_lines > 8) max_lines = 8;
+	while (*rest && count < max_lines) {
+		while (*rest == ' ') rest++;
+		if (!*rest) break;
+		// Take as many whole words as fit; a single long word is cut by ltex_text's ellipsis later.
+		char line[256] = "";
+		char* end = rest;
+		while (*end) {
+			char* word_end = end;
+			while (*word_end && *word_end != ' ') word_end++;
+			char trial[256];
+			snprintf(trial, sizeof(trial), "%s%s%.*s", line, line[0] ? " " : "", (int)(word_end - end), end);
+			int w = 0, h = 0;
+			TTF_SizeUTF8(f, trial, &w, &h);
+			if (w > max_w && line[0]) break;
+			snprintf(line, sizeof(line), "%s", trial);
+			end = word_end;
+			while (*end == ' ') end++;
+		}
+		if (count == max_lines - 1 && *end) {
+			// Last allowed line: keep the remaining words and let the ellipsis cut them.
+			snprintf(line, sizeof(line), "%s", rest);
+			end = rest + strlen(rest);
+		}
+		snprintf(lines[count++], sizeof(lines[0]), "%s", line);
+		rest = end;
+	}
+
+	SDL_Surface* rendered[8] = { 0 };
+	int total_h = 0, total_w = 0;
+	for (int i = 0; i < count; i++) {
+		char buf[256];
+		snprintf(buf, sizeof(buf), "%s", lines[i]);
+		int w = 0, h = 0;
+		TTF_SizeUTF8(f, buf, &w, &h);
+		if (w > max_w) {
+			int len = (int)strlen(buf);
+			while (len > 1) {
+				len--;
+				while (len > 0 && (buf[len] & 0xC0) == 0x80) len--;
+				strcpy(buf + len, "...");
+				TTF_SizeUTF8(f, buf, &w, &h);
+				if (w <= max_w) break;
+			}
+		}
+		rendered[i] = TTF_RenderUTF8_Blended(f, buf, (SDL_Color){ 255, 255, 255, 255 });
+		if (!rendered[i]) continue;
+		total_h += rendered[i]->h;
+		if (rendered[i]->w > total_w) total_w = rendered[i]->w;
+	}
+	if (!total_w || !total_h) return NULL;
+
+	SDL_Surface* out = SDL_CreateRGBSurfaceWithFormat(0, total_w, total_h, 32, SDL_PIXELFORMAT_ARGB8888);
+	SDL_FillRect(out, NULL, 0);
+	int y = 0;
+	for (int i = 0; i < count; i++) {
+		if (!rendered[i]) continue;
+		SDL_SetSurfaceBlendMode(rendered[i], SDL_BLENDMODE_NONE);
+		SDL_Rect dst = { centered ? (total_w - rendered[i]->w) / 2 : 0, y, rendered[i]->w, rendered[i]->h };
+		SDL_BlitSurface(rendered[i], NULL, out, &dst);
+		y += rendered[i]->h;
+		SDL_FreeSurface(rendered[i]);
+	}
+	LTex* tex = ltex_from_surface(out, 0);
+	SDL_FreeSurface(out);
+	return tex;
+}
+
 void ltex_free(LTex* tex) {
 	if (!tex) return;
 	glDeleteTextures(1, &tex->id);

@@ -23,6 +23,9 @@ void lgfx_end_frame(void);
 LTex* ltex_from_surface(SDL_Surface* surface, int pixel_art);
 LTex* ltex_load(const char* path, int pixel_art);
 LTex* ltex_text(int font, const char* text, int max_w);
+// Word-wrapped text of at most max_lines lines, centred or left aligned; the last line ends in an
+// ellipsis if cut.
+LTex* ltex_text_wrapped(int font, const char* text, int max_w, int max_lines, int centered);
 void ltex_free(LTex* tex);
 
 // Draws tex into the rect, cropping it to fill the rect without stretching.

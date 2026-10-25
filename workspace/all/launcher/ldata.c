@@ -1,4 +1,5 @@
 #include <dirent.h>
+#include <sys/stat.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -241,6 +242,112 @@ static int load_tools(Card* cards) {
 	return count;
 }
 
+// The file a game folder launches: <folder>/<folder>.m3u, else the first .cue inside.
+static int folder_game_file(const char* dir, char* out, size_t size) {
+	const char* name = strrchr(dir, '/');
+	snprintf(out, size, "%s%s.m3u", dir, name ? name : "/");
+	if (exists(out)) return 1;
+	DIR* dh = opendir(dir);
+	if (!dh) return 0;
+	struct dirent* dp;
+	int found = 0;
+	while ((dp = readdir(dh))) {
+		if (!hide(dp->d_name) && suffixMatch(".cue", dp->d_name)) {
+			snprintf(out, size, "%s/%s", dir, dp->d_name);
+			found = 1;
+			break;
+		}
+	}
+	closedir(dh);
+	return found;
+}
+
+Card* ldata_load_games(const Card* console, int* count) {
+	*count = 0;
+	DIR* dh = opendir(console->path);
+	if (!dh) return NULL;
+	int cap = 64;
+	Card* games = calloc(cap, sizeof(Card));
+	struct dirent* dp;
+	while ((dp = readdir(dh))) {
+		if (hide(dp->d_name)) continue;
+		char path[512];
+		snprintf(path, sizeof(path), "%s/%s", console->path, dp->d_name);
+
+		char launch[512];
+		snprintf(launch, sizeof(launch), "%s", path);
+		// d_type is not reliable on every SD card file system, so ask stat().
+		struct stat st;
+		int is_dir = stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+		if (is_dir && !folder_game_file(path, launch, sizeof(launch))) continue;
+
+		if (*count == cap) {
+			cap *= 2;
+			games = realloc(games, cap * sizeof(Card));
+		}
+		Card* game = &games[(*count)++];
+		memset(game, 0, sizeof(*game));
+		game->kind = CARD_GAME;
+		snprintf(game->path, sizeof(game->path), "%s", launch);
+		getDisplayName(dp->d_name, game->name);
+		snprintf(game->tag, sizeof(game->tag), "%s", console->tag);
+		game->hue = hue_for(game->name);
+
+		// Box art is named after the file or folder in the console folder.
+		char base[256];
+		snprintf(base, sizeof(base), "%s", dp->d_name);
+		char* dot = is_dir ? NULL : strrchr(base, '.');
+		if (dot) *dot = '\0';
+		char art[512];
+		snprintf(art, sizeof(art), "%s/.media/%s.png", console->path, base);
+		if (exists(art)) snprintf(game->art_path, sizeof(game->art_path), "%s", art);
+	}
+	closedir(dh);
+
+	char map_path[600];
+	snprintf(map_path, sizeof(map_path), "%s/map.txt", console->path);
+	FILE* f = fopen(map_path, "r");
+	if (f) {
+		char line[512];
+		while (fgets(line, sizeof(line), f)) {
+			normalizeNewline(line);
+			trimTrailingNewlines(line);
+			char* tab = strchr(line, '\t');
+			if (!tab) continue;
+			*tab = '\0';
+			for (int i = 0; i < *count; i++) {
+				const char* file = strrchr(games[i].path, '/') + 1;
+				if (exactMatch((char*)file, line)) snprintf(games[i].name, sizeof(games[i].name), "%s", tab + 1);
+			}
+		}
+		fclose(f);
+	}
+	qsort(games, *count, sizeof(Card), compare_cards);
+	return games;
+}
+
+void ldata_free_games(Card* games, int count) {
+	for (int i = 0; i < count; i++) {
+		ltex_free(games[i].art);
+		ltex_free(games[i].label);
+	}
+	free(games);
+}
+
+void ldata_check_resume(Card* game) {
+	if (game->resume_checked) return;
+	game->resume_checked = 1;
+	char art[512];
+	snprintf(art, sizeof(art), "%s", game->art_path);
+	int is_pixel = game->art_is_pixel;
+	find_resume(game);
+	// Keep box art in the library; find_resume() would swap in the save screenshot.
+	if (art[0]) {
+		snprintf(game->art_path, sizeof(game->art_path), "%s", art);
+		game->art_is_pixel = is_pixel;
+	}
+}
+
 static void add_row(Row* rows, int* count, int max_rows, const char* title, Card* cards, int n) {
 	if (n <= 0 || *count >= max_rows) {
 		free(cards);
@@ -380,7 +487,7 @@ static void launch_pak(const char* pak_path) {
 
 void ldata_launch(Card* card, int resume) {
 	if (card->kind == CARD_TOOL) launch_pak(card->path);
-	else if (card->kind == CARD_RECENT) launch_rom(card->path, resume && card->can_resume);
+	else if (card->kind == CARD_RECENT || card->kind == CARD_GAME) launch_rom(card->path, resume && card->can_resume);
 }
 
 // Relaunches the game minarch was in when the device slept or powered off.
