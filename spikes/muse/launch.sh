@@ -19,6 +19,7 @@ export LOGS_PATH="$SPIKE_DIR"
 log "environment"
 uname -a >> "$LOG" 2>&1
 echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> "$LOG"
+echo "DEVICE=$DEVICE TRIMUI_MODEL=$TRIMUI_MODEL" >> "$LOG"
 ls -l /usr/lib/libavformat* /usr/lib/libavcodec* /usr/lib/libavfilter* /usr/lib/libavutil* \
 	/usr/lib/libswresample* /usr/lib/libasound* >> "$LOG" 2>&1
 log "every FFmpeg and ALSA library on the system"
