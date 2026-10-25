@@ -10,7 +10,9 @@
  * --auto runs FULL 60 s, HALF 30 s, QUARTER 30 s, NONE 15 s and exits.
  * --novsync asks for swap interval 0, so fps is no longer capped at the refresh rate.
  * Every 5 seconds the average fps, worst frame, slow frame count and render time go to the log.
- * Render time is measured with glFinish, so it shows how much of the 16.7 ms frame the GPU uses.
+ * Render time is measured with glFinish. On the Brick glFinish waits for the display, so it reads 16 ms there.
+ * --stress runs FULL with the blur repeated K times per frame, K = 1, 2, 3, 4, 6, 8, 12, 16, for 10 s each.
+ * The largest K that holds 60 fps is the GPU headroom, in units of one full-frame blur.
  */
 #include <SDL.h>
 #include <math.h>
@@ -342,18 +344,19 @@ static void hud_render(Uint32 *px, const char *l1, const char *l2)
 
 int main(int argc, char **argv)
 {
-	int auto_mode = 0, vsync = 1;
+	int auto_mode = 0, vsync = 1, stress = 0;
 	const char *log_path = DEFAULT_LOG, *bmp_path = NULL, *shot_prefix = NULL;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--auto")) auto_mode = 1;
 		else if (!strcmp(argv[i], "--novsync")) vsync = 0;
+		else if (!strcmp(argv[i], "--stress")) stress = 1;
 		else if (!strcmp(argv[i], "--log") && i + 1 < argc) log_path = argv[++i];
 		else if (!strcmp(argv[i], "--wallpaper") && i + 1 < argc) bmp_path = argv[++i];
 		else if (!strcmp(argv[i], "--shot") && i + 1 < argc) shot_prefix = argv[++i];
 	}
 	log_fp = fopen(log_path, "a");
-	logline("=== blur spike start, %s, %s", auto_mode ? "auto" : "manual", vsync ? "vsync" : "novsync");
+	logline("=== blur spike start, %s, %s", stress ? "stress" : auto_mode ? "auto" : "manual", vsync ? "vsync" : "novsync");
 
 	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK) < 0) {
 		logline("SDL_Init failed: %s", SDL_GetError());
@@ -415,7 +418,11 @@ int main(int argc, char **argv)
 	Uint32 *hud_px = malloc(HUD_W * HUD_H * 4);
 	GLuint hud = make_tex(HUD_W, HUD_H, NULL);
 
-	int mode = MODE_FULL, running = 1, shot_mode = -1;
+	static const int stress_reps[] = { 1, 2, 3, 4, 6, 8, 12, 16 };
+	const int stress_stages = sizeof stress_reps / sizeof stress_reps[0];
+	int mode = MODE_FULL, running = 1, shot_mode = -1, stage = 0, reps = 1;
+	char label[48];
+	if (stress) auto_mode = 0;
 	double freq = (double)SDL_GetPerformanceFrequency();
 	Uint64 t0 = SDL_GetPerformanceCounter(), last = t0;
 	double mode_start = 0, win_start = 0, hud_start = 0;
@@ -448,6 +455,16 @@ int main(int argc, char **argv)
 			if (mode + 1 == MODE_COUNT) running = 0;
 			else new_mode = mode + 1;
 		}
+		int new_stage = stage;
+		if (stress) {
+			new_mode = MODE_FULL;
+			if (t - mode_start >= 10.0) {
+				if (stage + 1 == stress_stages) running = 0;
+				else new_stage = stage + 1;
+			}
+		}
+		if (stress) snprintf(label, sizeof label, "FULL X%d", reps);
+		else snprintf(label, sizeof label, "%s", mode_name[mode]);
 
 		/* Count the frame that just finished, then roll the 5 s window. */
 		if (dt > 0) {
@@ -458,14 +475,16 @@ int main(int argc, char **argv)
 			win_render += render_ms;
 			if (render_ms > win_render_max) win_render_max = render_ms;
 		}
-		if (win_frames && (t - win_start >= 5.0 || new_mode != mode || !running)) {
+		if (win_frames && (t - win_start >= 5.0 || new_mode != mode || new_stage != stage || !running)) {
 			logline("t=%5.1fs mode=%s avg_fps=%.1f worst_ms=%.1f slow_frames=%d/%d render_ms avg=%.2f max=%.2f",
-			        t, mode_name[mode], win_frames / (t - win_start), win_worst * 1000, win_slow, win_frames,
+			        t, label, win_frames / (t - win_start), win_worst * 1000, win_slow, win_frames,
 			        win_render / win_frames, win_render_max);
 			win_start = t; win_frames = 0; win_slow = 0; win_worst = 0; win_render = 0; win_render_max = 0;
 		}
-		if (new_mode != mode) {
+		if (new_mode != mode || new_stage != stage) {
 			mode = new_mode;
+			stage = new_stage;
+			reps = stress ? stress_reps[stage] : 1;
 			mode_start = win_start = t;
 			win_frames = win_slow = 0;
 			win_worst = win_render = win_render_max = 0;
@@ -496,7 +515,7 @@ int main(int argc, char **argv)
 
 		/* 2. Blur: down to 128x96, then up to the mode's output size. */
 		const Target *blurred = &scene;
-		if (mode != MODE_NONE) {
+		for (int r = 0; r < reps && mode != MODE_NONE; r++) {
 			glUseProgram(p_down);
 			for (int i = 1; i <= 3; i++) {
 				bind_target(&down[i]);
@@ -541,8 +560,8 @@ int main(int argc, char **argv)
 			hud_fps = hud_frames / (t - hud_start);
 			hud_start = t;
 			hud_frames = 0;
-			snprintf(l1, sizeof l1, "%5.1f FPS  %s", hud_fps, mode_name[mode]);
-			snprintf(l2, sizeof l2, "%s  < > MODE", auto_mode ? "AUTO" : "MANUAL");
+			snprintf(l1, sizeof l1, "%5.1f FPS  %s", hud_fps, label);
+			snprintf(l2, sizeof l2, "%s  < > MODE", stress ? "STRESS" : auto_mode ? "AUTO" : "MANUAL");
 			hud_render(hud_px, l1, l2);
 			glBindTexture(GL_TEXTURE_2D, hud);
 			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, HUD_W, HUD_H, GL_RGBA, GL_UNSIGNED_BYTE, hud_px);
