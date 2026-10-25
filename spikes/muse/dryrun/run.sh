@@ -5,6 +5,8 @@ set -e
 cd "$(dirname "$0")/.."
 OUT="$(pwd)/build/dryrun"
 rm -rf "$OUT" && mkdir -p "$OUT/spike"
+# Optional: DRYRUN_AUDIO=dir with test.flac and test.m4b uses real files instead of generated tones.
+[ -n "$DRYRUN_AUDIO" ] && cp "$DRYRUN_AUDIO/test.flac" "$DRYRUN_AUDIO/test.m4b" "$OUT/spike/"
 
 docker run --rm --platform linux/arm64 \
 	-v "$(pwd)/build/Muse Spike.pak":/pak:ro \
@@ -16,8 +18,8 @@ apt-get update -qq >/dev/null
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ffmpeg libasound2-plugins >/dev/null
 mkdir -p /mnt/SDCARD/spike
 cp /dryrun/asound.conf /etc/asound.conf
-ffmpeg -loglevel error -f lavfi -i "sine=frequency=440:duration=20" -c:a flac /mnt/SDCARD/spike/test.flac
-ffmpeg -loglevel error -f lavfi -i "sine=frequency=660:duration=20" -c:a aac -f ipod /mnt/SDCARD/spike/test.m4b
+[ -f /mnt/SDCARD/spike/test.flac ] || ffmpeg -loglevel error -f lavfi -i "sine=frequency=440:duration=20" -c:a flac /mnt/SDCARD/spike/test.flac
+[ -f /mnt/SDCARD/spike/test.m4b ] || ffmpeg -loglevel error -f lavfi -i "sine=frequency=660:duration=20" -c:a aac -f ipod /mnt/SDCARD/spike/test.m4b
 ffmpeg -version | head -1 > /mnt/SDCARD/ffmpeg-version.txt
 sh /pak/launch.sh
 for f in /mnt/SDCARD/out-*.wav; do
