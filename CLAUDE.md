@@ -29,6 +29,7 @@ An Apple-inspired launcher for NextUI on the TrimUI Brick Hammer (platform `tg50
   - Create the fake SD card once with `bash workspace/desktop/prepare_fake_sd_root.sh`, which writes `/var/tmp/nextui/sdcard`.
   - Run with `DYLD_LIBRARY_PATH=/var/tmp/nextui/lib` set. Keys: arrows are the D-pad, S is A, A is B, Return is START, Space is MENU.
 - Deploy: push to the device with `adb` over USB-C. Push only the files being tested, and say which files and paths before each push. SD card swaps are the fallback.
+  - Restart the launcher after a push with `adb shell touch /tmp/launcher_reload`. Never use `kill` or `killall` on `launcher.elf` or `nextui.elf`: SIGTERM becomes an SDL_QUIT event, and NextUI's `PAD_poll` answers that with `PWR_powerOff` (`workspace/all/common/api.c:3785`), which shuts the Brick down.
 - Test on the Mac first (desktop build, or an arm64 Linux container for device binaries) before anything goes to the device.
 - Measure GPU cost on the device with stress runs that repeat the work K times per frame. On the GE8300, swap interval 0 is ignored and glFinish waits for the display, so fps and glFinish timing alone cannot show headroom.
 - Spikes and experiments live in `spikes/`, never in the launcher source.
