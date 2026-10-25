@@ -24,6 +24,10 @@ An Apple-inspired launcher for NextUI on the TrimUI Brick Hammer (platform `tg50
 
 - Toolchain: NextUI builds inside Docker (OrbStack works). `make PLATFORM=tg5040 shell` enters the toolchain container. Check the NextUI README for the current full build steps.
 - Desktop: the `desktop` platform target builds a window on macOS. Use it to tune motion and blur before going to the device.
+  - Never run `workspace/desktop/macos_create_gcc_symlinks.sh`. It runs `rm -f /usr/local/bin/*`, which deletes Docker, OrbStack and other tools on Howard's Mac.
+  - Instead, Homebrew gcc 16 is linked without sudo in `~/.local/nextui-gcc/`. Build with `gmake PLATFORM=desktop build CROSS_COMPILE=$HOME/.local/nextui-gcc/`. Homebrew needs `gcc make cmake sdl2_image sdl2_ttf libsamplerate libzip sqlite`.
+  - Create the fake SD card once with `bash workspace/desktop/prepare_fake_sd_root.sh`, which writes `/var/tmp/nextui/sdcard`.
+  - Run with `DYLD_LIBRARY_PATH=/var/tmp/nextui/lib` set. Keys: arrows are the D-pad, S is A, A is B, Return is START, Space is MENU.
 - Deploy: push to the device with `adb` over USB-C. Push only the files being tested, and say which files and paths before each push. SD card swaps are the fallback.
 - Test on the Mac first (desktop build, or an arm64 Linux container for device binaries) before anything goes to the device.
 - Measure GPU cost on the device with stress runs that repeat the work K times per frame. On the GE8300, swap interval 0 is ignored and glFinish waits for the display, so fps and glFinish timing alone cannot show headroom.
