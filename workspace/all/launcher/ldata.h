@@ -45,5 +45,7 @@ void ldata_check_resume(Card* game);
 void ldata_launch(Card* card, int resume);
 int ldata_auto_resume(void);
 int ldata_run_fn_action(int index);
+// Launches the Tools Pak with this folder name (eg. "Settings"). Returns 1 if it exists.
+int ldata_launch_tool(const char* name);
 
 #endif

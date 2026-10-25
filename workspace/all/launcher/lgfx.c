@@ -12,7 +12,11 @@
 
 static int screen_w, screen_h;
 static int fb_w, fb_h;
-static GLuint vao, vbo, p_tex, p_fill, p_shine;
+static GLuint vao, vbo, p_tex, p_fill, p_shine, p_down, p_up;
+
+typedef struct { GLuint tex, fbo; int w, h; } Target;
+static Target snap, down[4], up[3];
+static int snapshot_ready;
 static LTex* shadow;
 static TTF_Font* fonts[LFONT_COUNT];
 static int font_sizes[LFONT_COUNT];
@@ -87,6 +91,38 @@ static const char* fs_shine =
 // GLSL dialect of the context NextUI created: ES 3.x on the device; on a desktop it may be a
 // legacy GLSL 1.20 context, so shaders are written once and adapted by these headers.
 static int glsl_legacy, glsl_es;
+
+// Dual Kawase blur (Bjorge, SIGGRAPH 2015), the version measured on the Brick in spikes/blur.
+static const char* fs_down =
+	"uniform sampler2D u_tex;\n"
+	"uniform vec2 u_half;\n"
+	"in vec2 v_uv; FRAG_DECL\n"
+	"void main() {\n"
+	"	vec2 h = u_half;\n"
+	"	vec4 s = texture(u_tex, v_uv) * 4.0;\n"
+	"	s += texture(u_tex, v_uv - h);\n"
+	"	s += texture(u_tex, v_uv + h);\n"
+	"	s += texture(u_tex, v_uv + vec2(h.x, -h.y));\n"
+	"	s += texture(u_tex, v_uv - vec2(h.x, -h.y));\n"
+	"	frag = s / 8.0;\n"
+	"}\n";
+
+static const char* fs_up =
+	"uniform sampler2D u_tex;\n"
+	"uniform vec2 u_half;\n"
+	"in vec2 v_uv; FRAG_DECL\n"
+	"void main() {\n"
+	"	vec2 h = u_half;\n"
+	"	vec4 s = texture(u_tex, v_uv + vec2(-h.x * 2.0, 0.0));\n"
+	"	s += texture(u_tex, v_uv + vec2(-h.x, h.y)) * 2.0;\n"
+	"	s += texture(u_tex, v_uv + vec2(0.0, h.y * 2.0));\n"
+	"	s += texture(u_tex, v_uv + vec2(h.x, h.y)) * 2.0;\n"
+	"	s += texture(u_tex, v_uv + vec2(h.x * 2.0, 0.0));\n"
+	"	s += texture(u_tex, v_uv + vec2(h.x, -h.y)) * 2.0;\n"
+	"	s += texture(u_tex, v_uv + vec2(0.0, -h.y * 2.0));\n"
+	"	s += texture(u_tex, v_uv + vec2(-h.x, -h.y)) * 2.0;\n"
+	"	frag = s / 12.0;\n"
+	"}\n";
 
 static const char* shader_header(GLenum type) {
 	if (glsl_es) return "#version 300 es\nprecision mediump float;\n#define FRAG_DECL out vec4 frag;\n";
@@ -180,6 +216,29 @@ static LTex* make_shadow(void) {
 	return tex;
 }
 
+static Target make_target(int w, int h) {
+	Target t = { 0, 0, w, h };
+	glGenTextures(1, &t.tex);
+	glBindTexture(GL_TEXTURE_2D, t.tex);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glGenFramebuffers(1, &t.fbo);
+	glBindFramebuffer(GL_FRAMEBUFFER, t.fbo);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, t.tex, 0);
+	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+		LOG_error("launcher framebuffer %dx%d incomplete\n", w, h);
+	return t;
+}
+
+static void free_target(Target* t) {
+	if (t->fbo) glDeleteFramebuffers(1, &t->fbo);
+	if (t->tex) glDeleteTextures(1, &t->tex);
+	t->fbo = t->tex = 0;
+}
+
 static TTF_Font* open_font(const char* file, int size) {
 	char path[256];
 	snprintf(path, sizeof(path), "%s/%s", RES_PATH, file);
@@ -240,6 +299,8 @@ void lgfx_init(int w, int h) {
 	p_tex = program(fs_sdf, fs_tex);
 	p_fill = program(fs_sdf, fs_fill);
 	p_shine = program(fs_sdf, fs_shine);
+	p_down = program(fs_down, NULL);
+	p_up = program(fs_up, NULL);
 
 	glGenVertexArrays(1, &vao);
 	glBindVertexArray(vao);
@@ -250,6 +311,21 @@ void lgfx_init(int w, int h) {
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
 
 	shadow = make_shadow();
+
+	// Snapshot blur targets at framebuffer size, and one blur now so the driver prepares them
+	// before the first panel opens (the first use took 32 ms on the Brick in spikes/home).
+	snap = make_target(fb_w, fb_h);
+	down[0] = snap;
+	down[1] = make_target(fb_w / 2, fb_h / 2);
+	down[2] = make_target(fb_w / 4, fb_h / 4);
+	down[3] = make_target(fb_w / 8, fb_h / 8);
+	up[0] = make_target(fb_w, fb_h);
+	up[1] = make_target(fb_w / 2, fb_h / 2);
+	up[2] = make_target(fb_w / 4, fb_h / 4);
+	lgfx_begin_snapshot();
+	lgfx_end_snapshot();
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glFinish();
 
 	if (!TTF_WasInit()) TTF_Init();
 	static const struct { const char* file; int size; } spec[LFONT_COUNT] = {
@@ -273,6 +349,11 @@ void lgfx_quit(void) {
 		}
 	}
 	ltex_free(shadow);
+	free_target(&snap);
+	for (int i = 1; i < 4; i++) free_target(&down[i]);
+	for (int i = 0; i < 3; i++) free_target(&up[i]);
+	glDeleteProgram(p_down);
+	glDeleteProgram(p_up);
 	glDeleteBuffers(1, &vbo);
 	glDeleteVertexArrays(1, &vao);
 	glDeleteProgram(p_tex);
@@ -525,4 +606,57 @@ void lgfx_draw_wallpaper(LTex* tex, float offset_x, float offset_y) {
 	draw_tex_uv(tex, 0, 0, screen_w, screen_h, 0, 1, 0.02f + offset_x / screen_w, 0.02f + offset_y / screen_h, 0.96f,
 	            0.96f);
 	glEnable(GL_BLEND);
+}
+
+void lgfx_begin_snapshot(void) {
+	glBindFramebuffer(GL_FRAMEBUFFER, snap.fbo);
+	glViewport(0, 0, fb_w, fb_h);
+	glBindVertexArray(vao);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
+	glEnableVertexAttribArray(0);
+	glActiveTexture(GL_TEXTURE0);
+	glClearColor(0, 0, 0, 1);
+	glClear(GL_COLOR_BUFFER_BIT);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+}
+
+static void blur_pass(GLuint prog, const Target* src, const Target* dst) {
+	glBindFramebuffer(GL_FRAMEBUFFER, dst->fbo);
+	glViewport(0, 0, dst->w, dst->h);
+	glBindTexture(GL_TEXTURE_2D, src->tex);
+	glUniform1i(glGetUniformLocation(prog, "u_tex"), 0);
+	glUniform2f(glGetUniformLocation(prog, "u_half"), 0.5f / src->w, 0.5f / src->h);
+	glUniform4f(glGetUniformLocation(prog, "u_rect"), 0, 0, 1, 1);
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+}
+
+void lgfx_end_snapshot(void) {
+	glDisable(GL_BLEND);
+	glUseProgram(p_down);
+	for (int i = 1; i <= 3; i++) blur_pass(p_down, &down[i - 1], &down[i]);
+	glUseProgram(p_up);
+	blur_pass(p_up, &down[3], &up[2]);
+	blur_pass(p_up, &up[2], &up[1]);
+	blur_pass(p_up, &up[1], &up[0]);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glViewport(0, 0, fb_w, fb_h);
+	glEnable(GL_BLEND);
+	snapshot_ready = 1;
+}
+
+void lgfx_draw_snapshot(float alpha) {
+	if (!snapshot_ready) return;
+	// Framebuffer textures are stored bottom row first, so no flip here.
+	LTex tex = { up[0].tex, up[0].w, up[0].h };
+	glUseProgram(p_tex);
+	glBindTexture(GL_TEXTURE_2D, tex.id);
+	glUniform1i(glGetUniformLocation(p_tex, "u_tex"), 0);
+	glUniform4f(glGetUniformLocation(p_tex, "u_px"), 0, 0, fb_w, fb_h);
+	glUniform1f(glGetUniformLocation(p_tex, "u_radius"), 0);
+	glUniform4f(glGetUniformLocation(p_tex, "u_uv"), 0, 0, 1, 1);
+	glUniform1f(glGetUniformLocation(p_tex, "u_alpha"), alpha);
+	set_rect(p_tex, 0, 0, screen_w, screen_h);
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }

@@ -533,3 +533,12 @@ int ldata_run_fn_action(int index) {
 	launch_pak(pak_path);
 	return 1;
 }
+
+int ldata_launch_tool(const char* name) {
+	char pak_path[256], launch_path[300];
+	snprintf(pak_path, sizeof(pak_path), "%s/%s.pak", TOOLS_PATH, name);
+	snprintf(launch_path, sizeof(launch_path), "%s/launch.sh", pak_path);
+	if (!exists(launch_path)) return 0;
+	launch_pak(pak_path);
+	return 1;
+}

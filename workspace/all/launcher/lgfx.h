@@ -40,4 +40,10 @@ void lgfx_draw_tex_fit(LTex* tex, float x, float y, float w, float h, float radi
 void lgfx_draw_shadow(float x, float y, float w, float h, float lift, float alpha);
 void lgfx_draw_wallpaper(LTex* tex, float offset_x, float offset_y);
 
+// Snapshot blur: draw a frame between lgfx_begin_snapshot() and lgfx_end_snapshot() and it is
+// blurred once into a texture that lgfx_draw_snapshot() then shows as a frozen background.
+void lgfx_begin_snapshot(void);
+void lgfx_end_snapshot(void);
+void lgfx_draw_snapshot(float alpha);
+
 #endif

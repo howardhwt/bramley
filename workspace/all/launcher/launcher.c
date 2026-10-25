@@ -80,7 +80,8 @@ static struct {
 } status = { -1, -1 };
 
 // Development aid: LAUNCHER_DEBUG_KEYS="R R D S" presses Right, Right, Down, then saves a
-// screenshot. Lower case presses buttons on the desktop key map: a = A, b = B, x = X, l = L1, r = R1.
+// screenshot. Lower case presses buttons on the desktop key map: a = A, b = B, x = X, l = L1, r = R1,
+// m = MENU.
 // Upper case S saves a
 // screenshot to $LAUNCHER_DEBUG_SHOT-<n>.bmp. One step every 0.6 s. Unused on the device.
 static void debug_step(void) {
@@ -102,7 +103,7 @@ static void debug_step(void) {
 	while (*keys == ' ') keys++;
 	char k = *keys ? *keys++ : 0;
 	SDL_Keycode code = k == 'R' ? SDLK_RIGHT : k == 'L' ? SDLK_LEFT : k == 'U' ? SDLK_UP : k == 'D' ? SDLK_DOWN
-	                 : k == 'a' ? SDLK_s : k == 'b' ? SDLK_a : k == 'x' ? SDLK_w : k == 'l' ? SDLK_TAB : k == 'r' ? SDLK_b : 0;
+	                 : k == 'a' ? SDLK_s : k == 'b' ? SDLK_a : k == 'x' ? SDLK_w : k == 'l' ? SDLK_TAB : k == 'r' ? SDLK_b : k == 'm' ? SDLK_SPACE : 0;
 	if (code) {
 		SDL_Event e = { 0 };
 		e.type = SDL_KEYDOWN;
@@ -731,8 +732,8 @@ static void restore_focus(void) {
 	}
 }
 
-static void draw_frame(void) {
-	lgfx_begin_frame();
+// Everything except the quick menu and overlays: the home screen or the library.
+static void draw_scene(void) {
 	lgfx_draw_wallpaper(wallpaper, parallax_x.x * 12, parallax_y.x * 8);
 
 	// Darken the lower half so the rows read clearly over any wallpaper.
@@ -758,6 +759,163 @@ static void draw_frame(void) {
 		}
 	}
 	draw_status();
+}
+
+///////////////////////////////////////
+// Quick menu: a Control Center panel over a snapshot blur of the screen behind it.
+
+enum { QM_WIFI, QM_BLUETOOTH, QM_SETTINGS, QM_SLEEP, QM_RESTART, QM_SHUTDOWN, QM_COUNT };
+static const char* qm_labels[QM_COUNT] = { "Wi-Fi", "Bluetooth", "Settings", "Sleep", "Restart", "Shut Down" };
+
+#define QM_W 384.0f
+#define QM_INSET 16.0f
+#define QM_TILE_W 164.0f
+#define QM_TILE_H 112.0f
+#define QM_ITEM_H 58.0f
+
+static struct {
+	int open;
+	int focus;
+	int wifi, bluetooth;
+	Spring slide;   // 0 closed, 1 open
+	LTex* labels[QM_COUNT];
+	LTex* states[2];
+	LTex* clock;
+	LTex* battery;
+	int closing;
+} qm;
+
+static void qm_update_states(void) {
+	qm.wifi = WIFI_supported() ? WIFI_enabled() : -1;
+	qm.bluetooth = BT_supported() ? BT_enabled() : -1;
+	for (int i = 0; i < 2; i++) ltex_free(qm.states[i]);
+	int on[2] = { qm.wifi, qm.bluetooth };
+	for (int i = 0; i < 2; i++) qm.states[i] = ltex_text(LFONT_SMALL, on[i] < 0 ? "Not available" : on[i] ? "On" : "Off", 0);
+}
+
+static void open_quick_menu(void) {
+	// Freeze and blur what is on screen once; the panel then draws over that snapshot.
+	lgfx_begin_snapshot();
+	draw_scene();
+	lgfx_end_snapshot();
+	qm.open = 1;
+	qm.closing = 0;
+	qm.focus = QM_WIFI;
+	qm.slide.x = 0;
+	qm.slide.v = 0;
+	for (int i = 0; i < QM_COUNT; i++)
+		if (!qm.labels[i]) qm.labels[i] = ltex_text(i < 2 ? LFONT_LABEL : LFONT_BODY, qm_labels[i], 0);
+	ltex_free(qm.clock);
+	ltex_free(qm.battery);
+	time_t now = time(NULL);
+	struct tm tm;
+	localtime_r(&now, &tm);
+	char text[32];
+	snprintf(text, sizeof(text), "%d:%02d", tm.tm_hour, tm.tm_min);
+	qm.clock = ltex_text(LFONT_HERO, text, 0);
+	snprintf(text, sizeof(text), "Battery %d%%%s", PWR_getBattery(), PWR_isCharging() ? ", charging" : "");
+	qm.battery = ltex_text(LFONT_BODY, text, 0);
+	qm_update_states();
+	shine_t = 0.0f;
+}
+
+static void free_quick_menu(void) {
+	for (int i = 0; i < QM_COUNT; i++) ltex_free(qm.labels[i]);
+	for (int i = 0; i < 2; i++) ltex_free(qm.states[i]);
+	ltex_free(qm.clock);
+	ltex_free(qm.battery);
+	memset(&qm, 0, sizeof(qm));
+}
+
+static void qm_move(int dx, int dy) {
+	int f = qm.focus;
+	if (f <= QM_BLUETOOTH) {
+		if (dx > 0) f = QM_BLUETOOTH;
+		else if (dx < 0) f = QM_WIFI;
+		else if (dy > 0) f = QM_SETTINGS;
+	} else {
+		if (dy > 0 && f < QM_COUNT - 1) f++;
+		else if (dy < 0) f = f == QM_SETTINGS ? QM_WIFI : f - 1;
+	}
+	if (f != qm.focus) shine_t = 0.0f;
+	qm.focus = f;
+}
+
+static float qm_panel_x(void) {
+	return SCREEN_W - (QM_W + QM_INSET) * qm.slide.x;
+}
+
+// Returns the top-left of item i inside the panel.
+static void qm_item_pos(int i, float px, float* x, float* y) {
+	if (i <= QM_BLUETOOTH) {
+		*x = px + 24 + i * (QM_TILE_W + 8);
+		*y = 196;
+	} else {
+		*x = px + 24;
+		*y = 336 + (i - QM_SETTINGS) * (QM_ITEM_H + 8);
+	}
+}
+
+static void draw_quick_menu(void) {
+	lgfx_draw_snapshot(1);
+	const float dim[4] = { 0, 0, 0, 0.25f * qm.slide.x };
+	lgfx_draw_gradient(0, 0, SCREEN_W, SCREEN_H, 0, dim, dim);
+
+	float px = qm_panel_x(), py = QM_INSET, ph = SCREEN_H - 2 * QM_INSET;
+	lgfx_draw_shadow(px, py, QM_W, ph, 10, 0.6f);
+	const float top[4] = { 0.16f, 0.16f, 0.2f, 0.72f }, bottom[4] = { 0.1f, 0.1f, 0.13f, 0.8f };
+	lgfx_draw_gradient(px, py, QM_W, ph, 32, top, bottom);
+
+	if (qm.clock) lgfx_draw_tex(qm.clock, px + 24, 44, qm.clock->w, qm.clock->h, 0, 1);
+	if (qm.battery) lgfx_draw_tex(qm.battery, px + 24, 44 + 62, qm.battery->w, qm.battery->h, 0, 0.7f);
+
+	for (int i = 0; i < QM_COUNT; i++) {
+		float x, y, w = i <= QM_BLUETOOTH ? QM_TILE_W : QM_W - 48, h = i <= QM_BLUETOOTH ? QM_TILE_H : QM_ITEM_H;
+		qm_item_pos(i, px, &x, &y);
+		int focused = i == qm.focus;
+		int on = i == QM_WIFI ? qm.wifi == 1 : i == QM_BLUETOOTH ? qm.bluetooth == 1 : 0;
+		float s = focused ? 1.04f : 1.0f;
+		float cx = x + w * 0.5f, cy = y + h * 0.5f;
+		w *= s;
+		h *= s;
+		x = cx - w * 0.5f;
+		y = cy - h * 0.5f;
+		if (on) lgfx_draw_fill(x, y, w, h, 18, 0.18f, 0.48f, 1.0f, 0.95f);
+		else lgfx_draw_fill(x, y, w, h, 18, 1, 1, 1, focused ? 0.24f : 0.08f);
+		LTex* label = qm.labels[i];
+		if (i <= QM_BLUETOOTH) {
+			if (label) lgfx_draw_tex(label, x + 18, y + h - 58, label->w, label->h, 0, 1);
+			LTex* state = qm.states[i];
+			if (state) lgfx_draw_tex(state, x + 18, y + h - 32, state->w, state->h, 0, 0.75f);
+		} else if (label) {
+			lgfx_draw_tex(label, x + 20, y + (h - label->h) * 0.5f, label->w, label->h, 0, 1);
+		}
+		if (focused && shine_t < 1.0f) lgfx_draw_shine(x, y, w, h, 18, shine_t);
+	}
+}
+
+// Brightness or volume level while the player changes it (show_setting from PWR_update).
+static void draw_setting_overlay(int show_setting) {
+	if (!show_setting) return;
+	static LTex* labels[3];
+	if (!labels[1]) labels[1] = ltex_text(LFONT_LABEL, "Brightness", 0);
+	if (!labels[2]) labels[2] = ltex_text(LFONT_LABEL, "Volume", 0);
+	int brightness = show_setting == 1;
+	float level = brightness ? (float)GetBrightness() / BRIGHTNESS_MAX : (float)GetVolume() / VOLUME_MAX;
+	float w = 360, h = 52, x = (SCREEN_W - w) * 0.5f, y = 22;
+	lgfx_draw_fill(x, y, w, h, h * 0.5f, 0.1f, 0.1f, 0.13f, 0.85f);
+	LTex* label = labels[brightness ? 1 : 2];
+	if (label) lgfx_draw_tex(label, x + 24, y + (h - label->h) * 0.5f, label->w, label->h, 0, 0.9f);
+	float bx = x + 150, bw = w - 150 - 26, by = y + h * 0.5f - 4;
+	lgfx_draw_fill(bx, by, bw, 8, 4, 1, 1, 1, 0.2f);
+	lgfx_draw_fill(bx, by, bw * fmaxf(0.0f, fminf(1.0f, level)), 8, 4, 1, 1, 1, 0.95f);
+}
+
+static void draw_frame(int show_setting) {
+	lgfx_begin_frame();
+	if (qm.open) draw_quick_menu();
+	else draw_scene();
+	draw_setting_overlay(show_setting);
 
 	if (toast && SDL_GetTicks() / 1000.0 < toast_until) {
 		float w = toast->w + 48, h = toast->h + 24, x = (SCREEN_W - w) * 0.5f, y = SCREEN_H - h - 40;
@@ -820,7 +978,45 @@ int main(int argc, char* argv[]) {
 			else if (PAD_justPressed(BTN_FN3)) quit = ldata_run_fn_action(2);
 		}
 
-		if (lib.open && !quit) {
+		if (qm.open && !qm.closing && !quit) {
+			if (PAD_justRepeated(BTN_RIGHT)) qm_move(1, 0);
+			else if (PAD_justRepeated(BTN_LEFT)) qm_move(-1, 0);
+			else if (PAD_justRepeated(BTN_DOWN)) qm_move(0, 1);
+			else if (PAD_justRepeated(BTN_UP)) qm_move(0, -1);
+			else if (PAD_justPressed(BTN_B) || PAD_tappedMenu(SDL_GetTicks())) qm.closing = 1;
+			else if (PAD_justPressed(BTN_A)) {
+				switch (qm.focus) {
+				case QM_WIFI:
+					if (qm.wifi >= 0) WIFI_enable(!WIFI_enabled());
+					qm_update_states();
+					break;
+				case QM_BLUETOOTH:
+					if (qm.bluetooth >= 0) BT_enable(!BT_enabled());
+					qm_update_states();
+					break;
+				case QM_SETTINGS:
+					if (ldata_launch_tool("Settings")) quit = 1;
+					else show_toast("Settings Pak not found");
+					break;
+				case QM_SLEEP:
+					qm.closing = 1;
+					qm.slide.x = 0;
+					PWR_sleep(); // returns after wake
+					dirty = 1;
+					break;
+				case QM_RESTART:
+					PWR_powerOff(1);
+					break;
+				case QM_SHUTDOWN:
+					PWR_powerOff(0);
+					break;
+				}
+			}
+		} else if (qm.open) {
+			// Closing: ignore input until the panel has slid away.
+		} else if (!quit && !show_setting && PAD_tappedMenu(SDL_GetTicks())) {
+			open_quick_menu();
+		} else if (lib.open && !quit) {
 			Card* game = &lib.games[lib.focus];
 			if (PAD_justRepeated(BTN_RIGHT)) lib_move(1, 0);
 			else if (PAD_justRepeated(BTN_LEFT)) lib_move(-1, 0);
@@ -863,7 +1059,17 @@ int main(int argc, char* argv[]) {
 		if (quit) break;
 
 		int animating = 0;
-		if (lib.open) {
+		if (qm.open) {
+			animating |= spring_step(&qm.slide, qm.closing ? 0.0f : 1.0f, dt);
+			if (shine_t < 1.0f) {
+				shine_t = fminf(1.0f, shine_t + dt / SHINE_SECONDS);
+				animating = 1;
+			}
+			if (qm.closing && qm.slide.x < 0.02f) {
+				free_quick_menu();
+				dirty = 1;
+			}
+		} else if (lib.open) {
 			animating |= lib_update_caption();
 			for (int i = 0; i < lib.count; i++)
 				animating |= spring_step(&lib.scale[i], i == lib.focus ? FOCUS_SCALE : 1.0f, dt);
@@ -899,7 +1105,7 @@ int main(int argc, char* argv[]) {
 
 		// Draw only while something moves, so the GPU and battery rest on a still screen.
 		if (animating || dirty || show_setting) {
-			draw_frame();
+			draw_frame(show_setting);
 			dirty = 0;
 		} else {
 			debug_step();
@@ -908,6 +1114,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	if (lib.open) close_library();
+	free_quick_menu();
 	ldata_free_rows(rows, row_count);
 	for (int r = 0; r < row_count; r++) {
 		ltex_free(views[r].title);
