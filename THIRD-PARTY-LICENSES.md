@@ -32,3 +32,10 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Inter
+
+- **Source:** https://github.com/rsms/inter, release v4.1.
+- **License:** SIL Open Font License 1.1. The full text is in `workspace/all/launcher/res/Inter-LICENSE.txt`.
+- **Copyright:** Copyright (c) 2016 The Inter Project Authors.
+- **Used in:** `workspace/all/launcher/res/Inter-SemiBold.ttf` and `Inter-Bold.ttf`, unchanged, as the launcher's UI font.

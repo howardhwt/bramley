@@ -4,7 +4,7 @@ An Apple-inspired launcher for NextUI on the TrimUI Brick Hammer (platform `tg50
 
 ## Hard rules
 
-- **Change only the launcher.** Our code lives in `workspace/all/nextui/` (the launcher, replacing `nextui.c`) and in new files we add. From v0.2 we also touch the drawing layer of `workspace/all/settings/menu.cpp`. Do not modify `minarch`, the cores, `btmanager`, Wi-Fi or Bluetooth logic, or other platforms. If a change elsewhere seems necessary, stop and ask.
+- **Change only the launcher.** Our launcher lives in `workspace/all/launcher/` and leaves upstream's `nextui.c` untouched, because the stock launcher ships alongside as the crash fallback (`nextui-wrapper.sh` is installed as `nextui.elf`). Other code we add goes in new files. From v0.2 we also touch the drawing layer of `workspace/all/settings/menu.cpp`. Do not modify `minarch`, the cores, `btmanager`, Wi-Fi or Bluetooth logic, or other platforms. If a change elsewhere seems necessary, stop and ask.
 - **Track upstream.** `upstream` points at `LoveRetro/NextUI`. Rebase on each upstream release. Keep diffs outside our files as small as possible so rebases stay cheap.
 - **License.** NextUI is PolyForm Noncommercial 1.0.0. The fork is free only. Never add anything that sells, gates, or monetizes it.
 - **Third-party code.** Muse code from TortOS (github.com/ericreinsmidt/TortOS) is MIT. Keep its SPDX headers and copyright lines, and list it in a `THIRD-PARTY-LICENSES.md`.
