@@ -140,7 +140,8 @@ static int load_recents(Card* cards) {
 	return count;
 }
 
-static int rom_folder_has_games(const char* folder) {
+// Number of games in a ROM folder, or 0 if its emulator Pak is missing.
+static int rom_folder_game_count(const char* folder) {
 	char emu_name[256];
 	getEmuName(folder, emu_name);
 	if (!has_emu(emu_name)) return 0;
@@ -149,15 +150,12 @@ static int rom_folder_has_games(const char* folder) {
 	snprintf(path, sizeof(path), "%s/%s", ROMS_PATH, folder);
 	DIR* dh = opendir(path);
 	if (!dh) return 0;
-	int has = 0;
+	int count = 0;
 	struct dirent* dp;
-	while ((dp = readdir(dh))) {
-		if (hide(dp->d_name)) continue;
-		has = 1;
-		break;
-	}
+	while ((dp = readdir(dh)))
+		if (!hide(dp->d_name)) count++;
 	closedir(dh);
-	return has;
+	return count;
 }
 
 static void apply_map(const char* map_path, Card* cards, int count) {
@@ -189,11 +187,13 @@ static int load_consoles(Card* cards) {
 	struct dirent* dp;
 	while ((dp = readdir(dh)) && count < MAX_CARDS) {
 		if (hide(dp->d_name)) continue;
-		if (!rom_folder_has_games(dp->d_name)) continue;
+		int games = rom_folder_game_count(dp->d_name);
+		if (!games) continue;
 
 		Card* card = &cards[count];
 		memset(card, 0, sizeof(*card));
 		card->kind = CARD_CONSOLE;
+		card->game_count = games;
 		snprintf(card->path, sizeof(card->path), "%s/%s", ROMS_PATH, dp->d_name);
 		getDisplayName(dp->d_name, card->name);
 		getEmuName(dp->d_name, card->tag);

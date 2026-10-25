@@ -1,11 +1,13 @@
 // Brick Hammer launcher: a tvOS-style home screen for NextUI.
-// Milestone 1: Continue Playing, Consoles and Apps rows with spring focus, shadows and parallax.
-// Launching goes through NextUI's /tmp/next contract, so minarch and MinUI.pak stay stock.
+// The top half is a Top Shelf showing the focused item large; the bottom half holds rows of
+// wide icons (Continue Playing, Consoles, Apps). Launching goes through NextUI's /tmp/next
+// contract, so minarch and MinUI.pak stay stock.
 #include <math.h>
 #include <msettings.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "defines.h"
@@ -19,16 +21,28 @@
 #define SCREEN_H 768
 #define MAX_ROWS 3
 #define MARGIN_X 56.0f
-#define CARD_GAP 28.0f
+
+// Top Shelf
+#define SHELF_ART_Y 74.0f
+#define SHELF_ART_H 250.0f
+#define SHELF_ART_MAX_W 420.0f
+
+// Rows of icons
+#define ROWS_TOP 400.0f
+#define ROW_PITCH 186.0f
+#define ROW_TITLE_H 30.0f
+#define ICON_W 200.0f
+#define ICON_H 120.0f
+#define ICON_GAP 30.0f
+#define ICON_RADIUS 16.0f
 #define FOCUS_SCALE 1.12f
+#define SHINE_SECONDS 0.8f
 
 typedef struct {
 	float x, v;
 } Spring;
 
 typedef struct {
-	float card_w, card_h;
-	float title_y, cards_y;
 	Spring scroll;
 	Spring* scale;
 	LTex* title;
@@ -38,14 +52,29 @@ static Row rows[MAX_ROWS];
 static RowView views[MAX_ROWS];
 static int row_count;
 static int focus_row, focus_col[MAX_ROWS];
-static Spring parallax_x, parallax_y;
+static Spring parallax_x, parallax_y, rows_scroll, shelf_fade;
+static float shine_t = 1.0f;
 static LTex* wallpaper;
-static LTex* caption;
-static LTex* hint_open;
-static LTex* hint_resume;
 static LTex* toast;
 static double toast_until;
-static int caption_row = -1, caption_col = -1;
+
+// Top Shelf texts, rebuilt when focus moves.
+static struct {
+	int row, col;
+	LTex* kicker;
+	LTex* title;
+	LTex* detail;
+	LTex* pill_a;
+	LTex* pill_x;
+	LTex* art_label; // shown in the art box when the item has no art
+} shelf = { -1, -1 };
+
+// Status, rebuilt when the minute or battery level changes.
+static struct {
+	int minute, battery;
+	LTex* clock;
+	LTex* percent;
+} status = { -1, -1 };
 
 // Development aid: LAUNCHER_DEBUG_KEYS="R R D S" presses Right, Right, Down, then saves a
 // screenshot (S) to $LAUNCHER_DEBUG_SHOT-<n>.bmp, one step every 0.6 s. Unused on the device.
@@ -150,54 +179,68 @@ static LTex* load_wallpaper(void) {
 	return tex;
 }
 
-static void layout_rows(void) {
-	float y = 24;
-	for (int r = 0; r < row_count; r++) {
-		RowView* view = &views[r];
-		Card* first = &rows[r].cards[0];
-		if (first->kind == CARD_RECENT) view->card_w = 240, view->card_h = 150;
-		else if (first->kind == CARD_CONSOLE) view->card_w = 150, view->card_h = 150;
-		else view->card_w = 120, view->card_h = 120;
-		view->title_y = y;
-		view->cards_y = y + 46;
-		y = view->cards_y + view->card_h + 58;
-		view->title = ltex_text(LFONT_TITLE, rows[r].title, 0);
-		view->scale = calloc(rows[r].count, sizeof(Spring));
-		for (int c = 0; c < rows[r].count; c++) view->scale[c].x = 1.0f;
-	}
+static Card* focused_card(void) {
+	return &rows[focus_row].cards[focus_col[focus_row]];
 }
 
-static float card_x(int r, int c) {
-	return MARGIN_X + c * (views[r].card_w + CARD_GAP) - views[r].scroll.x;
+static float row_y(int r) {
+	return ROWS_TOP + r * ROW_PITCH - rows_scroll.x;
+}
+
+static float icon_x(int r, int c) {
+	return MARGIN_X + c * (ICON_W + ICON_GAP) - views[r].scroll.x;
 }
 
 static float scroll_target(int r) {
-	float pitch = views[r].card_w + CARD_GAP;
-	int visible = (int)((SCREEN_W - 2 * MARGIN_X + CARD_GAP) / pitch);
+	float pitch = ICON_W + ICON_GAP;
+	int visible = (int)((SCREEN_W - 2 * MARGIN_X + ICON_GAP) / pitch);
 	int first = focus_col[r] - (visible - 2);
 	if (first < 0) first = 0;
-	float max_scroll = rows[r].count * pitch - CARD_GAP - (SCREEN_W - 2 * MARGIN_X);
+	float max_scroll = rows[r].count * pitch - ICON_GAP - (SCREEN_W - 2 * MARGIN_X);
 	if (max_scroll < 0) max_scroll = 0;
 	float target = first * pitch;
 	return target > max_scroll ? max_scroll : target;
 }
 
-// Loads at most one image per frame, for cards on screen, so startup stays fast.
+static float rows_scroll_target(void) {
+	// Two rows fit under the Top Shelf; keep the focused row as the first or second.
+	float target = (focus_row >= 1 ? focus_row - 1 : 0) * ROW_PITCH;
+	float max_scroll = (row_count > 2 ? row_count - 2 : 0) * ROW_PITCH;
+	return target > max_scroll ? max_scroll : target;
+}
+
+static void card_colors(const Card* card, float top[4], float bottom[4]) {
+	hsv_to_rgb(card->hue, 0.42f, 0.78f, &top[0], &top[1], &top[2]);
+	hsv_to_rgb(fmodf(card->hue + 0.04f, 1.0f), 0.58f, 0.48f, &bottom[0], &bottom[1], &bottom[2]);
+	top[3] = bottom[3] = 1.0f;
+}
+
+static void layout_rows(void) {
+	for (int r = 0; r < row_count; r++) {
+		views[r].title = ltex_text(LFONT_LABEL, rows[r].title, 0);
+		views[r].scale = calloc(rows[r].count, sizeof(Spring));
+		for (int c = 0; c < rows[r].count; c++) views[r].scale[c].x = 1.0f;
+	}
+}
+
+// Loads at most one image or label per frame, for icons on screen, so startup stays fast.
 static int load_next_art(void) {
 	for (int r = 0; r < row_count; r++) {
+		float y = row_y(r);
+		if (y > SCREEN_H || y + ROW_PITCH < ROWS_TOP - ROW_PITCH) continue;
 		for (int c = 0; c < rows[r].count; c++) {
 			Card* card = &rows[r].cards[c];
-			float x = card_x(r, c);
-			if (x > SCREEN_W || x + views[r].card_w < 0) continue;
+			float x = icon_x(r, c);
+			if (x > SCREEN_W || x + ICON_W < 0) continue;
 			if (!card->art_tried && card->art_path[0]) {
 				card->art = ltex_load(card->art_path, card->art_is_pixel);
 				card->art_tried = 1;
 				return 1;
 			}
 			if (!card->label && !card->art) {
-				const char* text = card->kind == CARD_CONSOLE ? card->tag : card->name;
-				card->label = ltex_text(card->kind == CARD_CONSOLE ? LFONT_TITLE : LFONT_SMALL, text,
-				                        (int)views[r].card_w - 20);
+				int console = card->kind == CARD_CONSOLE;
+				card->label = ltex_text(console ? LFONT_TITLE : LFONT_LABEL, console ? card->tag : card->name,
+				                        (int)ICON_W - 24);
 				return 1;
 			}
 		}
@@ -205,36 +248,76 @@ static int load_next_art(void) {
 	return 0;
 }
 
-static void draw_card(int r, int c) {
-	RowView* view = &views[r];
-	Card* card = &rows[r].cards[c];
-	float s = view->scale[c].x, lift = (s - 1.0f) / (FOCUS_SCALE - 1.0f);
-	float w = view->card_w * s, h = view->card_h * s;
-	float cx = card_x(r, c) + view->card_w * 0.5f - parallax_x.x * 6;
-	float cy = view->cards_y + view->card_h * 0.5f - parallax_y.x * 4 - lift * 6;
-	float x = cx - w * 0.5f, y = cy - h * 0.5f, radius = 18 * s;
-	if (x > SCREEN_W || x + w < 0) return;
-
-	lgfx_draw_shadow(x, y, w, h, lift * 10, 0.55f + lift * 0.35f);
-	if (card->art) {
-		lgfx_draw_tex(card->art, x, y, w, h, radius, 1);
-	} else {
-		float red, green, blue;
-		hsv_to_rgb(card->hue, 0.45f, 0.55f, &red, &green, &blue);
-		lgfx_draw_fill(x, y, w, h, radius, red, green, blue, 1);
-		if (card->label) {
-			float lw = card->label->w * s, lh = card->label->h * s;
-			lgfx_draw_tex(card->label, cx - lw * 0.5f, cy - lh * 0.5f, lw, lh, 0, 1);
-		}
-	}
+static const char* console_name_for(const char* tag) {
+	for (int r = 0; r < row_count; r++)
+		for (int c = 0; c < rows[r].count; c++)
+			if (rows[r].cards[c].kind == CARD_CONSOLE && exactMatch(rows[r].cards[c].tag, tag)) return rows[r].cards[c].name;
+	return tag;
 }
 
-static void update_caption(void) {
-	if (caption_row == focus_row && caption_col == focus_col[focus_row]) return;
-	caption_row = focus_row;
-	caption_col = focus_col[focus_row];
-	ltex_free(caption);
-	caption = ltex_text(LFONT_BODY, rows[focus_row].cards[caption_col].name, SCREEN_W - 2 * (int)MARGIN_X);
+static void free_shelf(void) {
+	ltex_free(shelf.kicker);
+	ltex_free(shelf.title);
+	ltex_free(shelf.detail);
+	ltex_free(shelf.pill_a);
+	ltex_free(shelf.pill_x);
+	ltex_free(shelf.art_label);
+	shelf.kicker = shelf.title = shelf.detail = shelf.pill_a = shelf.pill_x = shelf.art_label = NULL;
+}
+
+static int update_shelf(void) {
+	if (shelf.row == focus_row && shelf.col == focus_col[focus_row]) return 0;
+	shelf.row = focus_row;
+	shelf.col = focus_col[focus_row];
+	free_shelf();
+
+	Card* card = focused_card();
+	char kicker[128], detail[128];
+	const char* pill_a = "Open";
+	if (card->kind == CARD_RECENT) {
+		snprintf(kicker, sizeof(kicker), "%s", console_name_for(card->tag));
+		snprintf(detail, sizeof(detail), "%s", card->can_resume ? "Saved game available" : "Continue where you left off");
+		pill_a = "Play";
+	} else if (card->kind == CARD_CONSOLE) {
+		snprintf(kicker, sizeof(kicker), "Console");
+		snprintf(detail, sizeof(detail), "%d %s", card->game_count, card->game_count == 1 ? "game" : "games");
+	} else {
+		snprintf(kicker, sizeof(kicker), "App");
+		snprintf(detail, sizeof(detail), "Tools Pak");
+	}
+	for (char* p = kicker; *p; p++) *p = (*p >= 'a' && *p <= 'z') ? *p - 32 : *p;
+
+	shelf.kicker = ltex_text(LFONT_LABEL, kicker, 420);
+	shelf.title = ltex_text(LFONT_HERO, card->name, 440);
+	shelf.detail = ltex_text(LFONT_BODY, detail, 440);
+	char text[64];
+	snprintf(text, sizeof(text), "A   %s", pill_a);
+	shelf.pill_a = ltex_text(LFONT_LABEL, text, 0);
+	if (card->kind == CARD_RECENT && card->can_resume) shelf.pill_x = ltex_text(LFONT_LABEL, "X   Resume save", 0);
+	shelf.art_label = ltex_text(card->kind == CARD_CONSOLE ? LFONT_HERO : LFONT_TITLE,
+	                            card->kind == CARD_CONSOLE ? card->tag : card->name, (int)SHELF_ART_MAX_W - 40);
+	shine_t = 0.0f;
+	shelf_fade.x = 0.0f;
+	shelf_fade.v = 0.0f;
+	return 1;
+}
+
+static int update_status(void) {
+	time_t now = time(NULL);
+	struct tm tm;
+	localtime_r(&now, &tm);
+	int minute = tm.tm_hour * 60 + tm.tm_min, battery = PWR_getBattery();
+	if (minute == status.minute && battery == status.battery) return 0;
+	status.minute = minute;
+	status.battery = battery;
+	ltex_free(status.clock);
+	ltex_free(status.percent);
+	char text[16];
+	snprintf(text, sizeof(text), "%d:%02d", tm.tm_hour, tm.tm_min);
+	status.clock = ltex_text(LFONT_LABEL, text, 0);
+	snprintf(text, sizeof(text), "%d%%", battery);
+	status.percent = ltex_text(LFONT_SMALL, text, 0);
+	return 1;
 }
 
 static void show_toast(const char* text) {
@@ -243,37 +326,120 @@ static void show_toast(const char* text) {
 	toast_until = SDL_GetTicks() / 1000.0 + 1.8;
 }
 
+static void draw_icon(int r, int c, float row_alpha) {
+	RowView* view = &views[r];
+	Card* card = &rows[r].cards[c];
+	int focused = r == focus_row && c == focus_col[r];
+	float s = view->scale[c].x, lift = (s - 1.0f) / (FOCUS_SCALE - 1.0f);
+	float w = ICON_W * s, h = ICON_H * s;
+	float cx = icon_x(r, c) + ICON_W * 0.5f - parallax_x.x * 6;
+	float cy = row_y(r) + ROW_TITLE_H + ICON_H * 0.5f - parallax_y.x * 4 - lift * 6;
+	float x = cx - w * 0.5f, y = cy - h * 0.5f, radius = ICON_RADIUS * s;
+	if (x > SCREEN_W || x + w < 0) return;
+
+	lgfx_draw_shadow(x, y, w, h, lift * 12, (0.45f + lift * 0.4f) * row_alpha);
+	if (card->art) {
+		lgfx_draw_tex(card->art, x, y, w, h, radius, row_alpha);
+	} else {
+		float top[4], bottom[4];
+		card_colors(card, top, bottom);
+		top[3] = bottom[3] = row_alpha;
+		lgfx_draw_gradient(x, y, w, h, radius, top, bottom);
+		if (card->label) {
+			float lw = card->label->w * s, lh = card->label->h * s;
+			lgfx_draw_tex(card->label, cx - lw * 0.5f, cy - lh * 0.5f, lw, lh, 0, row_alpha);
+		}
+	}
+	if (focused && shine_t < 1.0f) lgfx_draw_shine(x, y, w, h, radius, shine_t);
+}
+
+static void draw_pill(LTex* text, float x, float y) {
+	float w = text->w + 36, h = text->h + 16;
+	lgfx_draw_fill(x, y, w, h, h * 0.5f, 1, 1, 1, 0.16f * shelf_fade.x);
+	lgfx_draw_tex(text, x + 18, y + 8, text->w, text->h, 0, shelf_fade.x);
+}
+
+static void draw_shelf(void) {
+	Card* card = focused_card();
+	float a = shelf_fade.x;
+
+	// Art box: landscape for screenshots and wide art, narrower for square or tall box art.
+	float art_w = SHELF_ART_MAX_W;
+	if (card->art) {
+		float aspect = (float)card->art->w / card->art->h;
+		art_w = fminf(fmaxf(SHELF_ART_H * aspect, 180), SHELF_ART_MAX_W);
+	}
+	float art_x = MARGIN_X, art_y = SHELF_ART_Y + (1.0f - a) * 10;
+	lgfx_draw_shadow(art_x, art_y, art_w, SHELF_ART_H, 14, 0.7f * a);
+	if (card->art) {
+		lgfx_draw_tex(card->art, art_x, art_y, art_w, SHELF_ART_H, 22, a);
+	} else {
+		float top[4], bottom[4];
+		card_colors(card, top, bottom);
+		top[3] = bottom[3] = a;
+		lgfx_draw_gradient(art_x, art_y, art_w, SHELF_ART_H, 22, top, bottom);
+		LTex* label = shelf.art_label;
+		if (label)
+			lgfx_draw_tex(label, art_x + (art_w - label->w) * 0.5f, art_y + (SHELF_ART_H - label->h) * 0.5f, label->w,
+			              label->h, 0, a);
+	}
+
+	float tx = art_x + art_w + 40, ty = SHELF_ART_Y + 26 + (1.0f - a) * 6;
+	if (shelf.kicker) lgfx_draw_tex(shelf.kicker, tx, ty, shelf.kicker->w, shelf.kicker->h, 0, 0.6f * a);
+	if (shelf.title) lgfx_draw_tex(shelf.title, tx, ty + 30, shelf.title->w, shelf.title->h, 0, a);
+	if (shelf.detail) lgfx_draw_tex(shelf.detail, tx, ty + 92, shelf.detail->w, shelf.detail->h, 0, 0.72f * a);
+	float px = tx, py = SHELF_ART_Y + SHELF_ART_H - 48;
+	if (shelf.pill_a) {
+		draw_pill(shelf.pill_a, px, py);
+		px += shelf.pill_a->w + 36 + 14;
+	}
+	if (shelf.pill_x) draw_pill(shelf.pill_x, px, py);
+}
+
+static void draw_status(void) {
+	float x = SCREEN_W - MARGIN_X;
+	// Battery: outline, level and tip.
+	float bw = 30, bh = 15, by = 26;
+	x -= bw + 3;
+	float level = status.battery < 0 ? 0 : status.battery > 100 ? 1 : status.battery / 100.0f;
+	lgfx_draw_fill(x, by, bw, bh, 4, 1, 1, 1, 0.35f);
+	lgfx_draw_fill(x + 2, by + 2, (bw - 4) * level, bh - 4, 3, 1, 1, 1, status.battery <= 15 ? 0.6f : 0.95f);
+	lgfx_draw_fill(x + bw + 1, by + 4, 3, bh - 8, 1, 1, 1, 1, 0.35f);
+	if (status.percent) {
+		x -= status.percent->w + 8;
+		lgfx_draw_tex(status.percent, x, by - 2, status.percent->w, status.percent->h, 0, 0.75f);
+	}
+	if (status.clock) {
+		x -= status.clock->w + 20;
+		lgfx_draw_tex(status.clock, x, by - 3, status.clock->w, status.clock->h, 0, 0.9f);
+	}
+}
+
 static void draw_frame(void) {
 	lgfx_begin_frame();
 	lgfx_draw_wallpaper(wallpaper, parallax_x.x * 12, parallax_y.x * 8);
 
-	for (int r = 0; r < row_count; r++) {
-		RowView* view = &views[r];
-		float alpha = r == focus_row ? 1.0f : 0.6f;
-		if (view->title) lgfx_draw_tex(view->title, MARGIN_X - parallax_x.x * 3, view->title_y, view->title->w, view->title->h, 0, alpha);
-		for (int c = 0; c < rows[r].count; c++)
-			if (!(r == focus_row && c == focus_col[r])) draw_card(r, c);
-		if (r == focus_row) draw_card(r, focus_col[r]); // focused card draws on top of its neighbours
-	}
+	// Darken the lower half so the rows read clearly over any wallpaper.
+	const float clear[4] = { 0, 0, 0, 0 }, dark[4] = { 0, 0, 0, 0.45f };
+	lgfx_draw_gradient(0, ROWS_TOP - 60, SCREEN_W, SCREEN_H - ROWS_TOP + 60, 0, clear, dark);
 
-	if (caption) {
-		RowView* view = &views[focus_row];
-		float x = card_x(focus_row, focus_col[focus_row]) - parallax_x.x * 6;
-		if (x + caption->w > SCREEN_W - MARGIN_X) x = SCREEN_W - MARGIN_X - caption->w;
-		if (x < MARGIN_X) x = MARGIN_X;
-		float y = view->cards_y + view->card_h * FOCUS_SCALE + 2;
-		if (y + caption->h > SCREEN_H - 4) y = SCREEN_H - 4 - caption->h;
-		lgfx_draw_tex(caption, x, y, caption->w, caption->h, 0, 1);
+	if (row_count > 0) {
+		draw_shelf();
+		for (int r = 0; r < row_count; r++) {
+			float y = row_y(r);
+			if (y > SCREEN_H || y < ROWS_TOP - ROW_PITCH * 0.6f) continue;
+			// Rows scrolling up under the Top Shelf fade out.
+			float row_alpha = y >= ROWS_TOP - 1 ? 1.0f : fmaxf(0.0f, 1.0f - (ROWS_TOP - y) / (ROW_PITCH * 0.6f));
+			RowView* view = &views[r];
+			if (view->title)
+				lgfx_draw_tex(view->title, MARGIN_X - parallax_x.x * 3, y, view->title->w, view->title->h, 0,
+				              (r == focus_row ? 0.85f : 0.5f) * row_alpha);
+			for (int c = 0; c < rows[r].count; c++)
+				if (!(r == focus_row && c == focus_col[r])) draw_icon(r, c, row_alpha);
+			if (r == focus_row) draw_icon(r, focus_col[r], row_alpha); // focused icon on top of its neighbours
+		}
 	}
-
-	Card* card = &rows[focus_row].cards[focus_col[focus_row]];
-	float hx = SCREEN_W - MARGIN_X;
-	if (card->kind == CARD_RECENT && card->can_resume && hint_resume) {
-		hx -= hint_resume->w;
-		lgfx_draw_tex(hint_resume, hx, 22, hint_resume->w, hint_resume->h, 0, 0.75f);
-		hx -= 24;
-	}
-	if (hint_open) lgfx_draw_tex(hint_open, hx - hint_open->w, 22, hint_open->w, hint_open->h, 0, 0.75f);
+	draw_status();
 
 	if (toast && SDL_GetTicks() / 1000.0 < toast_until) {
 		float w = toast->w + 48, h = toast->h + 24, x = (SCREEN_W - w) * 0.5f, y = SCREEN_H - h - 40;
@@ -301,8 +467,6 @@ int main(int argc, char* argv[]) {
 
 	lgfx_init(SCREEN_W, SCREEN_H);
 	wallpaper = load_wallpaper();
-	hint_open = ltex_text(LFONT_SMALL, "A  Open", 0);
-	hint_resume = ltex_text(LFONT_SMALL, "X  Resume save", 0);
 
 	row_count = ldata_load_rows(rows, MAX_ROWS);
 	layout_rows();
@@ -324,6 +488,13 @@ int main(int argc, char* argv[]) {
 		PAD_poll();
 		PWR_update(&dirty, &show_setting, NULL, NULL);
 
+		// Development: a new build is installed by creating this file, so the launcher exits cleanly
+		// and MinUI.pak's loop starts the new binary without killing the process.
+		if (exists("/tmp/launcher_reload")) {
+			unlink("/tmp/launcher_reload");
+			break;
+		}
+
 		if (!show_setting) {
 			if (PAD_justPressed(BTN_FN1)) quit = ldata_run_fn_action(0);
 			else if (PAD_justPressed(BTN_FN2)) quit = ldata_run_fn_action(1);
@@ -331,14 +502,12 @@ int main(int argc, char* argv[]) {
 		}
 
 		if (row_count > 0 && !quit) {
-			int old_row = focus_row, old_col = focus_col[focus_row];
 			if (PAD_justRepeated(BTN_RIGHT) && focus_col[focus_row] < rows[focus_row].count - 1) focus_col[focus_row]++;
 			else if (PAD_justRepeated(BTN_LEFT) && focus_col[focus_row] > 0) focus_col[focus_row]--;
 			else if (PAD_justRepeated(BTN_DOWN) && focus_row < row_count - 1) focus_row++;
 			else if (PAD_justRepeated(BTN_UP) && focus_row > 0) focus_row--;
-			if (focus_row != old_row || focus_col[focus_row] != old_col) dirty = 1;
 
-			Card* card = &rows[focus_row].cards[focus_col[focus_row]];
+			Card* card = focused_card();
 			if (PAD_justPressed(BTN_A)) {
 				if (card->kind == CARD_CONSOLE) show_toast("Game library arrives in Milestone 2");
 				else {
@@ -354,18 +523,25 @@ int main(int argc, char* argv[]) {
 
 		int animating = 0;
 		if (row_count > 0) {
+			animating |= update_shelf();
 			for (int r = 0; r < row_count; r++) {
 				animating |= spring_step(&views[r].scroll, scroll_target(r), dt);
 				for (int c = 0; c < rows[r].count; c++)
 					animating |= spring_step(&views[r].scale[c], r == focus_row && c == focus_col[r] ? FOCUS_SCALE : 1.0f, dt);
 			}
+			animating |= spring_step(&rows_scroll, rows_scroll_target(), dt);
+			animating |= spring_step(&shelf_fade, 1.0f, dt);
 			float px = rows[focus_row].count > 1 ? (float)focus_col[focus_row] / (rows[focus_row].count - 1) * 2 - 1 : 0;
 			float py = row_count > 1 ? (float)focus_row / (row_count - 1) * 2 - 1 : 0;
 			animating |= spring_step(&parallax_x, px, dt);
 			animating |= spring_step(&parallax_y, py, dt);
-			update_caption();
+			if (shine_t < 1.0f) {
+				shine_t = fminf(1.0f, shine_t + dt / SHINE_SECONDS);
+				animating = 1;
+			}
 			animating |= load_next_art();
 		}
+		animating |= update_status();
 		if (toast && SDL_GetTicks() / 1000.0 < toast_until + 0.1) animating = 1;
 
 		// Draw only while something moves, so the GPU and battery rest on a still screen.
@@ -383,10 +559,10 @@ int main(int argc, char* argv[]) {
 		ltex_free(views[r].title);
 		free(views[r].scale);
 	}
+	free_shelf();
+	ltex_free(status.clock);
+	ltex_free(status.percent);
 	ltex_free(wallpaper);
-	ltex_free(caption);
-	ltex_free(hint_open);
-	ltex_free(hint_resume);
 	ltex_free(toast);
 	lgfx_quit();
 

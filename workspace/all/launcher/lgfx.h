@@ -10,7 +10,8 @@ typedef struct {
 	int w, h;
 } LTex;
 
-enum { LFONT_SMALL, LFONT_BODY, LFONT_TITLE, LFONT_COUNT };
+// SMALL and BODY are Inter Regular, LABEL is SemiBold, TITLE and HERO are Bold.
+enum { LFONT_SMALL, LFONT_LABEL, LFONT_BODY, LFONT_TITLE, LFONT_HERO, LFONT_COUNT };
 
 void lgfx_init(int screen_w, int screen_h);
 void lgfx_quit(void);
@@ -27,6 +28,12 @@ void ltex_free(LTex* tex);
 // Draws tex into the rect, cropping it to fill the rect without stretching.
 void lgfx_draw_tex(LTex* tex, float x, float y, float w, float h, float radius, float alpha);
 void lgfx_draw_fill(float x, float y, float w, float h, float radius, float r, float g, float b, float a);
+// Vertical gradient from the top colour to the bottom colour.
+void lgfx_draw_gradient(float x, float y, float w, float h, float radius, const float top[4], const float bottom[4]);
+// A soft diagonal band of light across a rounded rect; t runs from 0 to 1 as it sweeps.
+void lgfx_draw_shine(float x, float y, float w, float h, float radius, float t);
+// Draws tex scaled to fit inside the rect without cropping.
+void lgfx_draw_tex_fit(LTex* tex, float x, float y, float w, float h, float radius, float alpha);
 void lgfx_draw_shadow(float x, float y, float w, float h, float lift, float alpha);
 void lgfx_draw_wallpaper(LTex* tex, float offset_x, float offset_y);
 

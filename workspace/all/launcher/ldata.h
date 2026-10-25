@@ -15,6 +15,7 @@ typedef struct {
 	char art_path[512];  // image to show, "" if none
 	int art_is_pixel;    // save-state screenshot rather than box art
 	int can_resume;      // a manual save slot exists
+	int game_count;      // consoles only
 	float hue;           // colour of the title card
 	LTex* art;
 	LTex* label;

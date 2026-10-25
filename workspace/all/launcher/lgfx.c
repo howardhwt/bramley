@@ -12,7 +12,7 @@
 
 static int screen_w, screen_h;
 static int fb_w, fb_h;
-static GLuint vao, vbo, p_tex, p_fill;
+static GLuint vao, vbo, p_tex, p_fill, p_shine;
 static LTex* shadow;
 static TTF_Font* fonts[LFONT_COUNT];
 
@@ -52,12 +52,29 @@ static const char* fs_tex =
 static const char* fs_fill =
 	"uniform vec4 u_px;\n"
 	"uniform float u_radius;\n"
-	"uniform vec4 u_color;\n"
+	"uniform vec4 u_top;\n"
+	"uniform vec4 u_bottom;\n"
 	"in vec2 v_uv; FRAG_DECL\n"
 	"void main() {\n"
 	"	vec2 local = gl_FragCoord.xy - (u_px.xy + u_px.zw * 0.5);\n"
 	"	float d = sd_rrect(local, u_px.zw * 0.5, u_radius);\n"
-	"	frag = vec4(u_color.rgb, u_color.a * clamp(0.5 - d, 0.0, 1.0));\n"
+	"	float k = clamp((gl_FragCoord.y - u_px.y) / u_px.w, 0.0, 1.0);\n"
+	"	vec4 c = mix(u_bottom, u_top, k);\n"
+	"	frag = vec4(c.rgb, c.a * clamp(0.5 - d, 0.0, 1.0));\n"
+	"}\n";
+
+static const char* fs_shine =
+	"uniform vec4 u_px;\n"
+	"uniform float u_radius;\n"
+	"uniform float u_t;\n"
+	"in vec2 v_uv; FRAG_DECL\n"
+	"void main() {\n"
+	"	vec2 local = gl_FragCoord.xy - (u_px.xy + u_px.zw * 0.5);\n"
+	"	float d = sd_rrect(local, u_px.zw * 0.5, u_radius);\n"
+	"	vec2 p = (gl_FragCoord.xy - u_px.xy) / u_px.zw;\n"
+	"	float x = p.x + (1.0 - p.y) * 0.5 - (u_t * 2.2 - 0.6);\n"
+	"	float band = exp(-x * x / 0.012) * 0.32;\n"
+	"	frag = vec4(1.0, 1.0, 1.0, band * clamp(0.5 - d, 0.0, 1.0));\n"
 	"}\n";
 
 // GLSL dialect of the context NextUI created: ES 3.x on the device; on a desktop it may be a
@@ -182,6 +199,7 @@ void lgfx_init(int w, int h) {
 	detect_glsl();
 	p_tex = program(fs_sdf, fs_tex);
 	p_fill = program(fs_sdf, fs_fill);
+	p_shine = program(fs_sdf, fs_shine);
 
 	glGenVertexArrays(1, &vao);
 	glBindVertexArray(vao);
@@ -194,9 +212,11 @@ void lgfx_init(int w, int h) {
 	shadow = make_shadow();
 
 	if (!TTF_WasInit()) TTF_Init();
-	fonts[LFONT_SMALL] = open_font("Inter-SemiBold.ttf", 20);
-	fonts[LFONT_BODY] = open_font("Inter-SemiBold.ttf", 26);
+	fonts[LFONT_SMALL] = open_font("Inter-Regular.ttf", 18);
+	fonts[LFONT_LABEL] = open_font("Inter-SemiBold.ttf", 19);
+	fonts[LFONT_BODY] = open_font("Inter-Regular.ttf", 23);
 	fonts[LFONT_TITLE] = open_font("Inter-Bold.ttf", 30);
+	fonts[LFONT_HERO] = open_font("Inter-Bold.ttf", 46);
 }
 
 void lgfx_quit(void) {
@@ -209,6 +229,7 @@ void lgfx_quit(void) {
 	glDeleteVertexArrays(1, &vao);
 	glDeleteProgram(p_tex);
 	glDeleteProgram(p_fill);
+	glDeleteProgram(p_shine);
 }
 
 void lgfx_begin_frame(void) {
@@ -328,15 +349,39 @@ void lgfx_draw_tex(LTex* tex, float x, float y, float w, float h, float radius, 
 	draw_tex_uv(tex, x, y, w, h, radius, alpha, u0, v0, us, vs);
 }
 
-void lgfx_draw_fill(float x, float y, float w, float h, float radius, float r, float g, float b, float a) {
+void lgfx_draw_gradient(float x, float y, float w, float h, float radius, const float top[4], const float bottom[4]) {
 	float px[4];
 	to_fb(x, y, w, h, px);
 	glUseProgram(p_fill);
 	glUniform4f(glGetUniformLocation(p_fill, "u_px"), px[0], px[1], px[2], px[3]);
 	glUniform1f(glGetUniformLocation(p_fill, "u_radius"), radius * fb_w / screen_w);
-	glUniform4f(glGetUniformLocation(p_fill, "u_color"), r, g, b, a);
+	glUniform4f(glGetUniformLocation(p_fill, "u_top"), top[0], top[1], top[2], top[3]);
+	glUniform4f(glGetUniformLocation(p_fill, "u_bottom"), bottom[0], bottom[1], bottom[2], bottom[3]);
 	set_rect(p_fill, x - 2, y - 2, w + 4, h + 4);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+}
+
+void lgfx_draw_fill(float x, float y, float w, float h, float radius, float r, float g, float b, float a) {
+	const float c[4] = { r, g, b, a };
+	lgfx_draw_gradient(x, y, w, h, radius, c, c);
+}
+
+void lgfx_draw_shine(float x, float y, float w, float h, float radius, float t) {
+	float px[4];
+	to_fb(x, y, w, h, px);
+	glUseProgram(p_shine);
+	glUniform4f(glGetUniformLocation(p_shine, "u_px"), px[0], px[1], px[2], px[3]);
+	glUniform1f(glGetUniformLocation(p_shine, "u_radius"), radius * fb_w / screen_w);
+	glUniform1f(glGetUniformLocation(p_shine, "u_t"), t);
+	set_rect(p_shine, x, y, w, h);
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+}
+
+void lgfx_draw_tex_fit(LTex* tex, float x, float y, float w, float h, float radius, float alpha) {
+	if (!tex) return;
+	float scale = fminf(w / tex->w, h / tex->h);
+	float dw = tex->w * scale, dh = tex->h * scale;
+	draw_tex_uv(tex, x + (w - dw) * 0.5f, y + (h - dh) * 0.5f, dw, dh, radius, alpha, 0, 0, 1, 1);
 }
 
 // Shadow under a card rect; lift moves it down and makes it larger and softer.
