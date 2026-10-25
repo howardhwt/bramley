@@ -21,6 +21,9 @@ uname -a >> "$LOG" 2>&1
 echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> "$LOG"
 ls -l /usr/lib/libavformat* /usr/lib/libavcodec* /usr/lib/libavfilter* /usr/lib/libavutil* \
 	/usr/lib/libswresample* /usr/lib/libasound* >> "$LOG" 2>&1
+log "every FFmpeg and ALSA library on the system"
+find / /usr -xdev \( -name 'libavcodec.so*' -o -name 'libavformat.so*' -o -name 'libavfilter.so*' \
+	-o -name 'libavutil.so*' -o -name 'libswresample.so*' -o -name 'libasound.so*' \) 2>/dev/null | sort -u >> "$LOG"
 ls -l "$SPIKE_DIR/test.flac" "$SPIKE_DIR/test.m4b" >> "$LOG" 2>&1
 
 log "ldd muse"
