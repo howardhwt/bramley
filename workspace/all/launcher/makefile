@@ -25,7 +25,7 @@ SOURCE = $(TARGET).c lgfx.c ldata.c lradio.c lmuse.c lmusic.c tortos/muselib.c t
 
 CC = $(CROSS_COMPILE)gcc
 CFLAGS  += $(OPT)
-CFLAGS  += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -std=gnu99
+CFLAGS  += $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DLAUNCHER_VERSION=\"$(shell cat VERSION)\" -std=gnu99
 LDFLAGS	 += -lmsettings
 
 PRODUCT= build/$(PLATFORM)/$(TARGET).elf

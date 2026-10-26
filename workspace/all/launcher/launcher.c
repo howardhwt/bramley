@@ -1174,6 +1174,7 @@ static struct {
 	LTex* states[RADIO_COUNT];
 	LTex* clock;
 	LTex* battery;
+	LTex* version;
 	int closing;
 } qm;
 
@@ -1231,6 +1232,8 @@ static void open_quick_menu(void) {
 	qm.clock = ltex_text(LFONT_HERO, text, 0);
 	snprintf(text, sizeof(text), "Battery %d%%%s", PWR_getBattery(), PWR_isCharging() ? ", charging" : "");
 	qm.battery = ltex_text(LFONT_BODY, text, 0);
+	ltex_free(qm.version);
+	qm.version = ltex_text(LFONT_SMALL, "Brick Hammer Launcher " LAUNCHER_VERSION, 0);
 	lradio_set_polling(1);
 	qm_update_states(1);
 	shine_t = 0.0f;
@@ -1242,6 +1245,7 @@ static void free_quick_menu(void) {
 	for (int i = 0; i < RADIO_COUNT; i++) ltex_free(qm.states[i]);
 	ltex_free(qm.clock);
 	ltex_free(qm.battery);
+	ltex_free(qm.version);
 	memset(&qm, 0, sizeof(qm));
 }
 
@@ -1286,6 +1290,7 @@ static void draw_quick_menu(void) {
 
 	if (qm.clock) lgfx_draw_tex(qm.clock, px + 24, 44, qm.clock->w, qm.clock->h, 0, 1);
 	if (qm.battery) lgfx_draw_tex(qm.battery, px + 24, 44 + 62, qm.battery->w, qm.battery->h, 0, 0.7f);
+	if (qm.version) lgfx_draw_tex(qm.version, px + 24, py + ph - 24 - qm.version->h, qm.version->w, qm.version->h, 0, 0.45f);
 
 	for (int i = 0; i < QM_COUNT; i++) {
 		float x, y, w = i <= QM_BLUETOOTH ? QM_TILE_W : QM_W - 48, h = i <= QM_BLUETOOTH ? QM_TILE_H : QM_ITEM_H;

@@ -1,4 +1,5 @@
 #!/bin/sh
+# Brick Hammer launcher: safety-net wrapper (the installer Pak looks for this line).
 # Installed as nextui.elf, which MinUI.pak/launch.sh runs in its loop. Starts the Brick Hammer
 # launcher, and switches to the stock launcher (nextui-stock.elf) after two crashes in a row that
 # each happen within 5 seconds of starting, so a broken build never locks the user out.
