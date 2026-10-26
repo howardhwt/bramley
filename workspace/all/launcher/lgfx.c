@@ -1,3 +1,5 @@
+#include <ctype.h>
+#include <dirent.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,11 +23,19 @@ static LTex* shadow;
 static TTF_Font* fonts[LFONT_COUNT];
 static int font_sizes[LFONT_COUNT];
 
-// Inter has no Chinese, Japanese or Korean characters. NextUI's own fonts do, so text that Inter
-// cannot draw is drawn with the first of these that has every character, at the same size.
-static const char* fallback_files[] = { "font1.ttf", "font2.ttf" };
+// Inter has no Chinese, Japanese or Korean characters. Each character is drawn with the first font
+// in this chain that has it, so mixed text such as "百變天后 · 鄧紫棋" draws in one line. Source Han Sans
+// (SIL OFL) ships in the Brick's stock firmware with 44,812 characters; NextUI's font1.ttf covers
+// fewer; the macOS fonts only stand in when testing on a desktop. Missing files are skipped.
+static const char* fallback_files[] = {
+	"/usr/trimui/res/full.ttf",
+	RES_PATH "/font1.ttf",
+	"/System/Library/Fonts/Hiragino Sans GB.ttc",
+	"/System/Library/Fonts/AppleSDGothicNeo.ttc",
+};
 #define FALLBACK_COUNT (int)(sizeof(fallback_files) / sizeof(fallback_files[0]))
 static TTF_Font* fallbacks[LFONT_COUNT][FALLBACK_COUNT];
+static char fallback_tried[LFONT_COUNT][FALLBACK_COUNT];
 
 static const char* vs_src =
 	"in vec2 a_pos;\n"
@@ -242,8 +252,52 @@ static void free_target(Target* t) {
 	t->fbo = t->tex = 0;
 }
 
+// A font the user put in /mnt/SDCARD/Fonts replaces Inter by weight: a file name containing
+// "regular", "semibold" (else "medium") or "bold" (not "semibold" or "extrabold"), case ignored,
+// italics skipped. Nothing of the kind ships with the launcher; this is how someone uses a font
+// they own on their own card. Returns 1 and the path if one matched.
+static int user_font(const char* weight, char* out, size_t size) {
+	char dir_path[256];
+	snprintf(dir_path, sizeof(dir_path), "%s/Fonts", SDCARD_PATH);
+	DIR* dh = opendir(dir_path);
+	if (!dh) return 0;
+	char best[256] = "", medium[256] = "";
+	struct dirent* dp;
+	while ((dp = readdir(dh))) {
+		char lower[256];
+		snprintf(lower, sizeof(lower), "%s", dp->d_name);
+		for (char* c = lower; *c; c++) *c = (char)tolower((unsigned char)*c);
+		if (lower[0] == '.' || strstr(lower, "italic")) continue;
+		if (!suffixMatch(".ttf", lower) && !suffixMatch(".otf", lower)) continue;
+		int match = 0;
+		if (!strcmp(weight, "regular")) match = strstr(lower, "regular") != NULL;
+		else if (!strcmp(weight, "semibold")) {
+			match = strstr(lower, "semibold") != NULL;
+			if (!match && strstr(lower, "medium") && (!medium[0] || strcmp(dp->d_name, medium) < 0))
+				snprintf(medium, sizeof(medium), "%s", dp->d_name);
+		} else
+			match = strstr(lower, "bold") && !strstr(lower, "semibold") && !strstr(lower, "extrabold");
+		// Of several matches (Display and Text, say) the first by name wins, so the choice is stable.
+		if (match && (!best[0] || strcmp(dp->d_name, best) < 0)) snprintf(best, sizeof(best), "%s", dp->d_name);
+	}
+	closedir(dh);
+	if (!best[0] && medium[0]) snprintf(best, sizeof(best), "%s", medium);
+	if (!best[0]) return 0;
+	snprintf(out, size, "%s/%s", dir_path, best);
+	return 1;
+}
+
 static TTF_Font* open_font(const char* file, int size) {
 	char path[256];
+	const char* weight = strstr(file, "SemiBold") ? "semibold" : strstr(file, "Bold") ? "bold" : "regular";
+	if (user_font(weight, path, sizeof(path))) {
+		TTF_Font* font = TTF_OpenFont(path, size);
+		if (font) {
+			LOG_info("launcher font: %s\n", path);
+			return font;
+		}
+		LOG_error("launcher could not open %s: %s\n", path, TTF_GetError());
+	}
 	snprintf(path, sizeof(path), "%s/%s", RES_PATH, file);
 	TTF_Font* font = TTF_OpenFont(path, size);
 	if (!font) {
@@ -266,25 +320,107 @@ static int next_codepoint(const char** p) {
 	return c;
 }
 
-static int font_has_text(TTF_Font* f, const char* text) {
-	int c;
-	while ((c = next_codepoint(&text)) >= 0)
-		if (c > 0x20 && (c > 0xFFFF || !TTF_GlyphIsProvided(f, (Uint16)c))) return 0;
-	return 1;
+static int font_has(TTF_Font* f, int c) {
+	// SDL_ttf 2.0.13 on the device can only ask about characters up to U+FFFF.
+	return c <= 0x20 || (c <= 0xFFFF && TTF_GlyphIsProvided(f, (Uint16)c));
 }
 
-static TTF_Font* font_for(int font, const char* text) {
-	TTF_Font* f = fonts[font];
-	if (!f || font_has_text(f, text)) return f;
-	for (int i = 0; i < FALLBACK_COUNT; i++) {
-		if (!fallbacks[font][i]) {
-			char path[256];
-			snprintf(path, sizeof(path), "%s/%s", RES_PATH, fallback_files[i]);
-			fallbacks[font][i] = TTF_OpenFont(path, font_sizes[font]);
-		}
-		if (fallbacks[font][i] && font_has_text(fallbacks[font][i], text)) return fallbacks[font][i];
+// Font i of the chain for size `font`: 0 is Inter, then the fallbacks, opened when first needed.
+static TTF_Font* chain_font(int font, int i) {
+	if (i == 0) return fonts[font];
+	i--;
+	if (!fallback_tried[font][i]) {
+		fallback_tried[font][i] = 1;
+		if (exists((char*)fallback_files[i])) fallbacks[font][i] = TTF_OpenFont(fallback_files[i], font_sizes[font]);
 	}
-	return f;
+	return fallbacks[font][i];
+}
+
+static int chain_for(int font, int c) {
+	for (int i = 0; i <= FALLBACK_COUNT; i++) {
+		TTF_Font* f = chain_font(font, i);
+		if (f && font_has(f, c)) return i;
+	}
+	return 0;
+}
+
+typedef struct {
+	int font_index;
+	int start, end; // byte range in the text
+} Run;
+
+// Splits text into runs of characters that share a font. Returns how many.
+static int make_runs(int font, const char* text, Run* runs, int max_runs) {
+	int count = 0;
+	const char* p = text;
+	while (*p && count < max_runs) {
+		const char* before = p;
+		int c = next_codepoint(&p);
+		int fi = c == ' ' && count ? runs[count - 1].font_index : chain_for(font, c);
+		if (count && runs[count - 1].font_index == fi) runs[count - 1].end = (int)(p - text);
+		else runs[count++] = (Run){ fi, (int)(before - text), (int)(p - text) };
+	}
+	return count;
+}
+
+static int text_width(int font, const char* text) {
+	Run runs[64];
+	int n = make_runs(font, text, runs, 64), total = 0;
+	for (int i = 0; i < n; i++) {
+		char piece[512];
+		snprintf(piece, sizeof(piece), "%.*s", runs[i].end - runs[i].start, text + runs[i].start);
+		int w = 0, h = 0;
+		TTF_SizeUTF8(chain_font(font, runs[i].font_index), piece, &w, &h);
+		total += w;
+	}
+	return total;
+}
+
+// Copies text into out, cut to max_w with an ellipsis when it is wider.
+static void fit_text(int font, const char* text, int max_w, char* out, size_t size) {
+	snprintf(out, size, "%s", text);
+	if (max_w <= 0 || text_width(font, out) <= max_w) return;
+	int len = (int)strlen(out);
+	while (len > 0) {
+		len--;
+		while (len > 0 && (out[len] & 0xC0) == 0x80) len--; // keep UTF-8 sequences whole
+		while (len > 0 && out[len - 1] == ' ') len--;
+		snprintf(out + len, size - len, "...");
+		if (text_width(font, out) <= max_w) return;
+	}
+}
+
+// One line of text in white, each run in its own font, all on one baseline.
+static SDL_Surface* render_line(int font, const char* text) {
+	Run runs[64];
+	int n = make_runs(font, text, runs, 64);
+	SDL_Surface* parts[64] = { 0 };
+	int ascent = 0, descent = 0, width = 0;
+	for (int i = 0; i < n; i++) {
+		TTF_Font* f = chain_font(font, runs[i].font_index);
+		if (!f) continue;
+		char piece[512];
+		snprintf(piece, sizeof(piece), "%.*s", runs[i].end - runs[i].start, text + runs[i].start);
+		parts[i] = TTF_RenderUTF8_Blended(f, piece, (SDL_Color){ 255, 255, 255, 255 });
+		if (!parts[i]) continue;
+		if (TTF_FontAscent(f) > ascent) ascent = TTF_FontAscent(f);
+		if (-TTF_FontDescent(f) > descent) descent = -TTF_FontDescent(f);
+		width += parts[i]->w;
+	}
+	if (!width) return NULL;
+	SDL_Surface* out = SDL_CreateRGBSurfaceWithFormat(0, width, ascent + descent, 32, SDL_PIXELFORMAT_ARGB8888);
+	SDL_FillRect(out, NULL, 0);
+	int x = 0;
+	for (int i = 0; i < n; i++) {
+		if (!parts[i]) continue;
+		TTF_Font* f = chain_font(font, runs[i].font_index);
+		SDL_SetSurfaceBlendMode(parts[i], SDL_BLENDMODE_NONE);
+		SDL_Rect dst = { x, ascent - TTF_FontAscent(f), parts[i]->w, parts[i]->h };
+		SDL_BlitSurface(parts[i], NULL, out, &dst);
+		x += parts[i]->w;
+		SDL_FreeSurface(parts[i]);
+	}
+	return out;
 }
 
 void lgfx_init(int w, int h) {
@@ -408,84 +544,61 @@ LTex* ltex_load(const char* path, int pixel_art) {
 
 // Renders text in white. Text wider than max_w is cut and ends in an ellipsis.
 LTex* ltex_text(int font, const char* text, int max_w) {
-	TTF_Font* f = font_for(font, text ? text : "");
-	if (!f || !text || !text[0]) return NULL;
-
-	char buf[256];
-	snprintf(buf, sizeof(buf), "%s", text);
-	int w = 0, h = 0;
-	TTF_SizeUTF8(f, buf, &w, &h);
-	if (max_w > 0 && w > max_w) {
-		int len = (int)strlen(buf);
-		while (len > 1) {
-			len--;
-			while (len > 0 && (buf[len] & 0xC0) == 0x80) len--; // keep UTF-8 sequences whole
-			strcpy(buf + len, "...");
-			TTF_SizeUTF8(f, buf, &w, &h);
-			if (w <= max_w) break;
-		}
-	}
-	SDL_Surface* surface = TTF_RenderUTF8_Blended(f, buf, (SDL_Color){ 255, 255, 255, 255 });
+	if (!fonts[font] || !text || !text[0]) return NULL;
+	char line[512];
+	fit_text(font, text, max_w, line, sizeof(line));
+	SDL_Surface* surface = render_line(font, line);
 	LTex* tex = ltex_from_surface(surface, 0);
 	SDL_FreeSurface(surface);
 	return tex;
 }
 
-LTex* ltex_text_wrapped(int font, const char* text, int max_w, int max_lines, int centered) {
-	TTF_Font* f = font_for(font, text ? text : "");
-	if (!f || !text || !text[0] || max_lines < 1) return NULL;
+static int is_cjk(int c) {
+	return c >= 0x2E80 && c <= 0xFFEF;
+}
 
-	char lines[8][256];
-	int count = 0;
-	char words[512];
-	snprintf(words, sizeof(words), "%s", text);
-	char* rest = words;
+LTex* ltex_text_wrapped(int font, const char* text, int max_w, int max_lines, int centered) {
+	if (!fonts[font] || !text || !text[0] || max_lines < 1) return NULL;
 	if (max_lines > 8) max_lines = 8;
+
+	// Greedy line breaking. A line may break after a space, or before or after a Chinese,
+	// Japanese or Korean character, since those are written without spaces.
+	char lines[8][512];
+	int count = 0;
+	const char* rest = text;
 	while (*rest && count < max_lines) {
 		while (*rest == ' ') rest++;
 		if (!*rest) break;
-		// Take as many whole words as fit; a single long word is cut by ltex_text's ellipsis later.
-		char line[256] = "";
-		char* end = rest;
-		while (*end) {
-			char* word_end = end;
-			while (*word_end && *word_end != ' ') word_end++;
-			char trial[256];
-			snprintf(trial, sizeof(trial), "%s%s%.*s", line, line[0] ? " " : "", (int)(word_end - end), end);
-			int w = 0, h = 0;
-			TTF_SizeUTF8(f, trial, &w, &h);
-			if (w > max_w && line[0]) break;
-			snprintf(line, sizeof(line), "%s", trial);
-			end = word_end;
-			while (*end == ' ') end++;
+		if (count == max_lines - 1) {
+			fit_text(font, rest, max_w, lines[count++], sizeof(lines[0]));
+			break;
 		}
-		if (count == max_lines - 1 && *end) {
-			// Last allowed line: keep the remaining words and let the ellipsis cut them.
-			snprintf(line, sizeof(line), "%s", rest);
-			end = rest + strlen(rest);
+		const char* p = rest;
+		const char* last_break = NULL;
+		int prev = 0;
+		while (*p) {
+			const char* here = p;
+			int c = next_codepoint(&p);
+			if (here > rest && (c == ' ' || is_cjk(c) || is_cjk(prev))) last_break = here;
+			char trial[512];
+			snprintf(trial, sizeof(trial), "%.*s", (int)(p - rest), rest);
+			if (text_width(font, trial) > max_w && here > rest) {
+				p = last_break ? last_break : here;
+				break;
+			}
+			prev = c;
 		}
-		snprintf(lines[count++], sizeof(lines[0]), "%s", line);
-		rest = end;
+		snprintf(lines[count], sizeof(lines[0]), "%.*s", (int)(p - rest), rest);
+		int len = (int)strlen(lines[count]);
+		while (len > 0 && lines[count][len - 1] == ' ') lines[count][--len] = '\0';
+		count++;
+		rest = p;
 	}
 
 	SDL_Surface* rendered[8] = { 0 };
 	int total_h = 0, total_w = 0;
 	for (int i = 0; i < count; i++) {
-		char buf[256];
-		snprintf(buf, sizeof(buf), "%s", lines[i]);
-		int w = 0, h = 0;
-		TTF_SizeUTF8(f, buf, &w, &h);
-		if (w > max_w) {
-			int len = (int)strlen(buf);
-			while (len > 1) {
-				len--;
-				while (len > 0 && (buf[len] & 0xC0) == 0x80) len--;
-				strcpy(buf + len, "...");
-				TTF_SizeUTF8(f, buf, &w, &h);
-				if (w <= max_w) break;
-			}
-		}
-		rendered[i] = TTF_RenderUTF8_Blended(f, buf, (SDL_Color){ 255, 255, 255, 255 });
+		rendered[i] = render_line(font, lines[i]);
 		if (!rendered[i]) continue;
 		total_h += rendered[i]->h;
 		if (rendered[i]->w > total_w) total_w = rendered[i]->w;
