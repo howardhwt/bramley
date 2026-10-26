@@ -59,9 +59,12 @@ static const char* fs_tex =
 	"uniform float u_radius;\n"
 	"uniform vec4 u_uv;\n"
 	"uniform float u_alpha;\n"
+	"uniform float u_bias;\n" // mipmap bias: above 0 samples smaller levels, a cheap blur
+	"uniform float u_dim;\n"
 	"in vec2 v_uv; FRAG_DECL\n"
 	"void main() {\n"
-	"	vec4 c = texture(u_tex, u_uv.xy + v_uv * u_uv.zw);\n"
+	"	vec4 c = texture(u_tex, u_uv.xy + v_uv * u_uv.zw, u_bias);\n"
+	"	c.rgb *= u_dim;\n"
 	"	float a = 1.0;\n"
 	"	if (u_radius > 0.0) {\n"
 	"		vec2 local = gl_FragCoord.xy - (u_px.xy + u_px.zw * 0.5);\n"
@@ -641,6 +644,8 @@ static void set_rect(GLuint prog, float x, float y, float w, float h) {
 	            h / screen_h);
 }
 
+static float tex_bias = 0, tex_dim = 1;
+
 static void draw_tex_uv(LTex* tex, float x, float y, float w, float h, float radius, float alpha, float u0, float v0,
                         float us, float vs) {
 	float px[4];
@@ -653,6 +658,8 @@ static void draw_tex_uv(LTex* tex, float x, float y, float w, float h, float rad
 	// Textures are stored top row first, so v runs from 1 at the bottom of the quad to 0 at the top.
 	glUniform4f(glGetUniformLocation(p_tex, "u_uv"), u0, v0 + vs, us, -vs);
 	glUniform1f(glGetUniformLocation(p_tex, "u_alpha"), alpha);
+	glUniform1f(glGetUniformLocation(p_tex, "u_bias"), tex_bias);
+	glUniform1f(glGetUniformLocation(p_tex, "u_dim"), tex_dim);
 	set_rect(p_tex, x, y, w, h);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
@@ -711,6 +718,24 @@ void lgfx_draw_shine(float x, float y, float w, float h, float radius, float t) 
 	glUniform1f(glGetUniformLocation(p_shine, "u_t"), t);
 	set_rect(p_shine, x, y, w, h);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+}
+
+// Art whose shape is far from the card's (tall box art in a wide card) is shown whole, centred on
+// a blurred, darkened copy of itself that fills the card, instead of being cropped to its middle.
+void lgfx_draw_art(LTex* tex, float x, float y, float w, float h, float radius, float alpha) {
+	if (!tex) return;
+	float ratio = ((float)tex->w / tex->h) / (w / h);
+	if (ratio > 0.8f && ratio < 1.25f) {
+		lgfx_draw_tex(tex, x, y, w, h, radius, alpha);
+		return;
+	}
+	tex_bias = 5.0f;
+	tex_dim = 0.55f;
+	lgfx_draw_tex(tex, x, y, w, h, radius, alpha);
+	tex_bias = 0;
+	tex_dim = 1;
+	float pad = h * 0.06f;
+	lgfx_draw_tex_fit(tex, x + pad, y + pad, w - 2 * pad, h - 2 * pad, radius * 0.5f, alpha);
 }
 
 void lgfx_draw_tex_fit(LTex* tex, float x, float y, float w, float h, float radius, float alpha) {
@@ -787,6 +812,8 @@ void lgfx_draw_snapshot(float alpha) {
 	glUniform1f(glGetUniformLocation(p_tex, "u_radius"), 0);
 	glUniform4f(glGetUniformLocation(p_tex, "u_uv"), 0, 0, 1, 1);
 	glUniform1f(glGetUniformLocation(p_tex, "u_alpha"), alpha);
+	glUniform1f(glGetUniformLocation(p_tex, "u_bias"), 0);
+	glUniform1f(glGetUniformLocation(p_tex, "u_dim"), 1);
 	set_rect(p_tex, 0, 0, screen_w, screen_h);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }

@@ -418,7 +418,7 @@ static void draw_icon(int r, int c, float row_alpha) {
 
 	lgfx_draw_shadow(x, y, w, h, lift * 12, (0.45f + lift * 0.4f) * row_alpha);
 	if (card->art) {
-		lgfx_draw_tex(card->art, x, y, w, h, radius, row_alpha);
+		lgfx_draw_art(card->art, x, y, w, h, radius, row_alpha);
 	} else {
 		float top[4], bottom[4];
 		card_colors(card, top, bottom);

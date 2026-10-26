@@ -37,6 +37,9 @@ void lgfx_draw_gradient(float x, float y, float w, float h, float radius, const 
 // Outline of a rounded rect, width pixels wide, drawn just inside the rect.
 void lgfx_draw_ring(float x, float y, float w, float h, float radius, float width, float r, float g, float b, float a);
 void lgfx_draw_shine(float x, float y, float w, float h, float radius, float t);
+// Draws art to fill the rect: cropped when its shape is close to the rect's, otherwise shown whole
+// over a blurred, darkened copy of itself.
+void lgfx_draw_art(LTex* tex, float x, float y, float w, float h, float radius, float alpha);
 // Draws tex scaled to fit inside the rect without cropping.
 void lgfx_draw_tex_fit(LTex* tex, float x, float y, float w, float h, float radius, float alpha);
 void lgfx_draw_shadow(float x, float y, float w, float h, float lift, float alpha);
