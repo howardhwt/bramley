@@ -5,6 +5,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "defines.h"
@@ -102,9 +103,30 @@ static void spawn_daemon(void) {
 		LOG_error("muse: %s is missing\n", muse);
 		return;
 	}
-	char cmd[512];
-	snprintf(cmd, sizeof(cmd), "LD_LIBRARY_PATH=/usr/lib:$LD_LIBRARY_PATH nohup '%s' > /dev/null 2>&1 &", muse);
-	system(cmd);
+	// Detached the way TortOS does it (platform.c plat_spawn_detached): fork twice and start a
+	// new session, so the daemon outlives the launcher and holds none of its files. The Brick's
+	// BusyBox has no nohup, so this does not go through a shell.
+	pid_t pid = fork();
+	if (pid == 0) {
+		setsid();
+		if (fork() == 0) {
+			for (int f = 3; f < 256; f++) close(f);
+			int null = open("/dev/null", O_RDWR);
+			if (null >= 0) {
+				dup2(null, 0);
+				dup2(null, 1);
+				dup2(null, 2);
+			}
+			char libs[1024];
+			const char* old = getenv("LD_LIBRARY_PATH");
+			snprintf(libs, sizeof(libs), "/usr/lib%s%s", old && *old ? ":" : "", old ? old : "");
+			setenv("LD_LIBRARY_PATH", libs, 1);
+			execl(muse, muse, (char*)NULL);
+			_exit(127);
+		}
+		_exit(0);
+	}
+	if (pid > 0) waitpid(pid, NULL, 0);
 }
 
 void lmuse_start(void) {
