@@ -806,7 +806,8 @@ static int qm_update_states(int force) {
 		case RADIO_OFF: snprintf(text, sizeof(text), "Off"); break;
 		case RADIO_TURNING_ON: snprintf(text, sizeof(text), "Turning On..."); break;
 		case RADIO_TURNING_OFF: snprintf(text, sizeof(text), "Turning Off..."); break;
-		case RADIO_ON: snprintf(text, sizeof(text), i == RADIO_WIFI ? "On, not connected" : "On"); break;
+		// A lit tile already says the radio is on, so the second line only adds the link state.
+		case RADIO_ON: snprintf(text, sizeof(text), i == RADIO_WIFI ? "Not connected" : "On"); break;
 		case RADIO_CONNECTED:
 			if (now[i].detail[0]) snprintf(text, sizeof(text), "%s", now[i].detail);
 			else snprintf(text, sizeof(text), "Connected");
@@ -905,21 +906,26 @@ static void draw_quick_menu(void) {
 		// A radio that is switching pulses until the worker reports it done.
 		int switching = rs == RADIO_TURNING_ON || rs == RADIO_TURNING_OFF;
 		float pulse = switching ? 0.75f + 0.25f * sinf(SDL_GetTicks() / 160.0f) : 1.0f;
-		float s = focused ? 1.04f : 1.0f;
+		float s = focused ? 1.08f : 1.0f;
+		// Unfocused tiles step back a little so the focused one reads at a glance, even when
+		// both radios are on and both tiles are blue.
+		float dim = focused ? 1.0f : 0.72f;
 		float cx = x + w * 0.5f, cy = y + h * 0.5f;
 		w *= s;
 		h *= s;
 		x = cx - w * 0.5f;
 		y = cy - h * 0.5f;
-		if (on) lgfx_draw_fill(x, y, w, h, 18, 0.18f, 0.48f, 1.0f, 0.95f * pulse);
+		if (focused) lgfx_draw_shadow(x, y, w, h, 8, 0.55f);
+		if (on) lgfx_draw_fill(x, y, w, h, 18, 0.18f * dim, 0.48f * dim, 1.0f * dim, 0.95f * pulse);
 		else lgfx_draw_fill(x, y, w, h, 18, 1, 1, 1, (focused ? 0.24f : 0.08f) * (switching ? pulse * 1.6f : 1.0f));
+		if (focused) lgfx_draw_ring(x, y, w, h, 18, 3, 1, 1, 1, 0.95f);
 		LTex* label = qm.labels[i];
 		if (i <= QM_BLUETOOTH) {
-			if (label) lgfx_draw_tex(label, x + 18, y + h - 58, label->w, label->h, 0, 1);
+			if (label) lgfx_draw_tex(label, x + 18, y + h - 58, label->w, label->h, 0, dim);
 			LTex* state = qm.states[i];
-			if (state) lgfx_draw_tex(state, x + 18, y + h - 32, state->w, state->h, 0, 0.75f);
+			if (state) lgfx_draw_tex(state, x + 18, y + h - 32, state->w, state->h, 0, 0.75f * dim);
 		} else if (label) {
-			lgfx_draw_tex(label, x + 20, y + (h - label->h) * 0.5f, label->w, label->h, 0, 1);
+			lgfx_draw_tex(label, x + 20, y + (h - label->h) * 0.5f, label->w, label->h, 0, dim);
 		}
 		if (focused && shine_t < 1.0f) lgfx_draw_shine(x, y, w, h, 18, shine_t);
 	}

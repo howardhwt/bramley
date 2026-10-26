@@ -34,6 +34,8 @@ void lgfx_draw_fill(float x, float y, float w, float h, float radius, float r, f
 // Vertical gradient from the top colour to the bottom colour.
 void lgfx_draw_gradient(float x, float y, float w, float h, float radius, const float top[4], const float bottom[4]);
 // A soft diagonal band of light across a rounded rect; t runs from 0 to 1 as it sweeps.
+// Outline of a rounded rect, width pixels wide, drawn just inside the rect.
+void lgfx_draw_ring(float x, float y, float w, float h, float radius, float width, float r, float g, float b, float a);
 void lgfx_draw_shine(float x, float y, float w, float h, float radius, float t);
 // Draws tex scaled to fit inside the rect without cropping.
 void lgfx_draw_tex_fit(LTex* tex, float x, float y, float w, float h, float radius, float alpha);
