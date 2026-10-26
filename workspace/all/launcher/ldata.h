@@ -5,7 +5,7 @@
 
 #include "lgfx.h"
 
-typedef enum { CARD_RECENT, CARD_CONSOLE, CARD_TOOL, CARD_GAME } CardKind;
+typedef enum { CARD_RECENT, CARD_CONSOLE, CARD_TOOL, CARD_GAME, CARD_MUSIC, CARD_ALBUM } CardKind;
 
 typedef struct {
 	CardKind kind;
@@ -16,6 +16,7 @@ typedef struct {
 	int art_is_pixel;    // save-state screenshot rather than box art
 	int can_resume;      // a manual save slot exists
 	int game_count;      // consoles only
+	int index;           // albums: album index in the music library
 	float hue;           // colour of the title card
 	LTex* art;
 	LTex* label;

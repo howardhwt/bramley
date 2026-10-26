@@ -17,6 +17,7 @@
 #include "lgfx.h"
 #include "ldata.h"
 #include "lradio.h"
+#include "lmusic.h"
 
 #define SCREEN_W 1024
 #define SCREEN_H 768
@@ -81,8 +82,8 @@ static struct {
 } status = { -1, -1 };
 
 // Development aid: LAUNCHER_DEBUG_KEYS="R R D S" presses Right, Right, Down, then saves a
-// screenshot. Lower case presses buttons on the desktop key map: a = A, b = B, x = X, l = L1, r = R1,
-// m = MENU.
+// screenshot. Lower case presses buttons on the desktop key map: a = A, b = B, x = X, y = Y,
+// l = L1, r = R1, m = MENU, s = SELECT.
 // Upper case S saves a
 // screenshot to $LAUNCHER_DEBUG_SHOT-<n>.bmp. One step every 0.6 s. Unused on the device.
 static void debug_step(void) {
@@ -104,7 +105,8 @@ static void debug_step(void) {
 	while (*keys == ' ') keys++;
 	char k = *keys ? *keys++ : 0;
 	SDL_Keycode code = k == 'R' ? SDLK_RIGHT : k == 'L' ? SDLK_LEFT : k == 'U' ? SDLK_UP : k == 'D' ? SDLK_DOWN
-	                 : k == 'a' ? SDLK_s : k == 'b' ? SDLK_a : k == 'x' ? SDLK_w : k == 'l' ? SDLK_TAB : k == 'r' ? SDLK_b : k == 'm' ? SDLK_SPACE : 0;
+	                 : k == 'a' ? SDLK_s : k == 'b' ? SDLK_a : k == 'x' ? SDLK_w : k == 'l' ? SDLK_TAB : k == 'r' ? SDLK_b : k == 'm' ? SDLK_SPACE
+	                 : k == 's' ? SDLK_BACKQUOTE : k == 'y' ? SDLK_q : 0;
 	if (code) {
 		SDL_Event e = { 0 };
 		e.type = SDL_KEYDOWN;
@@ -192,7 +194,7 @@ static Card* focused_card(void) {
 }
 
 static int row_is_grid(int r) {
-	return rows[r].count > 0 && rows[r].cards[0].kind == CARD_TOOL;
+	return rows[r].count > 0 && (rows[r].cards[0].kind == CARD_TOOL || rows[r].cards[0].kind == CARD_MUSIC);
 }
 
 static int row_lines(int r) {
@@ -341,6 +343,12 @@ static int update_shelf(void) {
 	} else if (card->kind == CARD_CONSOLE) {
 		snprintf(kicker, sizeof(kicker), "Console");
 		snprintf(detail, sizeof(detail), "%d %s", card->game_count, card->game_count == 1 ? "game" : "games");
+	} else if (card->kind == CARD_MUSIC) {
+		snprintf(kicker, sizeof(kicker), "App");
+		int albums = lmusic_shelf_count(0), books = lmusic_shelf_count(1);
+		if (books) snprintf(detail, sizeof(detail), "%d %s  ·  %d %s", albums, albums == 1 ? "album" : "albums", books,
+		                    books == 1 ? "audiobook" : "audiobooks");
+		else snprintf(detail, sizeof(detail), "%d %s", albums, albums == 1 ? "album" : "albums");
 	} else {
 		snprintf(kicker, sizeof(kicker), "App");
 		snprintf(detail, sizeof(detail), "Tools Pak");
@@ -382,10 +390,14 @@ static int update_status(void) {
 	return 1;
 }
 
-static void show_toast(const char* text) {
+static void show_toast_for(const char* text, double seconds) {
 	ltex_free(toast);
 	toast = ltex_text(LFONT_BODY, text, 0);
-	toast_until = SDL_GetTicks() / 1000.0 + 1.8;
+	toast_until = SDL_GetTicks() / 1000.0 + seconds;
+}
+
+static void show_toast(const char* text) {
+	show_toast_for(text, 1.8);
 }
 
 static void draw_icon(int r, int c, float row_alpha) {
@@ -467,6 +479,8 @@ static void draw_shelf(void) {
 	if (shelf.pill_x) draw_pill(shelf.pill_x, px, py);
 }
 
+static void draw_eq_bars(float x, float y, float h, float alpha);
+
 static void draw_status(void) {
 	float x = SCREEN_W - MARGIN_X;
 	// Battery: outline, level and tip.
@@ -484,18 +498,19 @@ static void draw_status(void) {
 		x -= status.clock->w + 20;
 		lgfx_draw_tex(status.clock, x, by - 3, status.clock->w, status.clock->h, 0, 0.9f);
 	}
+	if (lmusic_active()) draw_eq_bars(x - 36, by - 2, 18, lmusic_playing() ? 0.9f : 0.45f);
 }
 
 
 ///////////////////////////////////////
-// Game library: a grid of covers for one console.
+// Library: a grid of covers. Game covers for one console are 3:4; the Music app uses the same
+// grid with square album covers.
 
 #define LIB_COLS 5
 #define COVER_W 150.0f
-#define COVER_H 200.0f
 #define COVER_GAP 40.0f
 #define LIB_TOP 132.0f
-#define LIB_LINE (COVER_H + 64.0f)
+#define LIB_LINE (lib.cover_h + 64.0f)
 #define LAST_FOCUS_PATH "/tmp/launcher_last"
 
 static struct {
@@ -514,6 +529,8 @@ static struct {
 	int caption_for;
 	LTex* letter;
 	double letter_until;
+	float cover_h;
+	int music, books; // the Music app, showing albums or audiobooks
 } lib = { .caption_for = -1 };
 
 static float lib_margin(void) {
@@ -548,6 +565,7 @@ static void open_library(Card* console, int focus) {
 		return;
 	}
 	lib.open = 1;
+	lib.cover_h = 200.0f;
 	lib.console = console;
 	lib.focus = focus >= 0 && focus < lib.count ? focus : 0;
 	lib.scale = calloc(lib.count, sizeof(Spring));
@@ -560,6 +578,47 @@ static void open_library(Card* console, int focus) {
 	// Start with the focused line at the top of the grid.
 	lib.scroll_goal = (lib.focus / LIB_COLS) * LIB_LINE;
 	lib.scroll.x = lib.scroll_goal;
+	lib.fade.x = 0.0f;
+}
+
+// One colour per album for covers without a picture, the same in the grid, the album page and
+// Now Playing.
+static float album_hue(int al) {
+	unsigned h = 2166136261u;
+	for (const char* c = lmusic_lib()->albums[al].name; *c; c++) h = (h ^ (unsigned char)*c) * 16777619u;
+	return (h % 360) / 360.0f;
+}
+
+// The Music app: albums or audiobooks from lmusic's library, as cards for the cover grid.
+static void open_music(int books) {
+	if (lib.open) close_library();
+	int n = lmusic_shelf_count(books);
+	const ml_lib* ml = lmusic_lib();
+	lib.games = calloc(n > 0 ? n : 1, sizeof(Card));
+	for (int k = 0; k < n; k++) {
+		int al = lmusic_shelf_album(books, k);
+		Card* card = &lib.games[k];
+		card->kind = CARD_ALBUM;
+		card->index = al;
+		snprintf(card->name, sizeof(card->name), "%s", ml->albums[al].name);
+		snprintf(card->tag, sizeof(card->tag), "%s", lmusic_artist_of(al));
+		card->hue = album_hue(al);
+	}
+	lib.count = n;
+	lib.open = 1;
+	lib.music = 1;
+	lib.books = books;
+	lib.cover_h = COVER_W;
+	lib.focus = 0;
+	lib.scale = calloc(n > 0 ? n : 1, sizeof(Spring));
+	for (int i = 0; i < n; i++) lib.scale[i].x = 1.0f;
+	lib.caption_for = -1;
+	lib.header = ltex_text(LFONT_HERO, books ? "Audiobooks" : "Music", 640);
+	char text[64];
+	if (books) snprintf(text, sizeof(text), "%d %s", n, n == 1 ? "book" : "books");
+	else snprintf(text, sizeof(text), "%d %s", n, n == 1 ? "album" : "albums");
+	lib.subtitle = ltex_text(LFONT_BODY, text, 0);
+	lib.scroll_goal = lib.scroll.x = 0;
 	lib.fade.x = 0.0f;
 }
 
@@ -605,7 +664,7 @@ static void lib_move(int dx, int dy) {
 static float lib_scroll_target(void) {
 	float line_top = LIB_TOP + (lib.focus / LIB_COLS) * LIB_LINE;
 	if (line_top - lib.scroll_goal < LIB_TOP) lib.scroll_goal = line_top - LIB_TOP;
-	if (line_top + COVER_H + 56 - lib.scroll_goal > SCREEN_H) lib.scroll_goal = line_top + COVER_H + 56 - SCREEN_H;
+	if (line_top + lib.cover_h + 56 - lib.scroll_goal > SCREEN_H) lib.scroll_goal = line_top + lib.cover_h + 56 - SCREEN_H;
 	if (lib.scroll_goal < 0) lib.scroll_goal = 0;
 	return lib.scroll_goal;
 }
@@ -613,10 +672,24 @@ static float lib_scroll_target(void) {
 static int lib_update_caption(void) {
 	if (lib.caption_for == lib.focus) return 0;
 	lib.caption_for = lib.focus;
-	Card* game = &lib.games[lib.focus];
-	ldata_check_resume(game);
 	ltex_free(lib.caption);
 	ltex_free(lib.hints);
+	if (!lib.count) {
+		lib.caption = NULL;
+		lib.hints = ltex_text(LFONT_SMALL, lib.books ? "L1 R1  Music     B  Back" : "L1 R1  Audiobooks     B  Back", 0);
+		return 1;
+	}
+	Card* game = &lib.games[lib.focus];
+	if (lib.music) {
+		char text[300];
+		snprintf(text, sizeof(text), "%s%s%s", game->name, game->tag[0] ? "  ·  " : "", game->tag);
+		lib.caption = ltex_text(LFONT_LABEL, text, (int)(COVER_W + COVER_GAP) * 3);
+		lib.hints = ltex_text(LFONT_SMALL, lib.books ? "A  Resume     L1 R1  Music     SELECT  Now Playing     B  Back"
+		                                             : "A  Open     L1 R1  Audiobooks     SELECT  Now Playing     B  Back", 0);
+		shine_t = 0.0f;
+		return 1;
+	}
+	ldata_check_resume(game);
 	lib.caption = ltex_text(LFONT_LABEL, game->name, (int)(COVER_W + COVER_GAP) * 2);
 	lib.hints = ltex_text(LFONT_SMALL, game->can_resume ? "A  Play     X  Resume save     L1 R1  A-Z     B  Back"
 	                                                     : "A  Play     L1 R1  A-Z     B  Back", 0);
@@ -629,8 +702,13 @@ static int lib_load_next(void) {
 	for (int i = 0; i < lib.count; i++) {
 		float x, y;
 		cover_pos(i, &x, &y);
-		if (y > SCREEN_H || y + COVER_H < 0) continue;
+		if (y > SCREEN_H || y + lib.cover_h < 0) continue;
 		Card* game = &lib.games[i];
+		if (lib.music && !game->art_tried && !game->art_path[0]) {
+			// Covers may come from the daemon a moment later, so keep asking until it has answered.
+			const char* cover = lmusic_cover(game->index);
+			if (cover) snprintf(game->art_path, sizeof(game->art_path), "%s", cover);
+		}
 		if (!game->art_tried && game->art_path[0]) {
 			game->art = ltex_load(game->art_path, game->art_is_pixel);
 			game->art_tried = 1;
@@ -652,8 +730,8 @@ static void draw_cover(int i, float alpha) {
 	if (y0 < LIB_TOP) alpha *= fmaxf(0.0f, 1.0f - (LIB_TOP - y0) / 100.0f);
 	if (alpha <= 0.01f || y0 > SCREEN_H) return;
 	y0 += (1.0f - lib.fade.x) * 30;
-	float w = COVER_W * s, h = COVER_H * s;
-	float cx = x0 + COVER_W * 0.5f, cy = y0 + COVER_H * 0.5f - lift * 8;
+	float w = COVER_W * s, h = lib.cover_h * s;
+	float cx = x0 + COVER_W * 0.5f, cy = y0 + lib.cover_h * 0.5f - lift * 8;
 	float x = cx - w * 0.5f, y = cy - h * 0.5f, radius = 14 * s;
 
 	lgfx_draw_shadow(x, y, w, h, lift * 12, (0.45f + lift * 0.4f) * alpha);
@@ -679,14 +757,14 @@ static void draw_library(void) {
 
 	for (int i = 0; i < lib.count; i++)
 		if (i != lib.focus) draw_cover(i, a);
-	draw_cover(lib.focus, a);
+	if (lib.count) draw_cover(lib.focus, a);
 
-	if (lib.caption) {
+	if (lib.caption && lib.count) {
 		float x, y;
 		cover_pos(lib.focus, &x, &y);
 		float cx = x + COVER_W * 0.5f - lib.caption->w * 0.5f;
 		cx = fmaxf(MARGIN_X, fminf(cx, SCREEN_W - MARGIN_X - lib.caption->w));
-		float cy = y + COVER_H * FOCUS_SCALE + 2 + (1.0f - a) * 30;
+		float cy = y + lib.cover_h * FOCUS_SCALE + 2 + (1.0f - a) * 30;
 		if (cy + lib.caption->h < SCREEN_H) lgfx_draw_tex(lib.caption, cx, cy, lib.caption->w, lib.caption->h, 0, a);
 	}
 
@@ -712,7 +790,11 @@ static void draw_library(void) {
 // returns to that Pak's icon.
 static void remember_launch(const Card* card) {
 	if (card->kind == CARD_TOOL) putFile(LAST_FOCUS_PATH, (char*)card->path);
-	else putFile(LAST_FOCUS_PATH, "game");
+	else {
+		putFile(LAST_FOCUS_PATH, "game");
+		// Games pause the music; the emulator is not changed to share the speaker.
+		lmusic_pause_for_game();
+	}
 }
 
 static void restore_focus(void) {
@@ -733,6 +815,312 @@ static void restore_focus(void) {
 	}
 }
 
+
+///////////////////////////////////////
+// Album page: the cover on the left and the track list on the right.
+
+#define ALB_COVER 300.0f
+#define ALB_ROW_H 54.0f
+#define ALB_LIST_X (MARGIN_X + ALB_COVER + 48)
+#define ALB_LIST_TOP 200.0f
+
+static struct {
+	int open;
+	int album, focus, count;
+	Spring scroll, fade;
+	float scroll_goal;
+	LTex* cover;
+	LTex* title;
+	LTex* artist;
+	LTex** tracks;
+	LTex* hints;
+} alb;
+
+static void close_album(void) {
+	ltex_free(alb.cover);
+	ltex_free(alb.title);
+	ltex_free(alb.artist);
+	ltex_free(alb.hints);
+	for (int i = 0; i < alb.count; i++) ltex_free(alb.tracks[i]);
+	free(alb.tracks);
+	memset(&alb, 0, sizeof(alb));
+	shine_t = 1.0f;
+}
+
+static void open_album(int al) {
+	if (alb.open) close_album();
+	const ml_lib* ml = lmusic_lib();
+	alb.open = 1;
+	alb.album = al;
+	alb.count = ml->albums[al].n;
+	alb.focus = lmusic_album() == al && lmusic_track() >= 0 ? lmusic_track() : 0;
+	const char* cover = lmusic_cover(al);
+	if (cover) alb.cover = ltex_load(cover, 0);
+	alb.title = ltex_text_wrapped(LFONT_TITLE, ml->albums[al].name, (int)(SCREEN_W - ALB_LIST_X - MARGIN_X), 2, 0);
+	alb.artist = ltex_text(LFONT_BODY, lmusic_artist_of(al), (int)(SCREEN_W - ALB_LIST_X - MARGIN_X));
+	alb.tracks = calloc(alb.count, sizeof(LTex*));
+	for (int i = 0; i < alb.count; i++) {
+		char text[200];
+		snprintf(text, sizeof(text), "%d   %s", i + 1, ml->tracks[ml->albums[al].first + i].name);
+		alb.tracks[i] = ltex_text(LFONT_BODY, text, (int)(SCREEN_W - ALB_LIST_X - MARGIN_X - 40));
+	}
+	alb.hints = ltex_text(LFONT_SMALL, "A  Play from here     SELECT  Now Playing     B  Back", 0);
+	alb.fade.x = 0;
+	shine_t = 0;
+}
+
+static float alb_scroll_target(void) {
+	float row = alb.focus * ALB_ROW_H;
+	float visible = SCREEN_H - ALB_LIST_TOP - 40;
+	if (row - alb.scroll_goal < 0) alb.scroll_goal = row;
+	if (row + ALB_ROW_H - alb.scroll_goal > visible) alb.scroll_goal = row + ALB_ROW_H - visible;
+	return alb.scroll_goal;
+}
+
+static void draw_eq_bars(float x, float y, float h, float alpha); // the playing indicator, below
+
+static void draw_album(void) {
+	float a = alb.fade.x;
+	const float shade[4] = { 0, 0, 0, 0.5f };
+	lgfx_draw_gradient(0, 0, SCREEN_W, SCREEN_H, 0, shade, shade);
+
+	Card fake = { .hue = album_hue(alb.album) };
+	float cy = 120 + (1 - a) * 20;
+	lgfx_draw_shadow(MARGIN_X, cy, ALB_COVER, ALB_COVER, 14, 0.7f * a);
+	if (alb.cover) lgfx_draw_tex(alb.cover, MARGIN_X, cy, ALB_COVER, ALB_COVER, 20, a);
+	else {
+		float top[4], bottom[4];
+		card_colors(&fake, top, bottom);
+		top[3] = bottom[3] = a;
+		lgfx_draw_gradient(MARGIN_X, cy, ALB_COVER, ALB_COVER, 20, top, bottom);
+	}
+	if (alb.title) lgfx_draw_tex(alb.title, ALB_LIST_X, 96, alb.title->w, alb.title->h, 0, a);
+	if (alb.artist && alb.title)
+		lgfx_draw_tex(alb.artist, ALB_LIST_X, 96 + alb.title->h + 2, alb.artist->w, alb.artist->h, 0, 0.7f * a);
+	if (alb.hints) lgfx_draw_tex(alb.hints, MARGIN_X, SCREEN_H - 40, alb.hints->w, alb.hints->h, 0, 0.6f * a);
+
+	int playing_here = lmusic_album() == alb.album;
+	for (int i = 0; i < alb.count; i++) {
+		float y = ALB_LIST_TOP + i * ALB_ROW_H - alb.scroll.x;
+		if (y < ALB_LIST_TOP - ALB_ROW_H || y > SCREEN_H - 50) continue;
+		float row_a = a * (y < ALB_LIST_TOP ? fmaxf(0.0f, 1.0f - (ALB_LIST_TOP - y) / ALB_ROW_H) : 1.0f);
+		float w = SCREEN_W - ALB_LIST_X - MARGIN_X + 16;
+		if (i == alb.focus) {
+			lgfx_draw_fill(ALB_LIST_X - 16, y, w, ALB_ROW_H - 6, 14, 1, 1, 1, 0.18f * row_a);
+			lgfx_draw_ring(ALB_LIST_X - 16, y, w, ALB_ROW_H - 6, 14, 2, 1, 1, 1, 0.9f * row_a);
+			if (shine_t < 1.0f) lgfx_draw_shine(ALB_LIST_X - 16, y, w, ALB_ROW_H - 6, 14, shine_t);
+		}
+		LTex* t = alb.tracks[i];
+		if (t) lgfx_draw_tex(t, ALB_LIST_X, y + (ALB_ROW_H - 6 - t->h) * 0.5f, t->w, t->h, 0, row_a * (i == alb.focus ? 1 : 0.8f));
+		if (playing_here && i == lmusic_track())
+			draw_eq_bars(SCREEN_W - MARGIN_X - 26, y + 14, 20, row_a * (lmusic_playing() ? 1 : 0.4f));
+	}
+}
+
+///////////////////////////////////////
+// Now Playing: SELECT from anywhere, over a snapshot blur of the screen behind.
+
+#define NP_COVER 340.0f
+#define NP_TEXT_X (MARGIN_X + 24 + NP_COVER + 48)
+#define NP_TEXT_W (SCREEN_W - NP_TEXT_X - MARGIN_X)
+
+static struct {
+	int open, closing;
+	Spring slide;
+	int album, track;
+	char shown_title[256];
+	LTex* cover;
+	LTex* title;
+	LTex* sub;
+	LTex* next;
+	LTex* times[2];
+	int times_for;
+	LTex* mode;
+	int mode_for;
+	LTex* hints;
+	int hints_book;
+} np = { .album = -1, .track = -1, .times_for = -1, .mode_for = -1, .hints_book = -1 };
+
+static void np_free_texts(void) {
+	ltex_free(np.cover);
+	ltex_free(np.title);
+	ltex_free(np.sub);
+	ltex_free(np.next);
+	ltex_free(np.times[0]);
+	ltex_free(np.times[1]);
+	ltex_free(np.mode);
+	ltex_free(np.hints);
+	np.cover = np.title = np.sub = np.next = np.times[0] = np.times[1] = np.mode = np.hints = NULL;
+	np.album = np.track = np.times_for = np.mode_for = np.hints_book = -1;
+	np.shown_title[0] = '\0';
+}
+
+static void draw_scene(void);
+
+static void open_now_playing(void) {
+	if (!lmusic_active()) {
+		show_toast("Nothing playing. Open Music in Apps.");
+		return;
+	}
+	lgfx_begin_snapshot();
+	draw_scene();
+	lgfx_end_snapshot();
+	np.open = 1;
+	np.closing = 0;
+	np.slide.x = 0;
+	np.slide.v = 0;
+	toast_until = 0; // a "Music paused" banner has done its job once Now Playing is open
+}
+
+static void fmt_time(float t, char* out, size_t size) {
+	int s = t < 0 ? 0 : (int)t;
+	if (s >= 3600) snprintf(out, size, "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60);
+	else snprintf(out, size, "%d:%02d", s / 60, s % 60);
+}
+
+// Rebuilds Now Playing's texts when the track, title, time or mode changes. Returns 1 if any did.
+static int np_update(void) {
+	if (!lmusic_active()) return 0;
+	int changed = 0;
+	const ml_lib* ml = lmusic_lib();
+	int al = lmusic_album(), tr = lmusic_track();
+	if (al != np.album) {
+		ltex_free(np.cover);
+		const char* cover = lmusic_cover(al);
+		np.cover = cover ? ltex_load(cover, 0) : NULL;
+		ltex_free(np.sub);
+		char text[300];
+		const char* artist = lmusic_artist_of(al);
+		snprintf(text, sizeof(text), "%s%s%s", artist, artist[0] ? "  ·  " : "", ml->albums[al].name);
+		np.sub = ltex_text(LFONT_BODY, text, (int)NP_TEXT_W);
+		np.album = al;
+		changed = 1;
+	} else if (!np.cover) {
+		const char* cover = lmusic_cover(al);
+		if (cover) {
+			np.cover = ltex_load(cover, 0);
+			changed = 1;
+		}
+	}
+	const char* title = lmusic_title();
+	if (tr != np.track || strcmp(title, np.shown_title)) {
+		snprintf(np.shown_title, sizeof(np.shown_title), "%s", title);
+		ltex_free(np.title);
+		np.title = ltex_text_wrapped(LFONT_HERO, title, (int)NP_TEXT_W, 2, 0);
+		ltex_free(np.next);
+		char text[300];
+		if (lmusic_is_book()) {
+			int count, c = lmusic_chapter(&count);
+			if (count > 1) snprintf(text, sizeof(text), "Chapter %d of %d", c + 1, count);
+			else snprintf(text, sizeof(text), "Part %d of %d", tr + 1, ml->albums[al].n);
+		} else if (lmusic_next_title()[0])
+			snprintf(text, sizeof(text), "Next: %s", lmusic_next_title());
+		else
+			snprintf(text, sizeof(text), "Track %d of %d", tr + 1, ml->albums[al].n);
+		np.next = ltex_text(LFONT_BODY, text, (int)NP_TEXT_W);
+		np.track = tr;
+		changed = 1;
+	}
+	int second = (int)lmusic_at();
+	if (second != np.times_for) {
+		char a[16], b[24];
+		fmt_time(lmusic_at(), a, sizeof(a));
+		b[0] = '-';
+		fmt_time(lmusic_len() - lmusic_at(), b + 1, sizeof(b) - 1);
+		ltex_free(np.times[0]);
+		ltex_free(np.times[1]);
+		np.times[0] = ltex_text(LFONT_SMALL, a, 0);
+		np.times[1] = ltex_text(LFONT_SMALL, b, 0);
+		np.times_for = second;
+		changed = 1;
+	}
+	int mode = lmusic_is_book() ? 100 + (int)(lmusic_speed() * 100) : (int)lmusic_mode();
+	if (mode != np.mode_for) {
+		static const char* names[] = { "In order", "Repeat all", "Repeat one", "Shuffle" };
+		char text[32];
+		if (lmusic_is_book()) snprintf(text, sizeof(text), "%.2gx speed", lmusic_speed());
+		else snprintf(text, sizeof(text), "%s", names[lmusic_mode() % MUQ_MODES]);
+		ltex_free(np.mode);
+		np.mode = ltex_text(LFONT_LABEL, text, 0);
+		np.mode_for = mode;
+		changed = 1;
+	}
+	if (np.hints_book != lmusic_is_book()) {
+		np.hints_book = lmusic_is_book();
+		ltex_free(np.hints);
+		np.hints = ltex_text(LFONT_SMALL,
+		                     np.hints_book ? "A  Play/Pause     L1 R1  Chapter     < >  10 s     Y  Speed     B  Close"
+		                                   : "A  Play/Pause     L1 R1  Track     < >  10 s     Y  Mode     B  Close",
+		                     0);
+	}
+	return changed;
+}
+
+static void draw_now_playing(void) {
+	lgfx_draw_snapshot(1);
+	float a = np.slide.x;
+	const float dim[4] = { 0, 0, 0, 0.55f * a };
+	lgfx_draw_gradient(0, 0, SCREEN_W, SCREEN_H, 0, dim, dim);
+	float dy = (1 - a) * 40;
+
+	float cx = MARGIN_X + 24, cy = 150 + dy;
+	lgfx_draw_shadow(cx, cy, NP_COVER, NP_COVER, 16, 0.75f * a);
+	if (np.cover) lgfx_draw_tex(np.cover, cx, cy, NP_COVER, NP_COVER, 22, a);
+	else {
+		Card fake = { .hue = album_hue(lmusic_album()) };
+		float top[4], bottom[4];
+		card_colors(&fake, top, bottom);
+		top[3] = bottom[3] = a;
+		lgfx_draw_gradient(cx, cy, NP_COVER, NP_COVER, 22, top, bottom);
+	}
+
+	float tx = NP_TEXT_X, y = 170 + dy;
+	if (np.title) {
+		lgfx_draw_tex(np.title, tx, y, np.title->w, np.title->h, 0, a);
+		y += np.title->h + 8;
+	}
+	if (np.sub) {
+		lgfx_draw_tex(np.sub, tx, y, np.sub->w, np.sub->h, 0, 0.75f * a);
+		y += np.sub->h + 30;
+	}
+	// Progress
+	float bar_y = fmaxf(y, 360 + dy), bar_w = NP_TEXT_W;
+	float p = lmusic_len() > 0 ? fminf(1.0f, lmusic_at() / lmusic_len()) : 0;
+	lgfx_draw_fill(tx, bar_y, bar_w, 6, 3, 1, 1, 1, 0.22f * a);
+	lgfx_draw_fill(tx, bar_y, bar_w * p, 6, 3, 1, 1, 1, 0.95f * a);
+	if (np.times[0]) lgfx_draw_tex(np.times[0], tx, bar_y + 12, np.times[0]->w, np.times[0]->h, 0, 0.7f * a);
+	if (np.times[1])
+		lgfx_draw_tex(np.times[1], tx + bar_w - np.times[1]->w, bar_y + 12, np.times[1]->w, np.times[1]->h, 0, 0.7f * a);
+
+	float row_y = bar_y + 54;
+	// Play state: a pause or play glyph drawn as shapes, so no font is needed.
+	if (lmusic_playing()) {
+		lgfx_draw_fill(tx, row_y, 8, 26, 2, 1, 1, 1, a);
+		lgfx_draw_fill(tx + 14, row_y, 8, 26, 2, 1, 1, 1, a);
+	} else {
+		// A play triangle from one-pixel columns, narrowing to the tip.
+		for (int i = 0; i < 22; i++) lgfx_draw_fill(tx + i, row_y + i * 0.59f, 1, 26 - i * 1.18f, 0, 1, 1, 1, a);
+	}
+	if (np.mode) {
+		float mw = np.mode->w + 28, mh = np.mode->h + 12;
+		lgfx_draw_fill(tx + 48, row_y - 4, mw, mh, mh * 0.5f, 1, 1, 1, 0.16f * a);
+		lgfx_draw_tex(np.mode, tx + 62, row_y + 2, np.mode->w, np.mode->h, 0, 0.9f * a);
+	}
+	if (np.next) lgfx_draw_tex(np.next, tx, row_y + 52, np.next->w, np.next->h, 0, 0.65f * a);
+	if (np.hints) lgfx_draw_tex(np.hints, (SCREEN_W - np.hints->w) * 0.5f, SCREEN_H - 46, np.hints->w, np.hints->h, 0, 0.6f * a);
+}
+
+// Three animated bars: shown next to the clock, and on the playing track, while music plays.
+static void draw_eq_bars(float x, float y, float h, float alpha) {
+	float t = SDL_GetTicks() / 1000.0f;
+	int moving = lmusic_playing();
+	for (int i = 0; i < 3; i++) {
+		float k = moving ? 0.35f + 0.65f * fabsf(sinf(t * (3.1f + i * 1.7f) + i)) : 0.35f;
+		float bh = h * k;
+		lgfx_draw_fill(x + i * 7, y + h - bh, 4, bh, 2, 1, 1, 1, alpha);
+	}
+}
+
 // Everything except the quick menu and overlays: the home screen or the library.
 static void draw_scene(void) {
 	lgfx_draw_wallpaper(wallpaper, parallax_x.x * 12, parallax_y.x * 8);
@@ -741,7 +1129,9 @@ static void draw_scene(void) {
 	const float clear[4] = { 0, 0, 0, 0 }, dark[4] = { 0, 0, 0, 0.45f };
 	lgfx_draw_gradient(0, rows_top - 60, SCREEN_W, SCREEN_H - rows_top + 60, 0, clear, dark);
 
-	if (lib.open) {
+	if (alb.open) {
+		draw_album();
+	} else if (lib.open) {
 		draw_library();
 	} else if (row_count > 0) {
 		draw_shelf();
@@ -950,7 +1340,8 @@ static void draw_setting_overlay(int show_setting) {
 
 static void draw_frame(int show_setting) {
 	lgfx_begin_frame();
-	if (qm.open) draw_quick_menu();
+	if (np.open) draw_now_playing();
+	else if (qm.open) draw_quick_menu();
 	else draw_scene();
 	draw_setting_overlay(show_setting);
 
@@ -980,6 +1371,7 @@ int main(int argc, char* argv[]) {
 
 	lgfx_init(SCREEN_W, SCREEN_H);
 	lradio_start();
+	lmusic_init();
 	wallpaper = load_wallpaper();
 
 	row_count = ldata_load_rows(rows, MAX_ROWS);
@@ -991,6 +1383,7 @@ int main(int argc, char* argv[]) {
 	}
 	if (row_count == 0) show_toast("No games or Paks found");
 	restore_focus();
+	if (lmusic_take_game_pause()) show_toast_for("Music paused  ·  SELECT to resume", 5);
 
 	int quit = 0, dirty = 1, show_setting = 0;
 	Uint32 last = SDL_GetTicks();
@@ -1016,7 +1409,19 @@ int main(int argc, char* argv[]) {
 			else if (PAD_justPressed(BTN_FN3)) quit = ldata_run_fn_action(2);
 		}
 
-		if (qm.open && !qm.closing && !quit) {
+		if (np.open && !np.closing && !quit) {
+			if (PAD_justPressed(BTN_A)) lmusic_toggle();
+			else if (PAD_justRepeated(BTN_R1)) lmusic_next();
+			else if (PAD_justRepeated(BTN_L1)) lmusic_prev();
+			else if (PAD_justRepeated(BTN_RIGHT)) lmusic_seek_by(10);
+			else if (PAD_justRepeated(BTN_LEFT)) lmusic_seek_by(-10);
+			else if (PAD_justPressed(BTN_Y)) {
+				if (lmusic_is_book()) lmusic_cycle_speed();
+				else lmusic_cycle_mode();
+			} else if (PAD_justPressed(BTN_B) || PAD_justPressed(BTN_SELECT)) np.closing = 1;
+		} else if (np.open) {
+			// Closing: ignore input until Now Playing has slid away.
+		} else if (qm.open && !qm.closing && !quit) {
 			if (PAD_justRepeated(BTN_RIGHT)) qm_move(1, 0);
 			else if (PAD_justRepeated(BTN_LEFT)) qm_move(-1, 0);
 			else if (PAD_justRepeated(BTN_DOWN)) qm_move(0, 1);
@@ -1050,8 +1455,35 @@ int main(int argc, char* argv[]) {
 			}
 		} else if (qm.open) {
 			// Closing: ignore input until the panel has slid away.
+		} else if (!quit && !show_setting && PAD_justPressed(BTN_SELECT)) {
+			open_now_playing();
 		} else if (!quit && !show_setting && PAD_tappedMenu(SDL_GetTicks())) {
 			open_quick_menu();
+		} else if (alb.open && !quit) {
+			if (PAD_justRepeated(BTN_DOWN) && alb.focus < alb.count - 1) alb.focus++, shine_t = 0;
+			else if (PAD_justRepeated(BTN_UP) && alb.focus > 0) alb.focus--, shine_t = 0;
+			else if (PAD_justPressed(BTN_B)) close_album();
+			else if (PAD_justPressed(BTN_A)) {
+				lmusic_play(alb.album, alb.focus);
+				open_now_playing();
+			}
+		} else if (lib.open && lib.music && !quit) {
+			if (PAD_justRepeated(BTN_RIGHT)) lib_move(1, 0);
+			else if (PAD_justRepeated(BTN_LEFT)) lib_move(-1, 0);
+			else if (PAD_justRepeated(BTN_DOWN)) lib_move(0, 1);
+			else if (PAD_justRepeated(BTN_UP)) lib_move(0, -1);
+			else if (PAD_justPressed(BTN_R1) || PAD_justPressed(BTN_L1)) open_music(!lib.books);
+			else if (PAD_justPressed(BTN_B)) {
+				close_library();
+				shelf.row = -1;
+			} else if (PAD_justPressed(BTN_A) && lib.count) {
+				Card* album = &lib.games[lib.focus];
+				if (lib.books) {
+					lmusic_play(album->index, -1); // a book resumes at its bookmark
+					open_now_playing();
+				} else
+					open_album(album->index);
+			}
 		} else if (lib.open && !quit) {
 			Card* game = &lib.games[lib.focus];
 			if (PAD_justRepeated(BTN_RIGHT)) lib_move(1, 0);
@@ -1081,6 +1513,7 @@ int main(int argc, char* argv[]) {
 			Card* card = focused_card();
 			if (PAD_justPressed(BTN_A)) {
 				if (card->kind == CARD_CONSOLE) open_library(card, 0);
+				else if (card->kind == CARD_MUSIC) open_music(0);
 				else {
 					remember_launch(card);
 					ldata_launch(card, 0);
@@ -1094,8 +1527,22 @@ int main(int argc, char* argv[]) {
 		}
 		if (quit) break;
 
-		int animating = 0;
-		if (qm.open) {
+		int animating = lmusic_update();
+		if (np.open) {
+			animating |= spring_step(&np.slide, np.closing ? 0.0f : 1.0f, dt);
+			animating |= np_update();
+			if (np.closing && np.slide.x < 0.02f) {
+				np.open = 0;
+				dirty = 1;
+			}
+		} else if (alb.open) {
+			animating |= spring_step(&alb.scroll, alb_scroll_target(), dt);
+			animating |= spring_step(&alb.fade, 1.0f, dt);
+			if (shine_t < 1.0f) {
+				shine_t = fminf(1.0f, shine_t + dt / SHINE_SECONDS);
+				animating = 1;
+			}
+		} else if (qm.open) {
 			animating |= spring_step(&qm.slide, qm.closing ? 0.0f : 1.0f, dt);
 			animating |= qm_update_states(0);
 			for (int i = 0; i < RADIO_COUNT; i++)
@@ -1142,8 +1589,13 @@ int main(int argc, char* argv[]) {
 		animating |= update_status();
 		if (toast && SDL_GetTicks() / 1000.0 < toast_until + 0.1) animating = 1;
 
+		// The playing indicator moves too, but 10 times a second is enough for three bars.
+		static Uint32 last_draw;
+		if (!animating && lmusic_playing() && !np.open && SDL_GetTicks() - last_draw >= 100) animating = 1;
+
 		// Draw only while something moves, so the GPU and battery rest on a still screen.
 		if (animating || dirty || show_setting) {
+			last_draw = SDL_GetTicks();
 			draw_frame(show_setting);
 			dirty = 0;
 		} else {
@@ -1154,6 +1606,9 @@ int main(int argc, char* argv[]) {
 
 	if (lib.open) close_library();
 	free_quick_menu();
+	if (alb.open) close_album();
+	np_free_texts();
+	lmusic_quit();
 	lradio_stop();
 	ldata_free_rows(rows, row_count);
 	for (int r = 0; r < row_count; r++) {

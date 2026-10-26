@@ -7,7 +7,10 @@ This fork of NextUI is licensed under PolyForm Noncommercial 1.0.0 (see `LICENSE
 - **Source:** https://github.com/ericreinsmidt/TortOS, tag v1.6.0, commit 48aaa4c753fa3683229fb203ce04d6ba4efc80de.
 - **License:** MIT.
 - **Copyright:** Copyright (c) 2026 Eric Reinsmidt.
-- **Used in:** `spikes/muse/src/musectl.c` is vendored unchanged. The `muse` binary is downloaded from the TortOS release at build time and is not committed.
+- **Used in:**
+  - `spikes/muse/src/musectl.c` is vendored unchanged. The `muse` binary is downloaded from the TortOS release at build time and is not committed.
+  - `workspace/all/launcher/tortos/muselib.c`, `muselib.h`, `musequeue.c` and `musequeue.h` are vendored unchanged as the launcher's music library scan and play order. `tortos/library.h` is our own shim that supplies the one define muselib.h needs.
+  - The launcher talks to the Muse daemon over its socket protocol (`workspace/all/launcher/lmuse.c`, our own code).
 
 ```
 MIT License

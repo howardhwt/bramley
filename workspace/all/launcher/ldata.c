@@ -222,9 +222,22 @@ static int load_consoles(Card* cards) {
 }
 
 static int load_tools(Card* cards) {
-	DIR* dh = opendir(TOOLS_PATH);
-	if (!dh) return 0;
 	int count = 0;
+	// The Music app comes first in Apps when the card has music or audiobooks.
+	char music[256], books[256];
+	snprintf(music, sizeof(music), "%s/Music", SDCARD_PATH);
+	snprintf(books, sizeof(books), "%s/Audiobooks", SDCARD_PATH);
+	if (exists(music) || exists(books)) {
+		Card* card = &cards[count++];
+		memset(card, 0, sizeof(*card));
+		card->kind = CARD_MUSIC;
+		snprintf(card->name, sizeof(card->name), "Music");
+		snprintf(card->path, sizeof(card->path), "%s", music);
+		card->hue = 0.97f;
+	}
+	int first_tool = count;
+	DIR* dh = opendir(TOOLS_PATH);
+	if (!dh) return count;
 	struct dirent* dp;
 	while ((dp = readdir(dh)) && count < MAX_CARDS) {
 		if (hide(dp->d_name) || !suffixMatch(".pak", dp->d_name)) continue;
@@ -238,7 +251,7 @@ static int load_tools(Card* cards) {
 		count++;
 	}
 	closedir(dh);
-	qsort(cards, count, sizeof(Card), compare_cards);
+	qsort(cards + first_tool, count - first_tool, sizeof(Card), compare_cards);
 	return count;
 }
 
