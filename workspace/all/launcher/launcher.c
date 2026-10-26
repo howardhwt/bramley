@@ -1361,6 +1361,7 @@ static void draw_frame(int show_setting) {
 
 int main(int argc, char* argv[]) {
 	if (ldata_auto_resume()) return 0;
+	Uint32 t_start = SDL_GetTicks(), t_gfx = 0, t_music = 0, t_rows = 0;
 
 	LOG_info("Brick Hammer launcher\n");
 	InitSettings();
@@ -1375,11 +1376,14 @@ int main(int argc, char* argv[]) {
 	PAD_reset();
 
 	lgfx_init(SCREEN_W, SCREEN_H);
+	t_gfx = SDL_GetTicks();
 	lradio_start();
 	lmusic_init();
+	t_music = SDL_GetTicks();
 	wallpaper = load_wallpaper();
 
 	row_count = ldata_load_rows(rows, MAX_ROWS);
+	t_rows = SDL_GetTicks();
 	layout_rows();
 	if (exists(GAME_SWITCHER_PERSIST_PATH)) {
 		// The in-game switcher brings the player to Continue Playing, which is row 0 when it exists.
@@ -1602,6 +1606,13 @@ int main(int argc, char* argv[]) {
 		if (animating || dirty || show_setting) {
 			last_draw = SDL_GetTicks();
 			draw_frame(show_setting);
+			static int first_frame = 1;
+			if (first_frame) {
+				// Startup cost, step by step: the launcher runs again after every game and Pak.
+				LOG_info("launcher startup: graphics %u ms, music %u ms, rows %u ms, first frame at %u ms\n",
+				         t_gfx - t_start, t_music - t_gfx, t_rows - t_music, SDL_GetTicks() - t_start);
+				first_frame = 0;
+			}
 			dirty = 0;
 		} else {
 			debug_step();

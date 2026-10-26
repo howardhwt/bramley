@@ -129,16 +129,23 @@ static void spawn_daemon(void) {
 	if (pid > 0) waitpid(pid, NULL, 0);
 }
 
+// Connects if the daemon is already running, and never waits: the launcher starts after every
+// game and Pak, so music must not cost it time. The daemon is started only when something is
+// sent to it (ensure_daemon), which is when the player plays music or a cover is needed.
 void lmuse_start(void) {
-	if (try_connect()) {
-		send_line("STATUS\n");
-		return;
-	}
-	spawn_daemon();
-	// The socket appears within about 100 ms (spikes/muse); lmuse_poll keeps retrying after that.
-	for (int i = 0; i < 10 && !try_connect(); i++) usleep(50000);
-	if (fd >= 0) send_line("STATUS\n");
+	if (try_connect()) send_line("STATUS\n");
 	next_connect = SDL_GetTicks() + 1000;
+}
+
+static int ensure_daemon(void) {
+	if (fd >= 0 || try_connect()) return 1;
+	spawn_daemon();
+	// The socket appears within about 100 ms (spikes/muse).
+	for (int i = 0; i < 10; i++) {
+		usleep(50000);
+		if (try_connect()) return 1;
+	}
+	return 0;
 }
 
 void lmuse_quit(void) {
@@ -208,7 +215,7 @@ int lmuse_take_end(void) {
 }
 
 static void send_line(const char* line) {
-	if (fd < 0 && !try_connect()) return;
+	if (!ensure_daemon()) return;
 	size_t len = strlen(line);
 	if (write(fd, line, len) != (ssize_t)len) disconnect();
 }

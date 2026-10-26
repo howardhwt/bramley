@@ -172,15 +172,10 @@ static void load_state(void) {
 		album_dir(al, d, sizeof(d));
 		if (!exactMatch(d, dir)) continue;
 		if (track < 0 || track >= lib.albums[al].n) track = 0;
-		// If the daemon is still on this track (music went on while a Pak was open), adopt it
-		// rather than starting it over.
-		const MuseStatus* st = lmuse_status();
-		char want[600];
-		full_path(lib.tracks[lib.albums[al].first + track].path, want, sizeof(want));
-		int adopt = st->connected && st->state != MUSE_STOPPED && exactMatch(st->path, want);
-		// Never start music by itself: a queue the daemon is not on waits, paused, for play.
+		// Restored paused. Never start music by itself; if the daemon turns out to be still on
+		// this track (music went on while a Pak was open), lmusic_update adopts it.
 		(void)playing;
-		start_queue(al, track, at, adopt ? -1 : 0);
+		start_queue(al, track, at, 0);
 		return;
 	}
 }
@@ -257,12 +252,6 @@ void lmusic_init(void) {
 	}
 	cover_state = calloc(lib.nalbums + 1, 1);
 	load_books();
-	// Give the daemon a moment to report what it is doing, so a running track can be adopted.
-	for (int i = 0; i < 10; i++) {
-		lmuse_poll();
-		if (lmuse_status()->connected && lmuse_status()->path[0]) break;
-		SDL_Delay(20);
-	}
 	if (scanned) load_state();
 }
 
@@ -277,9 +266,23 @@ void lmusic_quit(void) {
 	lmuse_quit();
 }
 
+// A restored queue waits at resume_at; when the daemon reports that it is still on that track,
+// playing or paused, the launcher follows it instead of offering to start the track over.
+static int adopt_running(void) {
+	if (resume_at < 0 || queue_album < 0) return 0;
+	const MuseStatus* st = lmuse_status();
+	if (!st->connected || st->state == MUSE_STOPPED || !st->path[0]) return 0;
+	char want[600];
+	full_path(lib.tracks[lib.albums[queue_album].first + muq_current(&queue)].path, want, sizeof(want));
+	if (!exactMatch((char*)st->path, want)) return 0;
+	resume_at = -1;
+	return 1;
+}
+
 int lmusic_update(void) {
 	int changed = lmuse_poll();
 	if (queue_album < 0) return changed;
+	changed |= adopt_running();
 
 	if (lmuse_take_end()) {
 		int t = muq_ended(&queue);
@@ -356,7 +359,7 @@ const char* lmusic_cover(int al) {
 		if (st->cover_version && exactMatch((char*)st->cover_base, base) && !st->cover_file[0]) cover_state[al] = 2;
 		return NULL;
 	}
-	if (base[0] && st->connected) {
+	if (base[0]) {
 		char dir[512], track[600];
 		snprintf(dir, sizeof(dir), "%s", base);
 		char* slash = strrchr(dir, '/');
