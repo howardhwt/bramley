@@ -361,6 +361,79 @@ void ldata_check_resume(Card* game) {
 	}
 }
 
+// Collections are NextUI's: Collections/<name>.txt lists card paths ("/Roms/..." or a .pak), one
+// per line, in the player's own order. Collections/map.txt can rename them, and an image at
+// Collections/.media/<name>.png is the card's art.
+static int collection_lines(const char* path, Card* out, int max) {
+	FILE* f = fopen(path, "r");
+	if (!f) return 0;
+	int count = 0;
+	char line[512];
+	while (fgets(line, sizeof(line), f)) {
+		normalizeNewline(line);
+		trimTrailingNewlines(line);
+		if (!line[0]) continue;
+		char sd_path[600];
+		snprintf(sd_path, sizeof(sd_path), "%s%s", SDCARD_PATH, line);
+		if (!exists(sd_path)) continue;
+		if (out && count < max) {
+			Card* card = &out[count];
+			memset(card, 0, sizeof(*card));
+			snprintf(card->path, sizeof(card->path), "%s", sd_path);
+			card_name_from_path(sd_path, card->name);
+			card->hue = hue_for(card->name);
+			if (suffixMatch(".pak", sd_path)) {
+				card->kind = CARD_TOOL;
+			} else {
+				card->kind = CARD_GAME;
+				getEmuName(sd_path, card->tag);
+				find_box_art(card);
+			}
+		}
+		count++;
+	}
+	fclose(f);
+	return count;
+}
+
+static int load_collections(Card* cards) {
+	DIR* dh = opendir(COLLECTIONS_PATH);
+	if (!dh) return 0;
+	int count = 0;
+	struct dirent* dp;
+	while ((dp = readdir(dh)) && count < MAX_CARDS) {
+		if (hide(dp->d_name) || !suffixMatch(".txt", dp->d_name) || exactMatch(dp->d_name, "map.txt")) continue;
+		Card* card = &cards[count];
+		memset(card, 0, sizeof(*card));
+		card->kind = CARD_COLLECTION;
+		snprintf(card->path, sizeof(card->path), "%s/%s", COLLECTIONS_PATH, dp->d_name);
+		getDisplayName(dp->d_name, card->name);
+		card->game_count = collection_lines(card->path, NULL, 0);
+		if (!card->game_count) continue;
+		card->hue = hue_for(card->name);
+		char base[256], art[600];
+		snprintf(base, sizeof(base), "%s", dp->d_name);
+		base[strlen(base) - 4] = '\0';
+		snprintf(art, sizeof(art), "%s/.media/%s.png", COLLECTIONS_PATH, base);
+		if (exists(art)) snprintf(card->art_path, sizeof(card->art_path), "%s", art);
+		count++;
+	}
+	closedir(dh);
+	char map_path[256];
+	snprintf(map_path, sizeof(map_path), "%s/map.txt", COLLECTIONS_PATH);
+	apply_map(map_path, cards, count);
+	qsort(cards, count, sizeof(Card), compare_cards);
+	return count;
+}
+
+Card* ldata_load_collection(const Card* collection, int* count) {
+	int n = collection_lines(collection->path, NULL, 0);
+	Card* games = calloc(n > 0 ? n : 1, sizeof(Card));
+	*count = collection_lines(collection->path, games, n);
+	if (*count > n) *count = n;
+	return games;
+}
+
 static void add_row(Row* rows, int* count, int max_rows, const char* title, Card* cards, int n) {
 	if (n <= 0 || *count >= max_rows) {
 		free(cards);
@@ -378,6 +451,8 @@ int ldata_load_rows(Row* rows, int max_rows) {
 	add_row(rows, &count, max_rows, "Continue Playing", recents, load_recents(recents));
 	Card* consoles = calloc(MAX_CARDS, sizeof(Card));
 	add_row(rows, &count, max_rows, "Consoles", consoles, load_consoles(consoles));
+	Card* collections = calloc(MAX_CARDS, sizeof(Card));
+	add_row(rows, &count, max_rows, "Collections", collections, load_collections(collections));
 	Card* tools = calloc(MAX_CARDS, sizeof(Card));
 	add_row(rows, &count, max_rows, "Apps", tools, load_tools(tools));
 	return count;

@@ -55,6 +55,7 @@ To remove it, open the Brick Hammer Launcher Pak again from Apps. The stock Next
 | Music | `Music/<Artist>/<Album>/` or `Music/<Album>/` |
 | Audiobooks | `Audiobooks/<Author>/<Book>/` or `Audiobooks/<Book>/` |
 | Album covers | `cover.jpg` or `folder.jpg` in the album folder, else the picture inside the first track |
+| Collections | `Collections/<name>.txt`, one card path per line such as `/Roms/Game Boy Advance (GBA)/Game.gba`, the same as stock NextUI. They appear as their own row |
 | Wallpaper | `bg.png` at the card root, the same as stock NextUI |
 | Fonts | `Fonts/` at the card root (see below) |
 
@@ -70,7 +71,7 @@ Inter is included. To use a font you own, put its files in `Fonts/` at the card 
 - Settings still uses NextUI's stock look.
 - Save-state screenshots appear only for manual saves; NextUI does not take one for its automatic save.
 - In the Continue Playing row, tall box art is cropped to a wide card.
-- Collections and NextUI's simple mode are not supported yet.
+- NextUI's simple mode is not supported yet.
 
 ## Building
 

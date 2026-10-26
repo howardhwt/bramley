@@ -21,7 +21,7 @@
 
 #define SCREEN_W 1024
 #define SCREEN_H 768
-#define MAX_ROWS 3
+#define MAX_ROWS 4
 #define MARGIN_X 56.0f
 
 // Top Shelf
@@ -343,6 +343,9 @@ static int update_shelf(void) {
 	} else if (card->kind == CARD_CONSOLE) {
 		snprintf(kicker, sizeof(kicker), "Console");
 		snprintf(detail, sizeof(detail), "%d %s", card->game_count, card->game_count == 1 ? "game" : "games");
+	} else if (card->kind == CARD_COLLECTION) {
+		snprintf(kicker, sizeof(kicker), "Collection");
+		snprintf(detail, sizeof(detail), "%d %s", card->game_count, card->game_count == 1 ? "item" : "items");
 	} else if (card->kind == CARD_MUSIC) {
 		snprintf(kicker, sizeof(kicker), "App");
 		int albums = lmusic_shelf_count(0), books = lmusic_shelf_count(1);
@@ -531,6 +534,7 @@ static struct {
 	double letter_until;
 	float cover_h;
 	int music, books; // the Music app, showing albums or audiobooks
+	int collection;   // a collection: the player's own order, so no A to Z
 } lib = { .caption_for = -1 };
 
 static float lib_margin(void) {
@@ -557,7 +561,8 @@ static void close_library(void) {
 
 static void open_library(Card* console, int focus) {
 	if (lib.open) close_library();
-	lib.games = ldata_load_games(console, &lib.count);
+	int collection = console->kind == CARD_COLLECTION;
+	lib.games = collection ? ldata_load_collection(console, &lib.count) : ldata_load_games(console, &lib.count);
 	if (!lib.count) {
 		ldata_free_games(lib.games, 0);
 		lib.games = NULL;
@@ -566,6 +571,7 @@ static void open_library(Card* console, int focus) {
 	}
 	lib.open = 1;
 	lib.cover_h = 200.0f;
+	lib.collection = collection;
 	lib.console = console;
 	lib.focus = focus >= 0 && focus < lib.count ? focus : 0;
 	lib.scale = calloc(lib.count, sizeof(Spring));
@@ -573,7 +579,8 @@ static void open_library(Card* console, int focus) {
 	lib.caption_for = -1;
 	lib.header = ltex_text(LFONT_HERO, console->name, 640);
 	char text[64];
-	snprintf(text, sizeof(text), "%d %s", lib.count, lib.count == 1 ? "game" : "games");
+	if (collection) snprintf(text, sizeof(text), "%d %s", lib.count, lib.count == 1 ? "item" : "items");
+	else snprintf(text, sizeof(text), "%d %s", lib.count, lib.count == 1 ? "game" : "games");
 	lib.subtitle = ltex_text(LFONT_BODY, text, 0);
 	// Start with the focused line at the top of the grid.
 	lib.scroll_goal = (lib.focus / LIB_COLS) * LIB_LINE;
@@ -689,10 +696,12 @@ static int lib_update_caption(void) {
 		shine_t = 0.0f;
 		return 1;
 	}
-	ldata_check_resume(game);
+	if (game->kind == CARD_GAME) ldata_check_resume(game);
 	lib.caption = ltex_text(LFONT_LABEL, game->name, (int)(COVER_W + COVER_GAP) * 2);
-	lib.hints = ltex_text(LFONT_SMALL, game->can_resume ? "A  Play     X  Resume save     L1 R1  A-Z     B  Back"
-	                                                     : "A  Play     L1 R1  A-Z     B  Back", 0);
+	const char* hints = game->can_resume ? (lib.collection ? "A  Play     X  Resume save     B  Back"
+	                                                       : "A  Play     X  Resume save     L1 R1  A-Z     B  Back")
+	                                     : (lib.collection ? "A  Play     B  Back" : "A  Play     L1 R1  A-Z     B  Back");
+	lib.hints = ltex_text(LFONT_SMALL, game->kind == CARD_TOOL ? (lib.collection ? "A  Open     B  Back" : "A  Open") : hints, 0);
 	shine_t = 0.0f;
 	return 1;
 }
@@ -1499,8 +1508,8 @@ int main(int argc, char* argv[]) {
 			else if (PAD_justRepeated(BTN_LEFT)) lib_move(-1, 0);
 			else if (PAD_justRepeated(BTN_DOWN)) lib_move(0, 1);
 			else if (PAD_justRepeated(BTN_UP)) lib_move(0, -1);
-			else if (PAD_justRepeated(BTN_R1)) jump_letter(1);
-			else if (PAD_justRepeated(BTN_L1)) jump_letter(-1);
+			else if (PAD_justRepeated(BTN_R1) && !lib.collection) jump_letter(1);
+			else if (PAD_justRepeated(BTN_L1) && !lib.collection) jump_letter(-1);
 			else if (PAD_justPressed(BTN_B)) {
 				close_library();
 				shelf.row = -1; // rebuild the Top Shelf for the console card
@@ -1521,7 +1530,7 @@ int main(int argc, char* argv[]) {
 
 			Card* card = focused_card();
 			if (PAD_justPressed(BTN_A)) {
-				if (card->kind == CARD_CONSOLE) open_library(card, 0);
+				if (card->kind == CARD_CONSOLE || card->kind == CARD_COLLECTION) open_library(card, 0);
 				else if (card->kind == CARD_MUSIC) open_music(0);
 				else {
 					remember_launch(card);

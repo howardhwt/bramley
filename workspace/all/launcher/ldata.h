@@ -5,7 +5,7 @@
 
 #include "lgfx.h"
 
-typedef enum { CARD_RECENT, CARD_CONSOLE, CARD_TOOL, CARD_GAME, CARD_MUSIC, CARD_ALBUM } CardKind;
+typedef enum { CARD_RECENT, CARD_CONSOLE, CARD_TOOL, CARD_GAME, CARD_MUSIC, CARD_ALBUM, CARD_COLLECTION } CardKind;
 
 typedef struct {
 	CardKind kind;
@@ -15,7 +15,7 @@ typedef struct {
 	char art_path[512];  // image to show, "" if none
 	int art_is_pixel;    // save-state screenshot rather than box art
 	int can_resume;      // a manual save slot exists
-	int game_count;      // consoles only
+	int game_count;      // consoles and collections
 	int index;           // albums: album index in the music library
 	float hue;           // colour of the title card
 	LTex* art;
@@ -38,6 +38,8 @@ void ldata_free_rows(Row* rows, int count);
 // the array with ldata_free_games(). Folders count as a game when they hold a .m3u or .cue.
 Card* ldata_load_games(const Card* console, int* count);
 void ldata_free_games(Card* games, int count);
+// The games and Paks listed in a collection file, in the file's order. Free with ldata_free_games().
+Card* ldata_load_collection(const Card* collection, int* count);
 // Looks up whether a game has a manual save, once.
 void ldata_check_resume(Card* game);
 
