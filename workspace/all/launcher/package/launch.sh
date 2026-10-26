@@ -35,6 +35,8 @@ if installed; then
 		exit 1
 	fi
 	mv -f "$BIN/nextui-stock.elf" "$BIN/nextui.elf"
+	# The music daemon outlives the launcher by design, so stop it before its file goes.
+	killall muse 2>/dev/null
 	rm -f "$BIN/launcher.elf" "$BIN/muse"
 	rm -f "$RES/Inter-Regular.ttf" "$RES/Inter-SemiBold.ttf" "$RES/Inter-Bold.ttf"
 	sync
@@ -45,6 +47,9 @@ fi
 # Install. A stock nextui.elf is kept once; a later reinstall (after a NextUI update put a new
 # stock launcher in place) replaces the backup with that newer stock launcher.
 cp -f "$BIN/nextui.elf" "$BIN/nextui-stock.elf" || { say "install: could not back up nextui.elf"; exit 1; }
+# A daemon left from an older install would keep running the old muse; the launcher starts the
+# new one when it next needs music.
+killall muse 2>/dev/null
 cp -f "$PAK/launcher.elf" "$PAK/muse" "$BIN/" || { say "install: could not copy the launcher"; exit 1; }
 cp -f "$PAK/nextui-wrapper.sh" "$BIN/nextui.elf"
 chmod +x "$BIN/nextui.elf" "$BIN/launcher.elf" "$BIN/muse" "$BIN/nextui-stock.elf"
