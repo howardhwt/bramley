@@ -1947,7 +1947,11 @@ int main(int argc, char* argv[]) {
 
 	PWR_quit();
 	PAD_quit();
-	GFX_quit();
+	// Not GFX_quit(): its PLAT_quitVideo() blanks the screen and then zeroes the whole 64 MB
+	// framebuffer, which took 450 ms on every exit and left the screen black while the next
+	// program started. The system frees the GL context when we exit, and the last frame stays on
+	// screen until the next program draws. CFG_quit() is the one part of GFX_quit() that saves.
+	CFG_quit();
 	QuitSettings();
 	return 0;
 }

@@ -769,6 +769,33 @@ void PLAT_setShaders(int nr) {
 	reloadShaderTextures = 1;
 }
 
+#ifdef __linux__
+#include <fcntl.h>
+#include <linux/fb.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+// Brick Hammer: zeroes the page of the framebuffer that is on screen. Returns 0 if it cannot.
+static int bh_clear_visible_fb(void) {
+	int fd = open("/dev/fb0", O_WRONLY);
+	if (fd < 0) return 0;
+	struct fb_var_screeninfo var;
+	struct fb_fix_screeninfo fix;
+	int ok = 0;
+	if (ioctl(fd, FBIOGET_VSCREENINFO, &var) == 0 && ioctl(fd, FBIOGET_FSCREENINFO, &fix) == 0) {
+		size_t size = (size_t)fix.line_length * var.yres;
+		void* zeros = calloc(1, size);
+		if (zeros) {
+			ok = pwrite(fd, zeros, size, (off_t)fix.line_length * var.yoffset) == (ssize_t)size;
+			free(zeros);
+		}
+	}
+	close(fd);
+	return ok;
+}
+#else
+static int bh_clear_visible_fb(void) { return 0; }
+#endif
+
 static void clearVideo(void) {
 	for (int i=0; i<3; i++) {
 		SDL_RenderClear(vid.renderer);
@@ -815,7 +842,10 @@ void PLAT_quitVideo(void) {
 	if (overlay_path) free(overlay_path);
 
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
-	system("cat /dev/zero > /dev/fb0 2>/dev/null");
+	// Brick Hammer: on the Brick, blank only the visible screen (3 MB) instead of the whole
+	// 64 MB framebuffer, which took about 450 ms on every exit. Other platforms are unchanged.
+	if (strcmp(PLATFORM, "tg5040") || !bh_clear_visible_fb())
+		system("cat /dev/zero > /dev/fb0 2>/dev/null");
 }
 
 void PLAT_clearVideo(SDL_Surface* screen) {

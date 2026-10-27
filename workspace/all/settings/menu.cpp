@@ -256,6 +256,9 @@ InputReactionHint MenuItem::handleInput(int &dirty)
         hint = NoOp; // not really, should check on_confirm
         if (on_confirm)
             hint = on_confirm(*this);
+        // Brick Hammer: A flips an on/off setting, as tapping a switch does on iOS
+        else if (values.size() == 2 && nextValue() && on_set)
+            on_set(getValue());
         dirty = 1;
     }
 
