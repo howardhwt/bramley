@@ -1,4 +1,5 @@
 #include "btmenu.hpp"
+#include "bramley_settings.hpp" // Bramley
 #include "keyboardprompt.hpp"
 #ifdef HAS_BTAGENT
 #   include "btagent.hpp"
@@ -80,8 +81,8 @@ std::any Menu::getBtToggleState() const
 void Menu::setBtToggleState(const std::any &on)
 {
     auto state = std::any_cast<bool>(on);
-    ScopedOverlay overlay(state ? "Enabling Bluetooth..." : "Disabling Bluetooth...");
-    BT_enable(state);
+    // Bramley: switch in the background, so Settings stays usable; the status line shows progress
+    bramley_switch_radio(bramley_bt_switching, state, [state]() { BT_enable(state); });
 }
 
 void Menu::resetBtToggleState()

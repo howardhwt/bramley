@@ -1,4 +1,5 @@
 #include "wifimenu.hpp"
+#include "bramley_settings.hpp" // Bramley
 #include "keyboardprompt.hpp"
 
 #include <unordered_set>
@@ -60,8 +61,8 @@ std::any Menu::getWifToggleState() const
 void Menu::setWifiToggleState(const std::any &on)
 {
     auto state = std::any_cast<bool>(on);
-    ScopedOverlay overlay(state ? "Enabling WiFi..." : "Disabling WiFi...");
-    WIFI_enable(state);
+    // Bramley: switch in the background, so Settings stays usable; the status line shows progress
+    bramley_switch_radio(bramley_wifi_switching, state, [state]() { WIFI_enable(state); });
 }
 
 void Menu::resetWifiToggleState()

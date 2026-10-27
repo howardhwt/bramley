@@ -7,6 +7,8 @@
 
 #include "sdl.h"
 
+#include <atomic>
+#include <functional>
 #include <vector>
 
 class MenuList;
@@ -28,3 +30,10 @@ void bramley_order_sections(std::vector<AbstractMenuItem *> &items);
 
 // Adds Bramley's rows to Appearance (Wallpaper). Called once from settings.cpp.
 void bramley_add_appearance_items(std::vector<AbstractMenuItem *> &items);
+
+// Wi-Fi and Bluetooth switch on a background thread, because switching takes seconds. These are
+// 0 when idle, 1 while turning on and 2 while turning off; the status lines read them.
+extern std::atomic<int> bramley_wifi_switching, bramley_bt_switching;
+// Runs work on a background thread with flag showing the direction. A press while a switch is
+// still running is ignored.
+void bramley_switch_radio(std::atomic<int> &flag, bool on, std::function<void()> work);

@@ -13,6 +13,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "menu.hpp"
@@ -169,11 +170,17 @@ void update_radio()
 	radio.at = now;
 	radio.ssid.clear();
 	bool on = PLAT_wifiEnabled();
+	int switching = bramley_wifi_switching;
 	if (radio.wifi_seen == 0 && on)
 		radio.wifi_on_at = now; // just switched on: give it time to find and join a network
 	radio.wifi_seen = on;
 	radio.wifi_busy = false;
-	if (!on)
+	if (switching)
+	{
+		radio.wifi = switching == 1 ? "Turning on Wi-Fi\xE2\x80\xA6" : "Turning off Wi-Fi\xE2\x80\xA6";
+		radio.wifi_busy = true;
+	}
+	else if (!on)
 		radio.wifi = "Wi-Fi is off";
 	else
 	{
@@ -196,7 +203,9 @@ void update_radio()
 		else
 			radio.wifi = "Not connected";
 	}
-	if (!PLAT_bluetoothEnabled())
+	if (bramley_bt_switching)
+		radio.bt = bramley_bt_switching == 1 ? "Turning on Bluetooth\xE2\x80\xA6" : "Turning off Bluetooth\xE2\x80\xA6";
+	else if (!PLAT_bluetoothEnabled())
 		radio.bt = "Bluetooth is off";
 	else
 		radio.bt = PLAT_btIsConnected() ? "Connected" : "On, nothing connected";
@@ -661,7 +670,7 @@ void draw_scene(MenuList *root, const std::vector<MenuList *> &chain, const std:
 			// a live status line under the title, with a spinner while Wi-Fi is busy
 			update_radio();
 			float sx = px + 28;
-			if (network && radio.wifi_busy)
+			if ((network && radio.wifi_busy) || (!network && bramley_bt_switching))
 			{
 				draw_spinner(sx + 9, ty + 53, 8);
 				sx += 28;
@@ -843,4 +852,19 @@ void bramley_add_appearance_items(std::vector<AbstractMenuItem *> &items)
 			wallpaper_choose(std::any_cast<std::string>(v).c_str());
 			backdrop_stale = true;
 		}});
+}
+
+std::atomic<int> bramley_wifi_switching{0}, bramley_bt_switching{0};
+
+void bramley_switch_radio(std::atomic<int> &flag, bool on, std::function<void()> work)
+{
+	int idle = 0;
+	if (!flag.compare_exchange_strong(idle, on ? 1 : 2))
+		return;
+	radio.at = 0; // show the new state at the next frame
+	std::thread([&flag, work]() {
+		work();
+		flag = 0;
+		radio.at = 0;
+	}).detach();
 }
