@@ -410,6 +410,98 @@ static void alt_split(int focus) {
 	text(LFONT_SMALL, "A  Open     >  Into System     B  Back", lx, H - 40, 0.55f, 0);
 }
 
+// The split view with NextUI's real top level on the Brick (settings.cpp:1140). order lists
+// section indexes, -1 is a gap between groups. pane_focus is -1 while the sidebar has focus,
+// else the focused row inside the pane.
+static void split_real(const int* order, int n, int focus, int pane_focus, const char* hint, int rename) {
+	top_bar("Settings");
+	float lx = 40, lw = 330, rh = 52, gap = 6, y = 84;
+	int inpane = pane_focus >= 0;
+	for (int k = 0; k < n; k++) {
+		int i = order[k];
+		if (i < 0) {
+			y += 14;
+			continue;
+		}
+		const char* name = (i == 7 && !rename) ? "Assignments" : sections[i][0];
+		float x = lx, w = lw, h = rh, yy = y;
+		int focused = i == focus;
+		if (focused && !inpane) {
+			x -= 8, w += 16, yy -= 3, h += 6;
+			lgfx_draw_shadow(x, yy, w, h, 6, 0.32f);
+			lgfx_draw_fill(x, yy, w, h, 14, 1, 1, 1, 0.96f);
+		} else if (focused) {
+			lgfx_draw_fill(x, yy, w, h, 14, 1, 1, 1, 0.22f);
+		} else {
+			lgfx_draw_fill(x, yy, w, h, 14, 1, 1, 1, 0.07f);
+		}
+		LTex* ic = icon(sections[i][1], 36);
+		if (ic) {
+			lgfx_draw_tex(ic, x + 14, yy + (h - 36) * 0.5f, 36, 36, 0, inpane && !focused ? 0.5f : 1);
+			ltex_free(ic);
+		}
+		float ty = yy + (h - 30) * 0.5f;
+		if (focused && !inpane) lgfx_set_dim(0.1f);
+		text(LFONT_BODY, name, x + 64, ty, inpane ? (focused ? 0.95f : 0.45f) : (focused ? 1 : 0.92f), 0);
+		lgfx_set_dim(1);
+		y += rh + gap;
+	}
+	float rx = 410, rw = W - rx - 40, py = 84;
+	lgfx_draw_fill(rx, py, rw, H - py - 70, 22, 0, 0, 0, 0.18f);
+	if (focus == 3) {
+		float is = 150, ix = rx + (rw - is) * 0.5f, iy = py + 110;
+		lgfx_draw_shadow(ix, iy, is, is, 12, 0.5f);
+		LTex* ic = icon("network", 300);
+		if (ic) {
+			lgfx_draw_tex(ic, ix, iy, is, is, 0, 1);
+			ltex_free(ic);
+		}
+		const char* lines[2] = { "Network", "Connected to Home Wi-Fi" };
+		float ty = iy + is + 28;
+		for (int i = 0; i < 2; i++) {
+			LTex* t = ltex_text(i ? LFONT_BODY : LFONT_TITLE, lines[i], 0);
+			if (!t) continue;
+			lgfx_draw_tex(t, rx + (rw - t->w) * 0.5f, ty, t->w, t->h, 0, i ? 0.8f : 1);
+			ty += t->h + 10;
+			ltex_free(t);
+		}
+		LTex* bt = ltex_text(LFONT_BODY, "A   Choose a network", 0);
+		if (bt) {
+			float bw = bt->w + 64, bh = 52, bx = rx + (rw - bw) * 0.5f, by = ty + 26;
+			lgfx_draw_fill(bx, by, bw, bh, bh * 0.5f, 1, 1, 1, 0.14f);
+			lgfx_draw_tex(bt, bx + 32, by + (bh - bt->h) * 0.5f, bt->w, bt->h, 0, 0.95f);
+			ltex_free(bt);
+		}
+	} else {
+		text(LFONT_TITLE, sections[focus][0], rx + 28, py + 20, 1, 0);
+		float r2h = 48;
+		for (int i = 0; i < 9; i++) {
+			float yy = py + 90 + i * (r2h + 6), x = rx + 20, w = rw - 40, h = r2h;
+			int f = i == pane_focus;
+			if (f) {
+				x -= 6, w += 12, yy -= 3, h += 6;
+				lgfx_draw_shadow(x, yy, w, h, 6, 0.32f);
+				lgfx_draw_fill(x, yy, w, h, 12, 1, 1, 1, 0.96f);
+				lgfx_set_dim(0.1f);
+			} else {
+				lgfx_draw_fill(x, yy, w, h, 12, 1, 1, 1, 0.06f);
+			}
+			float ty = yy + (h - 30) * 0.5f;
+			text(LFONT_BODY, rows[i][0], x + 20, ty, f ? 1 : (inpane ? 0.9f : 0.6f), 0);
+			const char* v = rows[i][1];
+			if (is_toggle(v)) {
+				lgfx_set_dim(1);
+				draw_switch(x + w - 20, yy + (h - 34) * 0.5f, !strcmp(v, "On"), f);
+			} else {
+				lgfx_set_dim(f ? 0.45f : 1);
+				text(LFONT_BODY, v, x + w - 20, ty, f ? 1 : 0.5f, 1);
+			}
+			lgfx_set_dim(1);
+		}
+	}
+	text(LFONT_SMALL, hint, lx, H - 40, 0.6f, 0);
+}
+
 // Text in NextUI's own font, for the restyled version.
 static LTex* nextui_text(const char* s, int size) {
 	char path[256];
@@ -498,6 +590,22 @@ int main(int argc, char* argv[]) {
 		snprintf(path, sizeof(path), "%s-top.bmp", prefix);
 		save(path);
 		SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
+		// The Q5 options with the real nine sections. Indexes into sections[]: 0 Appearance,
+		// 1 Display, 2 System, 3 Network, 4 Bluetooth, 5 In-Game, 6 FN Switch, 7 Buttons, 10 About.
+		static const int nextui_order[] = { 0, 1, -1, 2, -1, 6, 7, 5, -1, 3, 4, -1, 10 };
+		static const int new_order[] = { 3, 4, -1, 1, 0, -1, 5, 7, 6, -1, 2, 10 };
+		struct { const int* o; int n, focus, pane, rename; const char* hint; char tag; } q5[] = {
+			{ nextui_order, 13, 2, -1, 0, "A or >  Into System     B  Back", '1' },
+			{ nextui_order, 13, 2, 2, 0, "A  Change     < >  Adjust     B  Back to sections", '2' },
+			{ new_order, 12, 3, -1, 1, "A or >  Choose a network     B  Back", '3' },
+			{ nextui_order, 13, 2, -1, 0, "A  Into System     B  Back", '4' },
+		};
+		for (int i = 0; i < 4; i++) {
+			split_real(q5[i].o, q5[i].n, q5[i].focus, q5[i].pane, q5[i].hint, q5[i].rename);
+			snprintf(path, sizeof(path), "%s-q5-%c.bmp", prefix, q5[i].tag);
+			save(path);
+			SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
+		}
 		void (*alts[5])(int) = { alt_grouped, alt_grid, alt_split, alt_split, alt_split };
 		const int focus[5] = { 3, 3, 2, 3, 4 };
 		for (int i = 0; i < 5; i++) {
