@@ -5,12 +5,15 @@
 
 #include <string>
 
+#include "sdl.h"
+
 class MenuList;
 
-// Draws one frame of Settings for the root menu. Returns -1 when this screen should be drawn by
-// NextUI's own code instead (custom pages such as the keyboard and the colour picker), 1 when
-// it wants another frame soon (a debug script is running), otherwise 0.
-int bramley_settings_frame(MenuList *root);
+// Draws and presents one frame of Settings for the root menu. Pages that NextUI draws itself (the
+// keyboard, the colour picker) are drawn by NextUI's code into screen, with the list and title
+// rects NextUI lays out, and shown from there. Returns 1 when it wants another frame soon (a
+// debug script is running), 0 otherwise, and -1 only without a menu or screen.
+int bramley_settings_frame(MenuList *root, SDL_Surface *screen, const SDL_Rect &list, const SDL_Rect &title);
 
 // Called by MenuList::showOverlay. Draws the message over the current page at once when this
 // code is drawing Settings, and returns true; returns false to leave it to NextUI's drawing.

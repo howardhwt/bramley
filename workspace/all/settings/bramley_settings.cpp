@@ -628,9 +628,42 @@ void draw_overlay()
 	}
 }
 
-MenuList *last_root;
-bool last_was_ours;
+// A page NextUI draws itself (the keyboard, the colour picker): its own code draws it in software
+// into NextUI's screen surface, and that surface is shown here. NextUI's GPU path (GFX_flip)
+// is never used, because its renderer does not expect the GL state these frames leave.
+void draw_classic(MenuList *root, SDL_Surface *screen, const SDL_Rect &list, const SDL_Rect &title)
+{
+	SDL_FillRect(screen, NULL, SDL_MapRGB(screen->format, 0, 0, 0));
+	root->draw(screen, list, title);
+	if (LTex *t = ltex_from_surface(screen, 0))
+	{
+		lgfx_draw_tex(t, 0, 0, W, H, 0, 1);
+		ltex_free(t);
+	}
+}
+
+struct Frame
+{
+	MenuList *root;
+	SDL_Surface *screen;
+	SDL_Rect list, title;
+} last;
 SDL_threadID main_thread;
+
+// Draws one whole frame, without presenting it.
+void draw_frame(const Frame &f)
+{
+	std::vector<MenuList *> chain;
+	std::vector<std::string> titles;
+	open_chain(f.root, chain, titles);
+	lgfx_begin_frame();
+	if (BramleyView::type(chain.back()) == MenuItemType::Custom)
+		draw_classic(f.root, f.screen, f.list, f.title);
+	else
+		draw_scene(f.root, chain, titles);
+	if (MenuList::isOverlayVisible())
+		draw_overlay();
+}
 
 } // namespace
 
@@ -639,19 +672,14 @@ bool bramley_settings_overlay(const std::string &message, int mode)
 	overlay_text = message;
 	overlay_mode = mode;
 	// NextUI shows these right before blocking (switching Wi-Fi can take seconds), so draw now.
-	if (!ready || !last_was_ours || !last_root || SDL_ThreadID() != main_thread)
-		return ready && last_was_ours; // the next frame shows it
-	std::vector<MenuList *> chain;
-	std::vector<std::string> titles;
-	open_chain(last_root, chain, titles);
-	lgfx_begin_frame();
-	draw_scene(last_root, chain, titles);
-	draw_overlay();
+	if (!ready || !last.root || SDL_ThreadID() != main_thread)
+		return ready; // the next frame shows it
+	draw_frame(last);
 	lgfx_end_frame();
 	return true;
 }
 
-int bramley_settings_frame(MenuList *root)
+int bramley_settings_frame(MenuList *root, SDL_Surface *screen, const SDL_Rect &list, const SDL_Rect &title)
 {
 	static bool debugging;
 	if (!debugging && getenv("BRAMLEY_DEBUG_KEYS"))
@@ -660,16 +688,8 @@ int bramley_settings_frame(MenuList *root)
 		SDL_InitSubSystem(SDL_INIT_TIMER);
 		SDL_AddTimer(300, debug_tick, nullptr);
 	}
-	if (!root)
+	if (!root || !screen)
 		return -1;
-	std::vector<MenuList *> chain;
-	std::vector<std::string> titles;
-	open_chain(root, chain, titles);
-	if (BramleyView::type(chain.back()) == MenuItemType::Custom)
-	{
-		last_was_ours = false;
-		return -1; // the keyboard, the colour picker and other custom pages
-	}
 
 	static int frames;
 	double t0 = frames < 2 ? since_start() : 0;
@@ -682,13 +702,8 @@ int bramley_settings_frame(MenuList *root)
 		main_thread = SDL_ThreadID();
 		ready = true;
 	}
-	last_root = root;
-	last_was_ours = true;
-
-	lgfx_begin_frame();
-	draw_scene(root, chain, titles);
-	if (MenuList::isOverlayVisible())
-		draw_overlay();
+	last = {root, screen, list, title};
+	draw_frame(last);
 	if (shots_wanted > 0)
 	{
 		shots_wanted--;
