@@ -158,6 +158,29 @@ static void hsv_to_rgb(float h, float s, float v, float* r, float* g, float* b) 
 	}
 }
 
+// Settings lives in the launcher (../settings): it opens as a screen of its own and returns here
+// when closed, instead of starting a separate program, which took most of a second each way.
+int bramley_open_settings(SDL_Surface* screen, void (*tick)(void));
+static SDL_Surface* screen;
+
+static int is_settings(const Card* card) {
+	return card->kind == CARD_TOOL && suffixMatch("/Settings.pak", (char*)card->path);
+}
+
+// Runs while Settings is open, so a track that ends still moves the music queue on.
+static void settings_tick(void) {
+	lmusic_update();
+}
+
+static LTex* load_wallpaper(void);
+static void open_settings(void) {
+	bramley_open_settings(screen, settings_tick);
+	// the wallpaper may have been changed, and the clock has moved on
+	ltex_free(wallpaper);
+	wallpaper = load_wallpaper();
+	status.minute = -1;
+}
+
 // The wallpaper chosen in Settings (lwallpaper.c), otherwise a dark gradient made once.
 static LTex* load_wallpaper(void) {
 	Wallpaper w;
@@ -1649,7 +1672,7 @@ int main(int argc, char* argv[]) {
 	}
 	InitSettings();
 	t[nt++] = now_ms();
-	GFX_init(MODE_MAIN);
+	screen = GFX_init(MODE_MAIN);
 	t[nt++] = now_ms();
 	PAD_init();
 	VIB_init();
@@ -1760,8 +1783,10 @@ int main(int argc, char* argv[]) {
 					lradio_toggle(RADIO_BLUETOOTH);
 					break;
 				case QM_SETTINGS:
-					if (ldata_launch_tool("Settings")) quit = 1;
-					else show_toast("Settings Pak not found");
+					free_quick_menu();
+					qm.open = 0;
+					open_settings();
+					dirty = 1;
 					break;
 				case QM_SLEEP:
 					qm.closing = 1;
@@ -1838,7 +1863,10 @@ int main(int argc, char* argv[]) {
 			if (PAD_justPressed(BTN_A)) {
 				if (card->kind == CARD_CONSOLE || card->kind == CARD_COLLECTION) open_library(card, 0);
 				else if (card->kind == CARD_MUSIC) open_music(0);
-				else {
+				else if (is_settings(card)) {
+					open_settings();
+					dirty = 1;
+				} else {
 					remember_launch(card);
 					ldata_launch(card, 0);
 					quit = 1;

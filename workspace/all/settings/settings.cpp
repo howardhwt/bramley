@@ -395,8 +395,14 @@ namespace {
         Platform m_platform = UnknownPlatform;
     };
 }
-int main(int argc, char *argv[])
+// Bramley: Settings runs either as its own program (main below) or inside the launcher, which
+// calls settings_run() with its screen surface and gets control back when Settings is closed.
+// Inside the launcher, the screen, input, power and settings are already set up, so that work
+// (most of a second) is skipped, and everything Settings created is freed before it returns.
+int settings_run(SDL_Surface *host_screen)
 {
+    const bool hosted = host_screen != nullptr;
+    appQuit = false;
     try
     {
         DeviceInfo deviceInfo;
@@ -404,20 +410,27 @@ int main(int argc, char *argv[])
         char version[128];
         PLAT_getOsVersionInfo(version, 128);
         LOG_info("This is stock OS version %s\n", version);
-        InitSettings();
+        if (!hosted)
+            InitSettings();
 
         PWR_setCPUSpeed(CPU_SPEED_AUTO);
 
         Context ctx = {0};
         ctx.dirty = 1;
         ctx.show_setting = 0;
-        ctx.screen = GFX_init(MODE_MAIN);
-        PAD_init();
-        PWR_init();
+        ctx.screen = hosted ? host_screen : GFX_init(MODE_MAIN);
+        if (!hosted)
+        {
+            PAD_init();
+            PWR_init();
+        }
         TIME_init();
 
-        signal(SIGINT, sigHandler);
-        signal(SIGTERM, sigHandler);
+        if (!hosted)
+        {
+            signal(SIGINT, sigHandler);
+            signal(SIGTERM, sigHandler);
+        }
 
         char timezones[MAX_TIMEZONES][MAX_TZ_LENGTH];
         int tz_count = 0;
@@ -1192,6 +1205,8 @@ int main(int argc, char *argv[])
             PAD_poll();
 
             ctx.menu->handleInput(ctx.dirty, appQuit);
+            if (hosted)
+                bramley_host_tick(); // the launcher's background work, such as moving the music queue on
 
             PWR_update(&ctx.dirty, &ctx.show_setting, nullptr, nullptr);
 
@@ -1276,6 +1291,20 @@ int main(int argc, char *argv[])
                 appQuit = true;
         }
 
+        if (hosted)
+        {
+            // Free every page, including the Wi-Fi and Bluetooth pages and their worker threads,
+            // which the standalone program leaves to the system at exit. The colour pickers are
+            // owned by unique_ptrs above.
+            std::vector<MenuList *> owned;
+            for (auto &picker : pickers)
+                owned.push_back(picker.get());
+            bramley_delete_menu_tree(ctx.menu, owned);
+            ctx.menu = NULL;
+            CFG_sync();
+            return EXIT_SUCCESS;
+        }
+
         delete ctx.menu;
         delete appearanceMenu;
         delete systemMenu;
@@ -1294,6 +1323,8 @@ int main(int argc, char *argv[])
     catch (const std::exception &e)
     {
         LOG_error("%s", e.what());
+        if (hosted)
+            return EXIT_FAILURE;
         QuitSettings();
         PWR_quit();
         PAD_quit();
@@ -1303,3 +1334,10 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 }
+
+#ifndef BRAMLEY_HOSTED
+int main(int argc, char *argv[])
+{
+    return settings_run(nullptr);
+}
+#endif

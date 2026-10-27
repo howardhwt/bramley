@@ -8,6 +8,7 @@
 #include <cstring>
 #include <ctime>
 #include <unistd.h>
+#include <algorithm>
 #include <atomic>
 #include <map>
 #include <mutex>
@@ -69,6 +70,7 @@ double since_start()
 }
 
 bool ready;
+bool hosted; // running inside the launcher
 LTex *backdrop;
 
 // Text textures, kept between frames; Settings only redraws when something changes.
@@ -787,7 +789,8 @@ int bramley_settings_frame(MenuList *root, SDL_Surface *screen, const SDL_Rect &
 	double t0 = frames < 2 ? since_start() : 0;
 	if (!ready)
 	{
-		lgfx_init(W, H);
+		if (!hosted)
+			lgfx_init(W, H); // inside the launcher, the launcher's kit is already running
 		double t1 = since_start();
 		make_backdrop();
 		LOG_info("bramley_settings: first call at %.0f ms, lgfx %.0f ms, backdrop %.0f ms\n", t0, t1 - t0, since_start() - t1);
@@ -877,4 +880,47 @@ MenuList *bramley_settings_root()
 bool bramley_is_level(const std::vector<std::string> &labels)
 {
 	return is_level(labels);
+}
+
+void (*bramley_host_tick_fn)(void);
+
+void bramley_host_tick()
+{
+	if (bramley_host_tick_fn)
+		bramley_host_tick_fn();
+}
+
+void bramley_delete_menu_tree(MenuList *root, const std::vector<MenuList *> &keep)
+{
+	// Collect every page first: deleting a list deletes its items, which hold the links.
+	std::vector<MenuList *> all = {root};
+	for (size_t i = 0; i < all.size(); i++)
+	{
+		std::shared_lock<std::shared_mutex> lock(BramleyView::lock(all[i]));
+		for (AbstractMenuItem *item : BramleyView::items(all[i]))
+		{
+			MenuList *sub = item->getSubMenu();
+			if (sub && std::find(all.begin(), all.end(), sub) == all.end() &&
+			    std::find(keep.begin(), keep.end(), sub) == keep.end())
+				all.push_back(sub);
+		}
+	}
+	for (MenuList *l : all)
+		delete l;
+}
+
+int settings_run(SDL_Surface *host_screen);
+
+extern "C" int bramley_open_settings(SDL_Surface *screen, void (*tick)(void))
+{
+	hosted = true;
+	bramley_host_tick_fn = tick;
+	backdrop_stale = true; // the wallpaper may have changed since last time
+	int code = settings_run(screen);
+	// The pages are gone: forget everything that pointed into them.
+	last = {};
+	scroll.clear();
+	radio.at = 0;
+	bramley_host_tick_fn = nullptr;
+	return code;
 }

@@ -201,7 +201,10 @@ void Menu::updater()
             selectionDirty = false;        
         }
 
-        std::this_thread::sleep_for(std::chrono::seconds(pollSecs));
+        // Bramley: wait in short steps, so closing Settings inside the launcher never waits for a
+        // whole poll interval (up to 15 s) to join this thread
+        for (int i = 0; i < pollSecs * 10 && !quit && !globalQuit; i++)
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 }
 

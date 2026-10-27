@@ -44,3 +44,14 @@ MenuList *bramley_settings_root();
 // True for a level, such as volume or brightness: evenly spaced numbers, shown as a slider.
 // Only levels change with left and right.
 bool bramley_is_level(const std::vector<std::string> &labels);
+
+// Runs Settings: as its own program with host_screen null, or inside the launcher with the
+// launcher's screen surface. Returns when Settings is closed.
+int settings_run(SDL_Surface *host_screen);
+// Inside the launcher, called once per Settings frame to run the launcher's background work.
+void bramley_host_tick();
+// Deletes root and every page reachable from it, except those in keep.
+void bramley_delete_menu_tree(MenuList *root, const std::vector<MenuList *> &keep);
+// For the launcher (C): opens Settings inside the launcher and returns when it closes. tick runs
+// once per Settings frame.
+extern "C" int bramley_open_settings(SDL_Surface *screen, void (*tick)(void));
