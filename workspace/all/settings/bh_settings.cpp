@@ -1,0 +1,597 @@
+// Brick Hammer: Settings drawn with the launcher's GL kit. See bh_settings.hpp.
+#include "bh_settings.hpp"
+
+#include <cctype>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
+#include <atomic>
+#include <map>
+#include <mutex>
+#include <shared_mutex>
+#include <string>
+#include <vector>
+
+#include "menu.hpp"
+
+extern "C"
+{
+#include "lgfx.h"
+}
+
+#define W 1024
+#define H 768
+#define BH_DIR RES_PATH "/launcher"
+
+// The friend of MenuList and AbstractMenuItem (menu.hpp): reads lists, items and selections.
+struct BHView
+{
+	static MenuItemType type(MenuList *l) { return l->type; }
+	static int selected(MenuList *l) { return l->scope.selected; }
+	static std::shared_mutex &lock(MenuList *l) { return l->itemLock; }
+	static std::vector<AbstractMenuItem *> &items(MenuList *l) { return l->items; }
+	static std::any live(AbstractMenuItem *i) { return i->on_get ? i->on_get() : i->getValue(); }
+};
+
+namespace
+{
+
+bool ready;
+LTex *backdrop;
+
+// Text textures, kept between frames; Settings only redraws when something changes.
+std::map<std::string, LTex *> text_cache;
+
+LTex *text_tex(int font, const std::string &s)
+{
+	std::string key = std::to_string(font) + "|" + s;
+	auto it = text_cache.find(key);
+	if (it != text_cache.end())
+		return it->second;
+	if (text_cache.size() > 400)
+	{
+		for (auto &kv : text_cache)
+			ltex_free(kv.second);
+		text_cache.clear();
+	}
+	LTex *t = ltex_text(font, s.c_str(), 0);
+	text_cache[key] = t;
+	return t;
+}
+
+float text_w(int font, const std::string &s)
+{
+	LTex *t = text_tex(font, s);
+	return t ? t->w : 0;
+}
+
+void text(int font, const std::string &s, float x, float y, float alpha, int right = 0)
+{
+	LTex *t = text_tex(font, s);
+	if (t)
+		lgfx_draw_tex(t, right ? x - t->w : x, y, t->w, t->h, 0, alpha);
+}
+
+std::map<std::string, LTex *> icons;
+
+LTex *icon(const std::string &slug, int size)
+{
+	std::string key = slug + "-" + std::to_string(size);
+	auto it = icons.find(key);
+	if (it != icons.end())
+		return it->second;
+	char path[512];
+	snprintf(path, sizeof(path), "%s/settings/%s.png", BH_DIR, key.c_str());
+	LTex *t = ltex_load(path, 0);
+	icons[key] = t;
+	return t;
+}
+
+// NextUI's section names, mapped to our icon, our display name and our group.
+struct Section
+{
+	const char *name, *slug, *shown;
+	int group;
+};
+const Section sections[] = {
+	{"Network", "network", "Network", 0},       {"Bluetooth", "bluetooth", "Bluetooth", 0},
+	{"Display", "display", "Display", 1},       {"Appearance", "appearance", "Appearance", 1},
+	{"In-Game", "in-game", "In-Game", 2},       {"Assignments", "buttons", "Buttons", 2},
+	{"FN switch", "fn-switch", "FN Switch", 2}, {"System", "system", "System", 3},
+	{"About", "about", "About", 3},
+};
+
+const Section *section_of(const std::string &name)
+{
+	for (auto &s : sections)
+		if (name == s.name)
+			return &s;
+	return nullptr;
+}
+
+std::string shown_name(const std::string &name)
+{
+	const Section *s = section_of(name);
+	return s ? s->shown : name;
+}
+
+// Wi-Fi and Bluetooth status for the summary cards, read at most every two seconds.
+struct Radio
+{
+	Uint32 at;
+	std::string wifi, bt;
+} radio;
+
+void update_radio()
+{
+	if (radio.at && SDL_GetTicks() - radio.at < 2000)
+		return;
+	radio.at = SDL_GetTicks();
+	if (!PLAT_wifiEnabled())
+		radio.wifi = "Wi-Fi is off";
+	else
+	{
+		struct WIFI_connection c = {};
+		if (PLAT_wifiConnected() && PLAT_wifiConnection(&c) == 0 && c.valid && c.ssid[0])
+			radio.wifi = std::string("Connected to ") + c.ssid;
+		else
+			radio.wifi = "Not connected";
+	}
+	if (!PLAT_bluetoothEnabled())
+		radio.bt = "Bluetooth is off";
+	else
+		radio.bt = PLAT_btIsConnected() ? "Connected" : "On, nothing connected";
+}
+
+// Values: how a setting's current value is drawn.
+enum Kind
+{
+	K_NONE,   // no value: a section or an action
+	K_TEXT,   // a value shown as text
+	K_SWITCH, // On and Off
+	K_SLIDER, // a long numeric range
+	K_COLOR,  // a colour swatch
+};
+
+struct Value
+{
+	Kind kind;
+	std::string label;
+	float frac;
+	bool on;
+	uint32_t color;
+};
+
+// A whole number, optionally ending in a percent sign.
+bool number(std::string s, int *out)
+{
+	if (!s.empty() && s.back() == '%')
+		s.pop_back();
+	if (s.empty())
+		return false;
+	char *end;
+	long n = strtol(s.c_str(), &end, 10);
+	*out = (int)n;
+	return *end == 0;
+}
+
+// A level such as volume or brightness: evenly spaced numbers, the first entry may be a word
+// such as "Muted" or "Off".
+bool is_level(const std::vector<std::string> &labels)
+{
+	if (labels.size() < 11)
+		return false;
+	int first, a, b;
+	size_t start = number(labels[0], &first) ? 0 : 1;
+	if (!number(labels[start], &a) || !number(labels[start + 1], &b) || b == a)
+		return false;
+	for (size_t i = start; i < labels.size(); i++)
+	{
+		int n;
+		if (!number(labels[i], &n) || n != a + (int)(i - start) * (b - a))
+			return false;
+	}
+	return true;
+}
+
+Value value_of(AbstractMenuItem *item)
+{
+	Value v = {K_NONE, "", 0, false, 0};
+	std::vector<std::any> values = item->getValues();
+	if (values.empty() || item->getType() == ListItemType::Button)
+		return v;
+	v.label = item->getLabel();
+	std::vector<std::string> labels = item->getLabels();
+	if (item->getType() == ListItemType::Color)
+	{
+		try
+		{
+			v.color = std::any_cast<uint32_t>(BHView::live(item));
+			v.kind = K_COLOR;
+			return v;
+		}
+		catch (const std::bad_any_cast &)
+		{
+		}
+	}
+	if (labels.size() == 2 && ((labels[0] == "Off" && labels[1] == "On") || (labels[0] == "On" && labels[1] == "Off")))
+	{
+		v.kind = K_SWITCH;
+		v.on = v.label == "On";
+		return v;
+	}
+	if (is_level(labels))
+	{
+		for (size_t i = 0; i < labels.size(); i++)
+			if (labels[i] == v.label)
+				v.frac = (float)i / (labels.size() - 1);
+		v.kind = K_SLIDER;
+		return v;
+	}
+	v.kind = v.label.empty() ? K_NONE : K_TEXT;
+	return v;
+}
+
+void draw_switch(float right, float y, bool on, bool focused)
+{
+	float w = 58, h = 34;
+	if (on)
+		lgfx_draw_fill(right - w, y, w, h, h * 0.5f, 0.20f, 0.78f, 0.35f, 1);
+	else
+		lgfx_draw_fill(right - w, y, w, h, h * 0.5f, focused ? 0 : 1, focused ? 0 : 1, focused ? 0 : 1, focused ? 0.15f : 0.22f);
+	float k = h - 6;
+	lgfx_draw_fill(on ? right - k - 3 : right - w + 3, y + 3, k, k, k * 0.5f, 1, 1, 1, 1);
+}
+
+void draw_slider(float right, float cy, float frac, bool focused)
+{
+	float sw = 200, sx = right - sw, sy = cy - 3, c = focused ? 0.1f : 1;
+	lgfx_draw_fill(sx, sy, sw, 6, 3, focused ? 0 : 1, focused ? 0 : 1, focused ? 0 : 1, 0.2f);
+	lgfx_draw_fill(sx, sy, sw * frac, 6, 3, c, c, c, 0.95f);
+	lgfx_draw_fill(sx + sw * frac - 12, sy - 9, 24, 24, 12, 1, 1, 1, 1);
+	if (focused)
+		lgfx_draw_ring(sx + sw * frac - 12, sy - 9, 24, 24, 12, 1, 0, 0, 0, 0.25f);
+}
+
+// One setting row in the pane.
+void draw_row(AbstractMenuItem *item, float x, float y, float w, float h, bool focused, bool active)
+{
+	if (focused)
+	{
+		x -= 6, w += 12, y -= 3, h += 6;
+		lgfx_draw_shadow(x, y, w, h, 6, 0.32f);
+		lgfx_draw_fill(x, y, w, h, 12, 1, 1, 1, 0.96f);
+		lgfx_set_dim(0.1f);
+	}
+	else
+		lgfx_draw_fill(x, y, w, h, 12, 1, 1, 1, 0.06f);
+	float ty = y + (h - 30) * 0.5f, right = x + w - 20;
+	text(LFONT_BODY, item->getName(), x + 20, ty, focused ? 1 : active ? 0.92f : 0.6f);
+	Value v = value_of(item);
+	switch (v.kind)
+	{
+	case K_SWITCH:
+		lgfx_set_dim(1);
+		draw_switch(right, y + (h - 34) * 0.5f, v.on, focused);
+		break;
+	case K_SLIDER:
+		lgfx_set_dim(1);
+		draw_slider(right, y + h * 0.5f, v.frac, focused);
+		break;
+	case K_COLOR:
+	{
+		lgfx_set_dim(1);
+		// NextUI's colours are RGBA, red in the top byte
+		float s = 28, r = (v.color >> 24 & 0xFF) / 255.0f, g = (v.color >> 16 & 0xFF) / 255.0f, b = (v.color >> 8 & 0xFF) / 255.0f;
+		lgfx_draw_fill(right - s, y + (h - s) * 0.5f, s, s, s * 0.5f, r, g, b, 1);
+		lgfx_draw_ring(right - s, y + (h - s) * 0.5f, s, s, s * 0.5f, 1.5f, focused ? 0 : 1, focused ? 0 : 1, focused ? 0 : 1, 0.3f);
+		break;
+	}
+	case K_TEXT:
+	{
+		lgfx_set_dim(focused ? 0.45f : 1);
+		// on the focused row, arrows show that left and right change the value
+		std::string label = focused && item->getValues().size() > 1 ? "\xE2\x80\xB9  " + v.label + "  \xE2\x80\xBA" : v.label;
+		text(LFONT_BODY, label, right, ty, focused ? 1 : 0.5f, 1);
+		break;
+	}
+	case K_NONE:
+		if (item->getSubMenu())
+		{
+			lgfx_set_dim(focused ? 0.35f : 1);
+			text(LFONT_BODY, "\xE2\x80\xBA", right, ty, focused ? 1 : 0.4f, 1);
+		}
+		break;
+	}
+	lgfx_set_dim(1);
+}
+
+// Scroll position per list, so the focused row stays in view.
+std::map<MenuList *, int> scroll;
+
+void draw_list(MenuList *list, float x, float y, float w, float bottom, bool active)
+{
+	std::shared_lock<std::shared_mutex> lock(BHView::lock(list));
+	auto &items = BHView::items(list);
+	int n = items.size(), sel = active ? BHView::selected(list) : -1;
+	const float rh = 48, gap = 6;
+	// leave room under the rows for the focused row's description
+	int visible = (int)((bottom - y - 64) / (rh + gap));
+	if (visible < 1)
+		visible = 1;
+	int &top = scroll[list];
+	if (sel >= 0)
+	{
+		if (sel < top)
+			top = sel;
+		if (sel >= top + visible)
+			top = sel - visible + 1;
+	}
+	if (top > n - visible)
+		top = n - visible;
+	if (top < 0)
+		top = 0;
+	float yy = y;
+	for (int i = top; i < n && i < top + visible; i++, yy += rh + gap)
+		draw_row(items[i], x + 20, yy, w - 40, rh, i == sel, active);
+	if (top > 0)
+		text(LFONT_SMALL, "\xE2\x96\xB2", x + w * 0.5f, y - 26, 0.35f);
+	if (top + visible < n)
+		text(LFONT_SMALL, "\xE2\x96\xBC", x + w * 0.5f, yy - 6, 0.35f);
+	if (sel >= 0 && sel < n && !items[sel]->getDesc().empty())
+	{
+		LTex *d = ltex_text_wrapped(LFONT_SMALL, items[sel]->getDesc().c_str(), (int)w - 80, 2, 0);
+		if (d)
+		{
+			lgfx_draw_tex(d, x + 40, yy + 20, d->w, d->h, 0, 0.5f);
+			ltex_free(d);
+		}
+	}
+}
+
+void draw_summary(const Section *s, float x, float y, float w, float h)
+{
+	update_radio();
+	bool wifi = !strcmp(s->slug, "network");
+	float is = 150, ix = x + (w - is) * 0.5f, iy = y + 110;
+	lgfx_draw_shadow(ix, iy, is, is, 12, 0.5f);
+	if (LTex *ic = icon(s->slug, 150))
+		lgfx_draw_tex(ic, ix, iy, is, is, 0, 1);
+	float ty = iy + is + 28;
+	LTex *t = text_tex(LFONT_TITLE, s->shown);
+	if (t)
+	{
+		lgfx_draw_tex(t, x + (w - t->w) * 0.5f, ty, t->w, t->h, 0, 1);
+		ty += t->h + 10;
+	}
+	t = text_tex(LFONT_BODY, wifi ? radio.wifi : radio.bt);
+	if (t)
+	{
+		lgfx_draw_tex(t, x + (w - t->w) * 0.5f, ty, t->w, t->h, 0, 0.8f);
+		ty += t->h;
+	}
+	t = text_tex(LFONT_BODY, wifi ? "A   Choose a network" : "A   Open Bluetooth");
+	if (t)
+	{
+		float bw = t->w + 64, bh = 52, bx = x + (w - bw) * 0.5f, by = ty + 26;
+		lgfx_draw_fill(bx, by, bw, bh, bh * 0.5f, 1, 1, 1, 0.14f);
+		lgfx_draw_tex(t, bx + 32, by + (bh - t->h) * 0.5f, t->w, t->h, 0, 0.95f);
+	}
+}
+
+void draw_top_bar()
+{
+	text(LFONT_LABEL, "Settings", 48, 30, 0.55f);
+	time_t now = time(NULL);
+	struct tm tm;
+	localtime_r(&now, &tm);
+	char clock[16], pct[16];
+	strftime(clock, sizeof(clock), "%H:%M", &tm);
+	snprintf(pct, sizeof(pct), "%d%%", PWR_getBattery());
+	text(LFONT_LABEL, pct, W - 48, 30, 0.8f, 1);
+	text(LFONT_LABEL, clock, W - 48 - text_w(LFONT_LABEL, pct) - 28, 30, 0.8f, 1);
+}
+
+// The wallpaper behind Settings: blurred once, then darkened every frame.
+void make_backdrop()
+{
+	char path[512];
+	snprintf(path, sizeof(path), "%s/bg.png", SDCARD_PATH);
+	LTex *wall = ltex_load(path, 0);
+	if (!wall)
+	{
+		snprintf(path, sizeof(path), "%s/wallpapers/bloom.jpg", BH_DIR);
+		wall = ltex_load(path, 0);
+	}
+	lgfx_begin_snapshot();
+	if (wall)
+		lgfx_draw_wallpaper(wall, 0, 0);
+	else
+	{
+		const float top[4] = {0.20f, 0.17f, 0.36f, 1}, bottom[4] = {0.10f, 0.12f, 0.22f, 1};
+		lgfx_draw_gradient(0, 0, W, H, 0, top, bottom);
+	}
+	lgfx_end_snapshot();
+	ltex_free(wall);
+}
+
+// Development aid, as in the launcher: BH_DEBUG_KEYS="D D a S" presses Down, Down, A, then saves a
+// screenshot to $BH_DEBUG_SHOT-<n>.bmp. One step every 0.6 s, from an SDL timer so the script
+// keeps going while NextUI's own code draws a page. Unused on the device.
+std::atomic<int> shots_wanted;
+
+Uint32 debug_tick(Uint32 interval, void *)
+{
+	static const char *keys = getenv("BH_DEBUG_KEYS");
+	static SDL_Keycode held;
+	if (held)
+	{
+		SDL_Event up = {};
+		up.type = SDL_KEYUP;
+		up.key.keysym.sym = held;
+		up.key.keysym.scancode = SDL_GetScancodeFromKey(held);
+		SDL_PushEvent(&up);
+		held = 0;
+		return interval;
+	}
+	while (*keys == ' ')
+		keys++;
+	if (!*keys)
+		return 0;
+	char k = *keys++;
+	SDL_Keycode code = k == 'R' ? SDLK_RIGHT : k == 'L' ? SDLK_LEFT : k == 'U' ? SDLK_UP : k == 'D' ? SDLK_DOWN
+	                 : k == 'a' ? SDLK_s : k == 'b' ? SDLK_a : 0;
+	if (code)
+	{
+		SDL_Event e = {};
+		e.type = SDL_KEYDOWN;
+		e.key.keysym.sym = code;
+		e.key.keysym.scancode = SDL_GetScancodeFromKey(code);
+		SDL_PushEvent(&e);
+		held = code;
+	}
+	else if (k == 'S')
+		shots_wanted++;
+	return interval;
+}
+
+void save_shot()
+{
+	static int shot;
+	int w, h;
+	SDL_GL_GetDrawableSize(SDL_GL_GetCurrentWindow(), &w, &h);
+	SDL_Surface *img = SDL_CreateRGBSurfaceWithFormat(0, w, h, 32, SDL_PIXELFORMAT_ABGR8888);
+	std::vector<Uint8> rgba(w * h * 4);
+	glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+	for (int y = 0; y < h; y++)
+		memcpy((Uint8 *)img->pixels + y * img->pitch, rgba.data() + (h - 1 - y) * w * 4, w * 4);
+	char path[512];
+	snprintf(path, sizeof(path), "%s-%d.bmp", getenv("BH_DEBUG_SHOT") ? getenv("BH_DEBUG_SHOT") : "/tmp/bh-settings", shot++);
+	SDL_SaveBMP(img, path);
+	SDL_FreeSurface(img);
+}
+
+} // namespace
+
+int bh_settings_frame(MenuList *root)
+{
+	static bool debugging;
+	if (!debugging && getenv("BH_DEBUG_KEYS"))
+	{
+		debugging = true;
+		SDL_InitSubSystem(SDL_INIT_TIMER);
+		SDL_AddTimer(300, debug_tick, nullptr);
+	}
+	if (!root || MenuList::isOverlayVisible())
+		return -1;
+
+	// Follow the open pages down from the sections list: chain[0] is the root, and each next
+	// list is the page opened from the focused item of the one before.
+	std::vector<MenuList *> chain = {root};
+	std::vector<std::string> titles;
+	while (true)
+	{
+		MenuList *l = chain.back();
+		std::shared_lock<std::shared_mutex> lock(BHView::lock(l));
+		auto &items = BHView::items(l);
+		int sel = BHView::selected(l);
+		if (sel < 0 || sel >= (int)items.size() || !items[sel]->isDeferred() || !items[sel]->getSubMenu())
+			break;
+		titles.push_back(items[sel]->getName());
+		chain.push_back(items[sel]->getSubMenu());
+	}
+	if (BHView::type(chain.back()) == MenuItemType::Custom)
+		return -1; // the keyboard, the colour picker and other custom pages
+
+	if (!ready)
+	{
+		lgfx_init(W, H);
+		make_backdrop();
+		ready = true;
+	}
+
+	lgfx_begin_frame();
+	lgfx_draw_snapshot(1);
+	lgfx_draw_fill(0, 0, W, H, 0, 0, 0, 0, 0.30f);
+	draw_top_bar();
+
+	// Sidebar: the sections, with a small gap between groups.
+	int depth = chain.size() - 1;
+	AbstractMenuItem *focused_section = nullptr;
+	{
+		std::shared_lock<std::shared_mutex> lock(BHView::lock(root));
+		auto &items = BHView::items(root);
+		int sel = BHView::selected(root);
+		float x = 40, w = 330, rh = 52, gap = 6, y = 84;
+		int last_group = -1;
+		for (int i = 0; i < (int)items.size(); i++)
+		{
+			const Section *s = section_of(items[i]->getName());
+			int group = s ? s->group : 9;
+			if (last_group >= 0 && group != last_group)
+				y += 14;
+			last_group = group;
+			bool focused = i == sel, open = depth > 0;
+			float fx = x, fw = w, fy = y, fh = rh;
+			if (focused && !open)
+			{
+				fx -= 8, fw += 16, fy -= 3, fh += 6;
+				lgfx_draw_shadow(fx, fy, fw, fh, 6, 0.32f);
+				lgfx_draw_fill(fx, fy, fw, fh, 14, 1, 1, 1, 0.96f);
+			}
+			else
+				lgfx_draw_fill(fx, fy, fw, fh, 14, 1, 1, 1, focused ? 0.22f : 0.07f);
+			if (s)
+				if (LTex *ic = icon(s->slug, 36))
+					lgfx_draw_tex(ic, fx + 14, fy + (fh - 36) * 0.5f, 36, 36, 0, open && !focused ? 0.5f : 1);
+			float ty = fy + (fh - 30) * 0.5f;
+			if (focused && !open)
+				lgfx_set_dim(0.1f);
+			text(LFONT_BODY, shown_name(items[i]->getName()), fx + (s ? 64 : 20), ty, open ? (focused ? 0.95f : 0.45f) : (focused ? 1 : 0.92f));
+			lgfx_set_dim(1);
+			if (focused)
+				focused_section = items[i];
+			y += rh + gap;
+		}
+	}
+
+	// Pane: the focused section, previewed, or the open page.
+	float px = 410, pw = W - px - 40, py = 84, pb = H - 70;
+	lgfx_draw_fill(px, py, pw, pb - py, 22, 0, 0, 0, 0.18f);
+	if (depth == 0)
+	{
+		const Section *s = focused_section ? section_of(focused_section->getName()) : nullptr;
+		MenuList *sub = focused_section ? focused_section->getSubMenu() : nullptr;
+		if (s && (!strcmp(s->slug, "network") || !strcmp(s->slug, "bluetooth")))
+			draw_summary(s, px, py, pw, pb - py);
+		else if (focused_section)
+		{
+			text(LFONT_TITLE, shown_name(focused_section->getName()), px + 28, py + 20, 1);
+			if (sub && BHView::type(sub) != MenuItemType::Custom)
+				draw_list(sub, px, py + 90, pw, pb, false);
+		}
+		text(LFONT_SMALL, "A or \xE2\x80\xBA  Open        B  Exit", 40, H - 40, 0.6f);
+	}
+	else
+	{
+		float ty = py + 20;
+		if (depth >= 2)
+		{
+			text(LFONT_BODY, "\xE2\x80\xB9  " + shown_name(titles[depth - 2]), px + 28, py + 18, 0.5f);
+			ty = py + 52;
+		}
+		text(LFONT_TITLE, shown_name(titles[depth - 1]), px + 28, ty, 1);
+		draw_list(chain.back(), px, ty + 70, pw, pb, true);
+		text(LFONT_SMALL, "A  Change        \xE2\x80\xB9 \xE2\x80\xBA  Adjust        B  Back", 40, H - 40, 0.6f);
+	}
+
+	if (shots_wanted > 0)
+	{
+		shots_wanted--;
+		save_shot();
+	}
+	lgfx_end_frame();
+	return debugging ? 1 : 0; // a debug script keeps frames coming for its screenshots
+}

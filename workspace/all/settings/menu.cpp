@@ -223,6 +223,12 @@ InputReactionHint MenuItem::handleInput(int &dirty)
                 on_set(getValue());
             dirty = 1;
         }
+        // Brick Hammer: on an item without values, Right opens it like A (once per press)
+        else if (submenu && on_confirm && PAD_justPressed(BTN_RIGHT))
+        {
+            hint = on_confirm(*this);
+            dirty = 1;
+        }
     }
     if (PAD_justRepeated(BTN_L1))
     {

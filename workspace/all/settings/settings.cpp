@@ -27,6 +27,7 @@ extern "C"
 #include "colorpickermenu.hpp"
 #include "palettemenu.hpp"
 #include "fnbuttonmenu.hpp"
+#include "bh_settings.hpp" // Brick Hammer
 
 #define BUSYBOX_STOCK_VERSION "1.27.2"
 
@@ -1202,7 +1203,10 @@ int main(int argc, char *argv[])
                 ctx.dirty = 1;
             had_bt = has_bt;
 
-            if (ctx.dirty)
+            int bh = ctx.dirty ? bh_settings_frame(ctx.menu) : -1; // Brick Hammer: GL kit frame
+            if (bh >= 0)
+                ctx.dirty = bh;
+            else if (ctx.dirty)
             {
                 GFX_clear(ctx.screen);
                 if(bgbmp) {
