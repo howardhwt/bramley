@@ -2,7 +2,7 @@
 
 An Apple TV style home screen for [NextUI](https://github.com/LoveRetro/NextUI) on the TrimUI Brick Hammer and Brick. It replaces only NextUI's launcher. Games, emulators, Settings and Paks stay stock. It is free and not for sale.
 
-**[Download the latest release](https://github.com/howardhwt/brick-hammer-launcher/releases)**. Version 0.1.0 is a pre-release, tested on one Brick Hammer with NextUI 6.15.0.
+**[Download the latest release](https://github.com/howardhwt/brick-hammer-launcher/releases)**. Version 0.1.1 is a pre-release, tested on one Brick Hammer with NextUI 6.15.0.
 
 | Home | Game library |
 |---|---|
@@ -17,7 +17,10 @@ The screenshots come from the desktop build with demo content. The games and alb
 - **Home screen.** A large Top Shelf shows the focused item: its art, its console, and buttons to play or resume a save. Below it are Continue Playing and Consoles rows, and Apps as a grid. The focused item lifts with a spring and a sweep of light, and the wallpaper shifts slightly as you move.
 - **Game library.** Each console opens a grid of box art. Games without art get a title card. L1 and R1 jump A to Z.
 - **Quick menu.** MENU opens a panel over a blurred, frozen copy of the screen, with Wi-Fi, Bluetooth, Settings, Sleep, Restart and Shut Down. Wi-Fi and Bluetooth switch in the background and show their status live.
-- **Music.** A Music app plays albums and audiobooks, with a bookmark and speed for each book. SELECT opens Now Playing from anywhere. Starting a game pauses the music, and SELECT resumes it afterwards.
+- **Music.** A Music app plays albums and audiobooks, with a bookmark and speed for each book. SELECT opens Now Playing from anywhere. Starting a game pauses the music, and SELECT resumes it afterwards. Music keeps playing when you stop touching the device.
+- **Lock screen.** While music plays, a short press of power turns the screen off and the music keeps going. Power again shows the lock screen, and power once more unlocks. Holding L3 and R3 for a second, or X in Now Playing, locks too. Holding power still turns the device off, and the music remembers where it was.
+- **Collections.** NextUI's collections appear as their own row, in your own order.
+- **Low battery.** A warning at 5 percent, and a clean power-off at 2 percent instead of the device dying.
 - **Chinese, Japanese and Korean names** are drawn with Source Han Sans from the device's own firmware.
 - **Safety net.** If the launcher fails to start twice in a row, stock NextUI opens instead, so a bad build never locks you out.
 
@@ -41,10 +44,13 @@ To remove it, open the Brick Hammer Launcher Pak again from Apps. The stock Next
 | Continue Playing | X | Resume the last manual save |
 | Game library | L1, R1 | Previous or next letter |
 | Music | L1, R1 | Switch between Albums and Audiobooks |
+| Music playing | Power (short press) | Lock the screen |
+| | L3 + R3 (hold 1 s) | Lock or unlock the screen |
 | Now Playing | A | Play or pause |
 | | L1, R1 | Previous or next track, or chapter in a book |
 | | Left, Right | Back or forward 10 seconds |
 | | Y | Play mode, or speed for a book |
+| | X | Lock the screen |
 
 ## Your card
 
@@ -67,10 +73,11 @@ Inter is included. To use a font you own, put its files in `Fonts/` at the card 
 
 ## Known limits
 
-- There is no Lock Screen, no Bluetooth headset buttons and no online album art yet.
+- There are no Bluetooth headset buttons and no online album art yet.
+- FN1 and FN2 shortcuts run when the button is released, since L3 and R3 together lock the screen.
+- While the screen is locked, NextUI's brightness shortcut can still turn the backlight on.
 - Settings still uses NextUI's stock look.
 - Save-state screenshots appear only for manual saves; NextUI does not take one for its automatic save.
-- In the Continue Playing row, tall box art is cropped to a wide card.
 - NextUI's simple mode is not supported yet.
 
 ## Building
