@@ -204,6 +204,23 @@ InputReactionHint MenuItem::handleInput(int &dirty)
         return hint;
     }
 
+    // Bramley: left and right adjust levels and settings with several options, never a switch (two
+    // values), so a stray press never turns something off; switches change with A. Left on a
+    // switch or any row with nothing to adjust goes back, as B does, and Right opens a row that
+    // leads to a page, as A does.
+    bool adjustable = values.size() > 2;
+    if (!adjustable && (PAD_justRepeated(BTN_LEFT) || PAD_justRepeated(BTN_L1) || PAD_justRepeated(BTN_R1)))
+        return Unhandled;
+    if (!adjustable && PAD_justRepeated(BTN_RIGHT))
+    {
+        if (submenu && on_confirm && PAD_justPressed(BTN_RIGHT))
+        {
+            dirty = 1;
+            return on_confirm(*this);
+        }
+        return NoOp;
+    }
+
     // handle our custom behavior and return true if the input was handled
     if (PAD_justRepeated(BTN_LEFT))
     {
@@ -222,12 +239,6 @@ InputReactionHint MenuItem::handleInput(int &dirty)
         {
             if (on_set)
                 on_set(getValue());
-            dirty = 1;
-        }
-        // Bramley: on an item without values, Right opens it like A (once per press)
-        else if (submenu && on_confirm && PAD_justPressed(BTN_RIGHT))
-        {
-            hint = on_confirm(*this);
             dirty = 1;
         }
     }
@@ -256,8 +267,8 @@ InputReactionHint MenuItem::handleInput(int &dirty)
         hint = NoOp; // not really, should check on_confirm
         if (on_confirm)
             hint = on_confirm(*this);
-        // Bramley: A flips an on/off setting, as tapping a switch does on iOS
-        else if (values.size() == 2 && nextValue() && on_set)
+        // Bramley: A flips a switch, or steps to the next option of any other setting that is not a level
+        else if (values.size() >= 2 && !bramley_is_level(labels) && nextValue() && on_set)
             on_set(getValue());
         dirty = 1;
     }
@@ -489,6 +500,11 @@ InputReactionHint MenuList::handleInput(int &dirty, int &quit)
         // do we even need this?
     }
     else if (PAD_justPressed(BTN_B))
+    {
+        quit = 1;
+        return NoOp;
+    }
+    else if (PAD_justPressed(BTN_LEFT) && this != bramley_settings_root()) // Bramley: Left goes back
     {
         quit = 1;
         return NoOp;

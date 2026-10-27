@@ -868,3 +868,13 @@ void bramley_switch_radio(std::atomic<int> &flag, bool on, std::function<void()>
 		radio.at = 0;
 	}).detach();
 }
+
+MenuList *bramley_settings_root()
+{
+	return last.root;
+}
+
+bool bramley_is_level(const std::vector<std::string> &labels)
+{
+	return is_level(labels);
+}

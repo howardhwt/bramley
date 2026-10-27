@@ -37,3 +37,10 @@ extern std::atomic<int> bramley_wifi_switching, bramley_bt_switching;
 // Runs work on a background thread with flag showing the direction. A press while a switch is
 // still running is ignored.
 void bramley_switch_radio(std::atomic<int> &flag, bool on, std::function<void()> work);
+
+// The sections list, once Settings has drawn a frame; Left does not leave it.
+MenuList *bramley_settings_root();
+
+// True for a level, such as volume or brightness: evenly spaced numbers, shown as a slider.
+// Only levels change with left and right.
+bool bramley_is_level(const std::vector<std::string> &labels);
