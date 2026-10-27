@@ -164,7 +164,8 @@ static LTex* load_wallpaper(void) {
 		LTex* tex = ltex_load(path, 0);
 		if (tex) return tex;
 	}
-	SDL_Surface* s = SDL_CreateRGBSurfaceWithFormat(0, 512, 384, 32, SDL_PIXELFORMAT_ABGR8888);
+	// Smooth colour fields, so a small image scaled up looks the same and takes a quarter of the time.
+	SDL_Surface* s = SDL_CreateRGBSurfaceWithFormat(0, 256, 192, 32, SDL_PIXELFORMAT_ABGR8888);
 	static const float blobs[3][5] = {
 		{ 0.20f, 0.15f, 0.30f, 0.20f, 0.55f },
 		{ 0.85f, 0.30f, 0.45f, 0.15f, 0.35f },
@@ -1622,31 +1623,45 @@ static void draw_frame(int show_setting) {
 	lgfx_end_frame();
 }
 
+static double now_ms(void) {
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
+}
+
 int main(int argc, char* argv[]) {
 	if (ldata_auto_resume()) return 0;
-	Uint32 t_start = SDL_GetTicks(), t_gfx = 0, t_music = 0, t_rows = 0;
+	// Startup cost, step by step, from a monotonic clock (SDL's starts only in GFX_init).
+	double t[10];
+	int nt = 0;
+	t[nt++] = now_ms();
 
 	LOG_info("Brick Hammer launcher\n");
 	InitSettings();
+	t[nt++] = now_ms();
 	GFX_init(MODE_MAIN);
+	t[nt++] = now_ms();
 	PAD_init();
 	VIB_init();
 	PWR_init();
 	if (!HAS_POWER_BUTTON) PWR_disableSleep();
+	t[nt++] = now_ms();
 	system("gametimectl.elf stop_all");
+	t[nt++] = now_ms();
 	GFX_setVsync(VSYNC_STRICT);
 	PWR_setCPUSpeed(CPU_SPEED_AUTO);
 	PAD_reset();
 
 	lgfx_init(SCREEN_W, SCREEN_H);
-	t_gfx = SDL_GetTicks();
+	t[nt++] = now_ms();
 	lradio_start();
 	lmusic_init();
-	t_music = SDL_GetTicks();
+	t[nt++] = now_ms();
 	wallpaper = load_wallpaper();
+	t[nt++] = now_ms();
 
 	row_count = ldata_load_rows(rows, MAX_ROWS);
-	t_rows = SDL_GetTicks();
+	t[nt++] = now_ms();
 	layout_rows();
 	if (exists(GAME_SWITCHER_PERSIST_PATH)) {
 		// The in-game switcher brings the player to Continue Playing, which is row 0 when it exists.
@@ -1899,8 +1914,10 @@ int main(int argc, char* argv[]) {
 			static int first_frame = 1;
 			if (first_frame) {
 				// Startup cost, step by step: the launcher runs again after every game and Pak.
-				LOG_info("launcher startup: graphics %u ms, music %u ms, rows %u ms, first frame at %u ms\n",
-				         t_gfx - t_start, t_music - t_gfx, t_rows - t_music, SDL_GetTicks() - t_start);
+				LOG_info("launcher startup: settings %.0f, GFX_init %.0f, input+power %.0f, gametimectl %.0f, "
+				         "lgfx_init %.0f, music %.0f, wallpaper %.0f, rows %.0f, first frame at %.0f ms\n",
+				         t[1] - t[0], t[2] - t[1], t[3] - t[2], t[4] - t[3], t[5] - t[4], t[6] - t[5], t[7] - t[6],
+				         t[8] - t[7], now_ms() - t[0]);
 				first_frame = 0;
 			}
 			dirty = 0;

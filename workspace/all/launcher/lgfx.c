@@ -1,6 +1,8 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <math.h>
+#include <time.h>
+#include <sys/stat.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -175,11 +177,80 @@ static GLuint compile(GLenum type, const char* a, const char* b) {
 	return s;
 }
 
+// Compiled programs are cached on the card on GLES (the device), where compiling the five of
+// them took about 120 ms of every launcher start. A cache file is named by a hash of the driver
+// and the shader sources, so a changed shader or a firmware update compiles afresh.
+#define SHADER_CACHE_DIR SHARED_USERDATA_PATH "/.launcher/shaders"
+
+static unsigned long long fnv(unsigned long long h, const char* s) {
+	for (; s && *s; s++) h = (h ^ (unsigned char)*s) * 1099511628211ull;
+	return h;
+}
+
+static void cache_path(const char* fs_a, const char* fs_b, char* out, size_t size) {
+	unsigned long long h = 14695981039346656037ull;
+	h = fnv(h, (const char*)glGetString(GL_RENDERER));
+	h = fnv(h, (const char*)glGetString(GL_VERSION));
+	h = fnv(h, shader_header(GL_VERTEX_SHADER));
+	h = fnv(h, shader_header(GL_FRAGMENT_SHADER));
+	h = fnv(h, vs_src);
+	h = fnv(h, fs_a);
+	h = fnv(h, fs_b);
+	snprintf(out, size, "%s/%016llx.bin", SHADER_CACHE_DIR, h);
+}
+
+static int load_cached(GLuint p, const char* path) {
+	FILE* f = fopen(path, "rb");
+	if (!f) return 0;
+	GLenum format = 0;
+	int ok = 0;
+	if (fread(&format, sizeof(format), 1, f) == 1) {
+		fseek(f, 0, SEEK_END);
+		long len = ftell(f) - (long)sizeof(format);
+		fseek(f, sizeof(format), SEEK_SET);
+		void* data = len > 0 ? malloc(len) : NULL;
+		if (data && fread(data, 1, len, f) == (size_t)len) {
+			glProgramBinary(p, format, data, (GLsizei)len);
+			GLint linked = 0;
+			glGetProgramiv(p, GL_LINK_STATUS, &linked);
+			ok = linked;
+		}
+		free(data);
+	}
+	fclose(f);
+	return ok;
+}
+
+static void save_cached(GLuint p, const char* path) {
+	GLint len = 0;
+	glGetProgramiv(p, GL_PROGRAM_BINARY_LENGTH, &len);
+	if (len <= 0) return;
+	void* data = malloc(len);
+	GLenum format = 0;
+	glGetProgramBinary(p, len, NULL, &format, data);
+	mkdir(SHARED_USERDATA_PATH "/.launcher", 0755);
+	mkdir(SHADER_CACHE_DIR, 0755);
+	FILE* f = fopen(path, "wb");
+	if (f) {
+		fwrite(&format, sizeof(format), 1, f);
+		fwrite(data, 1, len, f);
+		fclose(f);
+	}
+	free(data);
+}
+
 static GLuint program(const char* fs_a, const char* fs_b) {
 	GLuint p = glCreateProgram();
 	GLint ok;
-	char msg[1024];
+	char msg[1024], path[256];
 
+	if (glsl_es) {
+		cache_path(fs_a, fs_b, path, sizeof(path));
+		if (load_cached(p, path)) return p;
+		glDeleteProgram(p);
+		p = glCreateProgram(); // a failed glProgramBinary leaves the program unusable
+		glProgramParameteri(p, GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE);
+	}
 	glAttachShader(p, compile(GL_VERTEX_SHADER, vs_src, NULL));
 	glAttachShader(p, compile(GL_FRAGMENT_SHADER, fs_a, fs_b));
 	glBindAttribLocation(p, 0, "a_pos");
@@ -188,7 +259,8 @@ static GLuint program(const char* fs_a, const char* fs_b) {
 	if (!ok) {
 		glGetProgramInfoLog(p, sizeof(msg), NULL, msg);
 		LOG_error("launcher program link failed: %s\n", msg);
-	}
+	} else if (glsl_es)
+		save_cached(p, path);
 	return p;
 }
 
@@ -437,6 +509,9 @@ void lgfx_init(int w, int h) {
 		fb_h = h;
 	}
 
+	struct timespec ts;
+#define LGFX_MS() (clock_gettime(CLOCK_MONOTONIC, &ts), ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6)
+	double t0 = LGFX_MS();
 	detect_glsl();
 	p_tex = program(fs_sdf, fs_tex);
 	p_fill = program(fs_sdf, fs_fill);
@@ -452,7 +527,9 @@ void lgfx_init(int w, int h) {
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
 
+	double t1 = LGFX_MS();
 	shadow = make_shadow();
+	double t2 = LGFX_MS();
 
 	// Snapshot blur targets at framebuffer size, and one blur now so the driver prepares them
 	// before the first panel opens (the first use took 32 ms on the Brick in spikes/home).
@@ -468,6 +545,7 @@ void lgfx_init(int w, int h) {
 	lgfx_end_snapshot();
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glFinish();
+	double t3 = LGFX_MS();
 
 	if (!TTF_WasInit()) TTF_Init();
 	static const struct { const char* file; int size; } spec[LFONT_COUNT] = {
@@ -479,6 +557,9 @@ void lgfx_init(int w, int h) {
 		font_sizes[i] = spec[i].size;
 		fonts[i] = open_font(spec[i].file, spec[i].size);
 	}
+	LOG_info("lgfx_init: shaders %.0f, shadow %.0f, blur targets %.0f, fonts %.0f ms\n", t1 - t0, t2 - t1, t3 - t2,
+	         LGFX_MS() - t3);
+#undef LGFX_MS
 }
 
 void lgfx_quit(void) {
