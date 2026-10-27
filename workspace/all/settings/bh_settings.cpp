@@ -228,7 +228,7 @@ Value value_of(AbstractMenuItem *item)
 {
 	Value v = {K_NONE, "", 0, false, 0};
 	std::vector<std::any> values = item->getValues();
-	if (values.empty() || item->getType() == ListItemType::Button)
+	if (values.empty() || item->getType() == ListItemType::Button || item->getType() == ListItemType::Custom)
 		return v;
 	v.label = item->getLabel();
 	std::vector<std::string> labels = item->getLabels();
@@ -258,7 +258,7 @@ Value value_of(AbstractMenuItem *item)
 		v.kind = K_SLIDER;
 		return v;
 	}
-	v.kind = v.label.empty() ? K_NONE : K_TEXT;
+	v.kind = v.label.empty() || item->getType() == ListItemType::Custom ? K_NONE : K_TEXT;
 	return v;
 }
 
@@ -503,24 +503,12 @@ void save_shot()
 	SDL_FreeSurface(img);
 }
 
-} // namespace
-
-int bh_settings_frame(MenuList *root)
+// The pages open below the sections list: chain[0] is the root, and each next list is the page
+// opened from the focused item of the one before. titles[i] names the page chain[i + 1].
+void open_chain(MenuList *root, std::vector<MenuList *> &chain, std::vector<std::string> &titles)
 {
-	static bool debugging;
-	if (!debugging && getenv("BH_DEBUG_KEYS"))
-	{
-		debugging = true;
-		SDL_InitSubSystem(SDL_INIT_TIMER);
-		SDL_AddTimer(300, debug_tick, nullptr);
-	}
-	if (!root || MenuList::isOverlayVisible())
-		return -1;
-
-	// Follow the open pages down from the sections list: chain[0] is the root, and each next
-	// list is the page opened from the focused item of the one before.
-	std::vector<MenuList *> chain = {root};
-	std::vector<std::string> titles;
+	chain = {root};
+	titles.clear();
 	while (true)
 	{
 		MenuList *l = chain.back();
@@ -532,21 +520,10 @@ int bh_settings_frame(MenuList *root)
 		titles.push_back(items[sel]->getName());
 		chain.push_back(items[sel]->getSubMenu());
 	}
-	if (BHView::type(chain.back()) == MenuItemType::Custom)
-		return -1; // the keyboard, the colour picker and other custom pages
+}
 
-	static int frames;
-	double t0 = frames < 2 ? since_start() : 0;
-	if (!ready)
-	{
-		lgfx_init(W, H);
-		double t1 = since_start();
-		make_backdrop();
-		LOG_info("bh_settings: first call at %.0f ms, lgfx %.0f ms, backdrop %.0f ms\n", t0, t1 - t0, since_start() - t1);
-		ready = true;
-	}
-
-	lgfx_begin_frame();
+void draw_scene(MenuList *root, const std::vector<MenuList *> &chain, const std::vector<std::string> &titles)
+{
 	if (backdrop)
 		lgfx_draw_tex(backdrop, 0, 0, W, H, 0, 1);
 	else
@@ -624,6 +601,94 @@ int bh_settings_frame(MenuList *root)
 		text(LFONT_SMALL, "A  Change        \xE2\x80\xB9 \xE2\x80\xBA  Adjust        B  Back", 40, H - 40, 0.6f);
 	}
 
+}
+
+// An overlay message from NextUI ("Enabling WiFi...", "Connecting..."), drawn over the page.
+std::string overlay_text;
+int overlay_mode;
+
+void draw_overlay()
+{
+	lgfx_draw_fill(0, 0, W, H, 0, 0, 0, 0, 0.45f);
+	LTex *t = ltex_text_wrapped(LFONT_BODY, overlay_text.c_str(), 440, 6, 1);
+	float cw = 520, ch = (t ? t->h : 30) + 80 + (overlay_mode ? 50 : 0), cx = (W - cw) * 0.5f, cy = (H - ch) * 0.5f;
+	lgfx_draw_shadow(cx, cy, cw, ch, 14, 0.5f);
+	lgfx_draw_fill(cx, cy, cw, ch, 24, 0.13f, 0.13f, 0.17f, 0.96f);
+	if (t)
+	{
+		lgfx_draw_tex(t, cx + (cw - t->w) * 0.5f, cy + 40, t->w, t->h, 0, 0.95f);
+		ltex_free(t);
+	}
+	if (overlay_mode)
+	{
+		const char *hint = overlay_mode == (int)OverlayDismissMode::DismissOnA ? "A  OK" : "B  Close";
+		LTex *h = text_tex(LFONT_LABEL, hint);
+		if (h)
+			lgfx_draw_tex(h, cx + (cw - h->w) * 0.5f, cy + ch - 56, h->w, h->h, 0, 0.7f);
+	}
+}
+
+MenuList *last_root;
+bool last_was_ours;
+SDL_threadID main_thread;
+
+} // namespace
+
+bool bh_settings_overlay(const std::string &message, int mode)
+{
+	overlay_text = message;
+	overlay_mode = mode;
+	// NextUI shows these right before blocking (switching Wi-Fi can take seconds), so draw now.
+	if (!ready || !last_was_ours || !last_root || SDL_ThreadID() != main_thread)
+		return ready && last_was_ours; // the next frame shows it
+	std::vector<MenuList *> chain;
+	std::vector<std::string> titles;
+	open_chain(last_root, chain, titles);
+	lgfx_begin_frame();
+	draw_scene(last_root, chain, titles);
+	draw_overlay();
+	lgfx_end_frame();
+	return true;
+}
+
+int bh_settings_frame(MenuList *root)
+{
+	static bool debugging;
+	if (!debugging && getenv("BH_DEBUG_KEYS"))
+	{
+		debugging = true;
+		SDL_InitSubSystem(SDL_INIT_TIMER);
+		SDL_AddTimer(300, debug_tick, nullptr);
+	}
+	if (!root)
+		return -1;
+	std::vector<MenuList *> chain;
+	std::vector<std::string> titles;
+	open_chain(root, chain, titles);
+	if (BHView::type(chain.back()) == MenuItemType::Custom)
+	{
+		last_was_ours = false;
+		return -1; // the keyboard, the colour picker and other custom pages
+	}
+
+	static int frames;
+	double t0 = frames < 2 ? since_start() : 0;
+	if (!ready)
+	{
+		lgfx_init(W, H);
+		double t1 = since_start();
+		make_backdrop();
+		LOG_info("bh_settings: first call at %.0f ms, lgfx %.0f ms, backdrop %.0f ms\n", t0, t1 - t0, since_start() - t1);
+		main_thread = SDL_ThreadID();
+		ready = true;
+	}
+	last_root = root;
+	last_was_ours = true;
+
+	lgfx_begin_frame();
+	draw_scene(root, chain, titles);
+	if (MenuList::isOverlayVisible())
+		draw_overlay();
 	if (shots_wanted > 0)
 	{
 		shots_wanted--;

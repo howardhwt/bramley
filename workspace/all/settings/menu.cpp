@@ -1,4 +1,5 @@
 #include "menu.hpp"
+#include "bh_settings.hpp" // Brick Hammer
 
 extern "C"
 {
@@ -916,6 +917,9 @@ void MenuList::showOverlay(const std::string& message, OverlayDismissMode dismis
         overlayDismissMode = dismissMode;
     }
     
+    if (bh_settings_overlay(message, (int)dismissMode)) // Brick Hammer: drawn with the GL kit
+        return;
+
     // We want to force a draw right now since usually we are about to block
     WriteLock w(overlayLock);
     if (overlaySurface) {
