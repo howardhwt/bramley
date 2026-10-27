@@ -1,7 +1,7 @@
 // Mockup of NextUI's System settings page in two styles, for choosing how to reskin Settings.
 // Style 1 draws with the launcher's GL kit (lgfx); style 2 imitates a tidied version of NextUI's
 // current flat drawing. The rows are NextUI's real System settings with example values.
-//   DYLD_LIBRARY_PATH=/var/tmp/nextui/lib SDL_RENDER_VSYNC=0 ./build/mock out-prefix
+//   DYLD_LIBRARY_PATH=/var/tmp/nextui/lib SDL_RENDER_VSYNC=0 ./build/mock out-prefix [icon-dir]
 #include <msettings.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,6 +46,13 @@ static void text(int font, const char* s, float x, float y, float alpha, int rig
 // Style 1: tvOS Settings. A large card for the section on the left, rounded rows on the right,
 // the focused row lifted on a white card with dark text, all over the blurred wallpaper.
 static int tvos_controls; // draw switches and a slider instead of On/Off and 70%
+static const char* icon_dir; // pre-rendered Settings icons (argv[2]); none draws the old glyph
+
+static LTex* icon(const char* name, int size) {
+	char path[512];
+	snprintf(path, sizeof(path), "%s/%s-%d.png", icon_dir, name, size);
+	return ltex_load(path, 0);
+}
 static int is_toggle(const char* v);
 static void draw_switch(float x, float y, int on, int dark);
 
@@ -60,13 +67,19 @@ static void style_tvos(void) {
 	// Section card
 	float cx = 56, cy = 150, cs = 300;
 	lgfx_draw_shadow(cx, cy, cs, cs, 14, 0.6f);
-	const float ct[4] = { 0.55f, 0.58f, 0.66f, 1 }, cb[4] = { 0.30f, 0.32f, 0.40f, 1 };
-	lgfx_draw_gradient(cx, cy, cs, cs, 40, ct, cb);
-	// A simple drawn glyph: three slider lines, since no Apple symbols ship.
-	for (int i = 0; i < 3; i++) {
-		float ly = cy + 100 + i * 50;
-		lgfx_draw_fill(cx + 70, ly, 160, 8, 4, 1, 1, 1, 0.85f);
-		lgfx_draw_fill(cx + 90 + i * 45, ly - 12, 32, 32, 16, 1, 1, 1, 1);
+	LTex* ic = icon_dir ? icon("system", 300) : NULL;
+	if (ic) {
+		lgfx_draw_tex(ic, cx, cy, cs, cs, 0, 1);
+		ltex_free(ic);
+	} else {
+		const float ct[4] = { 0.55f, 0.58f, 0.66f, 1 }, cb[4] = { 0.30f, 0.32f, 0.40f, 1 };
+		lgfx_draw_gradient(cx, cy, cs, cs, 40, ct, cb);
+		// A simple drawn glyph: three slider lines, since no Apple symbols ship.
+		for (int i = 0; i < 3; i++) {
+			float ly = cy + 100 + i * 50;
+			lgfx_draw_fill(cx + 70, ly, 160, 8, 4, 1, 1, 1, 0.85f);
+			lgfx_draw_fill(cx + 90 + i * 45, ly - 12, 32, 32, 16, 1, 1, 1, 1);
+		}
 	}
 	text(LFONT_HERO, "System", cx, cy + cs + 24, 1, 0);
 	text(LFONT_BODY, "Sound, sleep, clock and saves", cx, cy + cs + 84, 0.6f, 0);
@@ -194,6 +207,59 @@ static void style_variant(char variant) {
 	text(LFONT_SMALL, "A  Change     < >  Adjust     B  Back", rx, H - 40, 0.55f, 0);
 }
 
+// The top level of Settings: the focused section's icon large on the left, the sections as rows
+// with small icons on the right.
+static const char* sections[][2] = {
+	{ "Appearance", "appearance" }, { "Display", "display" },     { "System", "system" },
+	{ "Network", "network" },       { "Bluetooth", "bluetooth" }, { "In-Game", "in-game" },
+	{ "FN Switch", "fn-switch" },   { "Buttons", "buttons" },     { "Notifications", "notifications" },
+	{ "Achievements", "achievements" }, { "About", "about" },
+};
+#define SECTIONS (int)(sizeof(sections) / sizeof(sections[0]))
+
+static void style_sections(int focus) {
+	lgfx_begin_frame();
+	const float top[4] = { 0.20f, 0.17f, 0.36f, 1 }, bottom[4] = { 0.10f, 0.12f, 0.22f, 1 };
+	lgfx_draw_gradient(0, 0, W, H, 0, top, bottom);
+	text(LFONT_LABEL, "Settings", 56, 30, 0.55f, 0);
+	text(LFONT_LABEL, "12:47      100%", W - 56, 30, 0.8f, 1);
+
+	float cx = 56, cy = 150, cs = 300;
+	lgfx_draw_shadow(cx, cy, cs, cs, 14, 0.6f);
+	LTex* big = icon(sections[focus][1], 300);
+	if (big) {
+		lgfx_draw_tex(big, cx, cy, cs, cs, 0, 1);
+		ltex_free(big);
+	}
+	text(LFONT_HERO, sections[focus][0], cx, cy + cs + 24, 1, 0);
+	text(LFONT_BODY, "Wi-Fi and time sync", cx, cy + cs + 84, 0.6f, 0);
+
+	float rx = 400, rw = W - rx - 56, rh = 50, gap = 6, ry = 84;
+	for (int i = 0; i < SECTIONS; i++) {
+		float y = ry + i * (rh + gap), x = rx, w = rw, h = rh;
+		int focused = i == focus;
+		if (focused) {
+			x -= 8, w += 16, y -= 3, h += 6;
+			lgfx_draw_shadow(x, y, w, h, 6, 0.32f);
+			lgfx_draw_fill(x, y, w, h, 16, 1, 1, 1, 0.96f);
+		} else {
+			lgfx_draw_fill(x, y, w, h, 14, 1, 1, 1, 0.07f);
+		}
+		LTex* ic = icon(sections[i][1], 36);
+		if (ic) {
+			lgfx_draw_tex(ic, x + 14, y + (h - 36) * 0.5f, 36, 36, 0, 1);
+			ltex_free(ic);
+		}
+		float ty = y + (h - 30) * 0.5f;
+		if (focused) lgfx_set_dim(0.1f);
+		text(LFONT_BODY, sections[i][0], x + 64, ty, focused ? 1 : 0.92f, 0);
+		lgfx_set_dim(focused ? 0.35f : 1);
+		text(LFONT_BODY, "\xE2\x80\xBA", x + w - 26, ty, focused ? 1 : 0.45f, 1);
+		lgfx_set_dim(1);
+	}
+	text(LFONT_SMALL, "A  Open     B  Back", rx, H - 40, 0.55f, 0);
+}
+
 // Text in NextUI's own font, for the restyled version.
 static LTex* nextui_text(const char* s, int size) {
 	char path[256];
@@ -270,6 +336,19 @@ int main(int argc, char* argv[]) {
 	save(path);
 	SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
 	tvos_controls = 0;
+	if (argc > 2) {
+		icon_dir = argv[2];
+		tvos_controls = 1;
+		style_tvos();
+		snprintf(path, sizeof(path), "%s-1E.bmp", prefix);
+		save(path);
+		SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
+		tvos_controls = 0;
+		style_sections(3);
+		snprintf(path, sizeof(path), "%s-top.bmp", prefix);
+		save(path);
+		SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
+	}
 	const char variants[] = "ABC";
 	for (int i = 0; i < 3; i++) {
 		style_variant(variants[i]);
