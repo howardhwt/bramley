@@ -150,21 +150,49 @@ std::string shown_name(const std::string &name)
 struct Radio
 {
 	Uint32 at;
-	std::string wifi, bt;
-} radio;
+	std::string wifi, bt, ssid; // ssid: the network Wi-Fi is connected to, if any
+	bool wifi_busy;             // switching on, looking for networks or joining one
+	Uint32 wifi_on_at;          // when Wi-Fi was seen switching on
+	int wifi_seen;              // -1 before the first look, else whether Wi-Fi was on
+} radio = {0, "", "", "", false, 0, -1};
+
+// Networks in the Wi-Fi list at the last frame, or -1 when the Network page was not drawn.
+int wifi_networks = -1;
+// Set when a frame drew a spinner, so the next frame comes soon and it keeps turning.
+bool spinning;
 
 void update_radio()
 {
-	if (radio.at && SDL_GetTicks() - radio.at < 2000)
+	Uint32 now = SDL_GetTicks();
+	if (radio.at && now - radio.at < (radio.wifi_busy ? 500u : 2000u))
 		return;
-	radio.at = SDL_GetTicks();
-	if (!PLAT_wifiEnabled())
+	radio.at = now;
+	radio.ssid.clear();
+	bool on = PLAT_wifiEnabled();
+	if (radio.wifi_seen == 0 && on)
+		radio.wifi_on_at = now; // just switched on: give it time to find and join a network
+	radio.wifi_seen = on;
+	radio.wifi_busy = false;
+	if (!on)
 		radio.wifi = "Wi-Fi is off";
 	else
 	{
 		struct WIFI_connection c = {};
 		if (PLAT_wifiConnected() && PLAT_wifiConnection(&c) == 0 && c.valid && c.ssid[0])
+		{
+			radio.ssid = c.ssid;
 			radio.wifi = std::string("Connected to ") + c.ssid;
+		}
+		else if (wifi_networks == 0)
+		{
+			radio.wifi = "Looking for networks\xE2\x80\xA6";
+			radio.wifi_busy = true;
+		}
+		else if (radio.wifi_on_at && now - radio.wifi_on_at < 20000)
+		{
+			radio.wifi = "Connecting\xE2\x80\xA6";
+			radio.wifi_busy = true;
+		}
 		else
 			radio.wifi = "Not connected";
 	}
@@ -172,6 +200,19 @@ void update_radio()
 		radio.bt = "Bluetooth is off";
 	else
 		radio.bt = PLAT_btIsConnected() ? "Connected" : "On, nothing connected";
+}
+
+// A turning ring of dots, as iOS shows while it works.
+void draw_spinner(float cx, float cy, float r)
+{
+	int step = (SDL_GetTicks() / 90) % 8;
+	for (int i = 0; i < 8; i++)
+	{
+		float a = (float)i / 8 * 6.2832f, d = r * 0.22f;
+		float alpha = 0.15f + 0.85f * (float)((i - step + 8) % 8) / 7;
+		lgfx_draw_fill(cx + cosf(a) * r - d, cy + sinf(a) * r - d, d * 2, d * 2, d, 1, 1, 1, alpha);
+	}
+	spinning = true;
 }
 
 // Values: how a setting's current value is drawn.
@@ -285,6 +326,9 @@ void draw_slider(float right, float cy, float frac, bool focused)
 }
 
 // One setting row in the pane.
+// Set while the Network page is drawn, so the connected network's row says so.
+bool marking_wifi;
+
 void draw_row(AbstractMenuItem *item, float x, float y, float w, float h, bool focused, bool active)
 {
 	if (focused)
@@ -327,7 +371,16 @@ void draw_row(AbstractMenuItem *item, float x, float y, float w, float h, bool f
 		break;
 	}
 	case K_NONE:
-		if (item->getSubMenu())
+		if (marking_wifi && !radio.ssid.empty() && item->getName() == radio.ssid)
+		{
+			// the connected network: a green dot and "Connected", as iOS marks it
+			float tw = text_w(LFONT_BODY, "Connected");
+			lgfx_set_dim(focused ? 0.45f : 1);
+			text(LFONT_BODY, "Connected", right, ty, focused ? 1 : 0.7f, 1);
+			lgfx_set_dim(1);
+			lgfx_draw_fill(right - tw - 22, y + h * 0.5f - 6, 12, 12, 6, 0.20f, 0.78f, 0.35f, 1);
+		}
+		else if (item->getSubMenu())
 		{
 			lgfx_set_dim(focused ? 0.35f : 1);
 			text(LFONT_BODY, "\xE2\x80\xBA", right, ty, focused ? 1 : 0.4f, 1);
@@ -346,6 +399,8 @@ void draw_list(MenuList *list, float x, float y, float w, float bottom, bool act
 	auto &items = BramleyView::items(list);
 	int n = items.size(), sel = active ? BramleyView::selected(list) : -1;
 	const float rh = 48, gap = 6;
+	if (marking_wifi)
+		wifi_networks = n > 2 ? n - 2 : 0; // the first two rows are the Wi-Fi switches
 	// leave room under the rows for the focused row's description
 	int visible = (int)((bottom - y - 64) / (rh + gap));
 	if (visible < 1)
@@ -599,7 +654,33 @@ void draw_scene(MenuList *root, const std::vector<MenuList *> &chain, const std:
 			ty = py + 52;
 		}
 		text(LFONT_TITLE, shown_name(titles[depth - 1]), px + 28, ty, 1);
-		draw_list(chain.back(), px, ty + 70, pw, pb, true);
+		float rows = ty + 70;
+		bool network = depth == 1 && titles[0] == "Network";
+		if (depth == 1 && (network || titles[0] == "Bluetooth"))
+		{
+			// a live status line under the title, with a spinner while Wi-Fi is busy
+			update_radio();
+			float sx = px + 28;
+			if (network && radio.wifi_busy)
+			{
+				draw_spinner(sx + 9, ty + 53, 8);
+				sx += 28;
+			}
+			text(LFONT_SMALL, network ? radio.wifi : radio.bt, sx, ty + 42, 0.6f);
+			rows = ty + 84;
+		}
+		marking_wifi = network;
+		draw_list(chain.back(), px, rows, pw, pb, true);
+		marking_wifi = false;
+		if (network && radio.wifi_seen == 1 && wifi_networks == 0)
+		{
+			// the list is still empty while the radio looks: say so where the networks will appear
+			float y = rows + 2 * 54 + 16;
+			draw_spinner(px + 48 + 9, y + 15, 8);
+			text(LFONT_BODY, "Looking for networks\xE2\x80\xA6", px + 48 + 30, y, 0.55f);
+		}
+		if (!network)
+			wifi_networks = -1;
 		text(LFONT_SMALL, "A  Change        \xE2\x80\xB9 \xE2\x80\xBA  Adjust        B  Back", 40, H - 40, 0.6f);
 	}
 
@@ -707,6 +788,7 @@ int bramley_settings_frame(MenuList *root, SDL_Surface *screen, const SDL_Rect &
 	if (backdrop_stale)
 		make_backdrop(); // the wallpaper was changed in Appearance
 	last = {root, screen, list, title};
+	spinning = false;
 	draw_frame(last);
 	if (shots_wanted > 0)
 	{
@@ -717,7 +799,8 @@ int bramley_settings_frame(MenuList *root, SDL_Surface *screen, const SDL_Rect &
 	if (frames < 2)
 		LOG_info("bramley_settings: frame %d drawn in %.0f ms, at %.0f ms\n", frames, since_start() - t0, since_start());
 	frames++;
-	return debugging ? 1 : 0; // a debug script keeps frames coming for its screenshots
+	// a spinner, or a debug script waiting for screenshots, keeps frames coming
+	return debugging || spinning ? 1 : 0;
 }
 
 // Bramley's order for the sections, with small gaps between groups (see sections[] above).
