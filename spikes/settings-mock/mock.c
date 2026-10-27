@@ -45,6 +45,10 @@ static void text(int font, const char* s, float x, float y, float alpha, int rig
 
 // Style 1: tvOS Settings. A large card for the section on the left, rounded rows on the right,
 // the focused row lifted on a white card with dark text, all over the blurred wallpaper.
+static int tvos_controls; // draw switches and a slider instead of On/Off and 70%
+static int is_toggle(const char* v);
+static void draw_switch(float x, float y, int on, int dark);
+
 static void style_tvos(void) {
 	lgfx_begin_frame();
 	const float top[4] = { 0.20f, 0.17f, 0.36f, 1 }, bottom[4] = { 0.10f, 0.12f, 0.22f, 1 };
@@ -81,13 +85,24 @@ static void style_tvos(void) {
 			lgfx_draw_fill(x, y, w, h, 16, 1, 1, 1, 0.96f);
 			lgfx_set_dim(0.1f);
 			text(LFONT_BODY, rows[i][0], x + 26, y + 14, 1, 0);
-			lgfx_set_dim(0.45f);
-			text(LFONT_BODY, rows[i][1], x + w - 26, y + 14, 1, 1);
 			lgfx_set_dim(1);
 		} else {
 			lgfx_draw_fill(x, y, w, h, 14, 1, 1, 1, 0.07f);
 			text(LFONT_BODY, rows[i][0], x + 26, y + 13, 0.92f, 0);
-			text(LFONT_BODY, rows[i][1], x + w - 26, y + 13, 0.5f, 1);
+		}
+		const char* v = rows[i][1];
+		float vx = x + w - 26;
+		if (tvos_controls && is_toggle(v)) {
+			draw_switch(vx, y + (h - 34) * 0.5f, !strcmp(v, "On"), focused);
+		} else if (tvos_controls && !strcmp(rows[i][0], "Volume")) {
+			float sw = 220, sx = vx - sw, sy = y + h * 0.5f - 3;
+			lgfx_draw_fill(sx, sy, sw, 6, 3, focused ? 0 : 1, focused ? 0 : 1, focused ? 0 : 1, 0.2f);
+			lgfx_draw_fill(sx, sy, sw * 0.7f, 6, 3, focused ? 0.1f : 1, focused ? 0.1f : 1, focused ? 0.1f : 1, 0.95f);
+			lgfx_draw_fill(sx + sw * 0.7f - 12, sy - 9, 24, 24, 12, 1, 1, 1, 1);
+		} else {
+			lgfx_set_dim(focused ? 0.45f : 1);
+			text(LFONT_BODY, v, vx, y + (focused ? 14 : 13), focused ? 1 : 0.5f, 1);
+			lgfx_set_dim(1);
 		}
 	}
 	text(LFONT_SMALL, "A  Change     < >  Adjust     B  Back", rx, H - 40, 0.55f, 0);
@@ -249,6 +264,12 @@ int main(int argc, char* argv[]) {
 		save(path);
 		SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
 	}
+	tvos_controls = 1;
+	style_tvos();
+	snprintf(path, sizeof(path), "%s-1D.bmp", prefix);
+	save(path);
+	SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
+	tvos_controls = 0;
 	const char variants[] = "ABC";
 	for (int i = 0; i < 3; i++) {
 		style_variant(variants[i]);
