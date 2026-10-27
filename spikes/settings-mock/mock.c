@@ -361,6 +361,41 @@ static void alt_split(int focus) {
 		section_row(i, lx, ly + i * (rh + gap), lw, rh, i == focus, 1, 0);
 	float rx = 410, rw = W - rx - 40, y = 84;
 	lgfx_draw_fill(rx, y, rw, H - y - 70, 22, 0, 0, 0, 0.18f);
+	if (focus == 3 || focus == 4) {
+		// Network and Bluetooth build their lists from a scan, so the pane shows a summary and
+		// the scan starts only when the section is opened.
+		int wifi = focus == 3;
+		float is = 150, ix = rx + (rw - is) * 0.5f, iy = y + 110;
+		lgfx_draw_shadow(ix, iy, is, is, 12, 0.5f);
+		LTex* ic = icon(sections[focus][1], 300);
+		if (ic) {
+			lgfx_draw_tex(ic, ix, iy, is, is, 0, 1);
+			ltex_free(ic);
+		}
+		const char* lines[3] = { sections[focus][0], wifi ? "Connected to Home Wi-Fi" : "Bluetooth is off",
+								 wifi ? "Strong signal.  Clock set from the network." : "Turn it on to connect headphones or a controller." };
+		const int fonts[3] = { LFONT_TITLE, LFONT_BODY, LFONT_SMALL };
+		const float alphas[3] = { 1, 0.8f, 0.5f };
+		float ty = iy + is + 28;
+		for (int i = 0; i < 3; i++) {
+			LTex* t = ltex_text(fonts[i], lines[i], (int)rw - 60);
+			if (!t) continue;
+			lgfx_draw_tex(t, rx + (rw - t->w) * 0.5f, ty, t->w, t->h, 0, alphas[i]);
+			ty += t->h + (i ? 8 : 10);
+			ltex_free(t);
+		}
+		// the one action, as a button
+		const char* b = wifi ? "Choose a network" : "Turn on Bluetooth";
+		LTex* bt = ltex_text(LFONT_BODY, b, 0);
+		if (bt) {
+			float bw = bt->w + 64, bh = 52, bx = rx + (rw - bw) * 0.5f, by = ty + 26;
+			lgfx_draw_fill(bx, by, bw, bh, bh * 0.5f, 1, 1, 1, 0.14f);
+			lgfx_draw_tex(bt, bx + 32, by + (bh - bt->h) * 0.5f, bt->w, bt->h, 0, 0.95f);
+			ltex_free(bt);
+		}
+		text(LFONT_SMALL, wifi ? "A  Open Network     B  Back" : "A  Open Bluetooth     B  Back", lx, H - 40, 0.55f, 0);
+		return;
+	}
 	text(LFONT_TITLE, sections[focus][0], rx + 28, y + 20, 1, 0);
 	float r2h = 48;
 	for (int i = 0; i < 9; i++) {
@@ -463,11 +498,11 @@ int main(int argc, char* argv[]) {
 		snprintf(path, sizeof(path), "%s-top.bmp", prefix);
 		save(path);
 		SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
-		void (*alts[3])(int) = { alt_grouped, alt_grid, alt_split };
-		const int focus[3] = { 3, 3, 2 };
-		for (int i = 0; i < 3; i++) {
+		void (*alts[5])(int) = { alt_grouped, alt_grid, alt_split, alt_split, alt_split };
+		const int focus[5] = { 3, 3, 2, 3, 4 };
+		for (int i = 0; i < 5; i++) {
 			alts[i](focus[i]);
-			snprintf(path, sizeof(path), "%s-top%c.bmp", prefix, "ACD"[i]);
+			snprintf(path, sizeof(path), "%s-top%c.bmp", prefix, "ACDEF"[i]);
 			save(path);
 			SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
 		}
