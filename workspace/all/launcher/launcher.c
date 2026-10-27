@@ -83,7 +83,7 @@ static struct {
 
 // Development aid: LAUNCHER_DEBUG_KEYS="R R D S" presses Right, Right, Down, then saves a
 // screenshot. Lower case presses buttons on the desktop key map: a = A, b = B, x = X, y = Y,
-// l = L1, r = R1, m = MENU, s = SELECT.
+// l = L1, r = R1, m = MENU, s = SELECT. Upper case P presses POWER.
 // Upper case S saves a
 // screenshot to $LAUNCHER_DEBUG_SHOT-<n>.bmp. One step every 0.6 s. Unused on the device.
 static void debug_step(void) {
@@ -106,7 +106,7 @@ static void debug_step(void) {
 	char k = *keys ? *keys++ : 0;
 	SDL_Keycode code = k == 'R' ? SDLK_RIGHT : k == 'L' ? SDLK_LEFT : k == 'U' ? SDLK_UP : k == 'D' ? SDLK_DOWN
 	                 : k == 'a' ? SDLK_s : k == 'b' ? SDLK_a : k == 'x' ? SDLK_w : k == 'l' ? SDLK_TAB : k == 'r' ? SDLK_b : k == 'm' ? SDLK_SPACE
-	                 : k == 's' ? SDLK_BACKQUOTE : k == 'y' ? SDLK_q : 0;
+	                 : k == 's' ? SDLK_BACKQUOTE : k == 'y' ? SDLK_q : k == 'P' ? SDLK_BACKSPACE : 0;
 	if (code) {
 		SDL_Event e = { 0 };
 		e.type = SDL_KEYDOWN;
@@ -1058,8 +1058,8 @@ static int np_update(void) {
 		np.hints_book = lmusic_is_book();
 		ltex_free(np.hints);
 		np.hints = ltex_text(LFONT_SMALL,
-		                     np.hints_book ? "A  Play/Pause     L1 R1  Chapter     < >  10 s     Y  Speed     B  Close"
-		                                   : "A  Play/Pause     L1 R1  Track     < >  10 s     Y  Mode     B  Close",
+		                     np.hints_book ? "A  Play/Pause     L1 R1  Chapter     < >  10 s     Y  Speed     X  Lock     B  Close"
+		                                   : "A  Play/Pause     L1 R1  Track     < >  10 s     Y  Mode     X  Lock     B  Close",
 		                     0);
 	}
 	return changed;
@@ -1118,6 +1118,7 @@ static void draw_now_playing(void) {
 	if (np.next) lgfx_draw_tex(np.next, tx, row_y + 52, np.next->w, np.next->h, 0, 0.65f * a);
 	if (np.hints) lgfx_draw_tex(np.hints, (SCREEN_W - np.hints->w) * 0.5f, SCREEN_H - 46, np.hints->w, np.hints->h, 0, 0.6f * a);
 }
+
 
 // Three animated bars: shown next to the clock, and on the playing track, while music plays.
 static void draw_eq_bars(float x, float y, float h, float alpha) {
@@ -1352,6 +1353,211 @@ static void draw_setting_overlay(int show_setting) {
 	lgfx_draw_fill(bx, by, bw * fmaxf(0.0f, fminf(1.0f, level)), 8, 4, 1, 1, 1, 0.95f);
 }
 
+///////////////////////////////////////
+// Lock screen: music keeps playing with the screen off, safe in a pocket.
+//
+// While music plays, a short power press, holding L3 and R3 (FN1 and FN2) for a second, or X in
+// Now Playing turns the screen off; NextUI's sleep is held off meanwhile, because it would stop
+// the music. Dark, only power and the chord do anything: power shows the lock screen (clock,
+// cover, track, A to play or pause), and power again or the chord unlocks. A long power press
+// still powers off, after saving the music's place. The chord's arming (it locks once per hold,
+// and only after both keys were let go) is adapted from TortOS v1.6.0 src/main.c lock_chord,
+// MIT, Copyright (c) 2026 Eric Reinsmidt.
+
+#define LOCK_SHOWN_MS 8000
+#define LOCK_IDLE_SLEEP_MS 10000 // dark with no music: sleep properly after this
+
+enum { LOCK_NONE, LOCK_DARK, LOCK_SHOWN };
+static int lock_state, sleep_held, chord_armed = 1, just_woke;
+static Uint32 lock_shown_at, power_down_at, chord_since, lock_idle_since;
+static LTex* lock_clock;
+static LTex* lock_hint;
+static int lock_clock_minute = -1;
+
+// Holds NextUI's sleep and auto-sleep off while music plays or the screen is locked, and gives
+// them back otherwise.
+static void update_sleep_hold(void) {
+	int hold = lmusic_playing() || lock_state != LOCK_NONE;
+	if (hold == sleep_held) return;
+	sleep_held = hold;
+	if (hold) {
+		PWR_disableSleep();
+		PWR_disableAutosleep();
+	} else {
+		if (HAS_POWER_BUTTON) PWR_enableSleep();
+		PWR_enableAutosleep();
+	}
+}
+
+static void before_power_change(void) {
+	lmusic_save();
+}
+
+// NextUI slept (music had stopped); it lights the screen itself on wake.
+static void after_sleep(void) {
+	lock_state = LOCK_NONE;
+	just_woke = 1;
+	power_down_at = 0;
+}
+
+// While music plays the launcher handles the power button itself, before NextUI's PWR_update:
+// with sleep disabled, PWR_update keeps a short press pending and powers off a second later
+// (api.c, power_pressed_at is only cleared on sleep). So a short press returns 1 (lock), a press
+// held for a second saves the music's place and powers off as NextUI would, and the button is
+// then hidden from PWR_update. With no music, NextUI handles power as always.
+static int power_tap(void) {
+	if (!sleep_held) {
+		power_down_at = 0;
+		return 0;
+	}
+	Uint32 now = SDL_GetTicks();
+	int tap = 0;
+	if (PAD_justPressed(BTN_POWER)) power_down_at = now ? now : 1;
+	if (PAD_justReleased(BTN_POWER) && power_down_at) {
+		tap = now - power_down_at < 1000;
+		power_down_at = 0;
+	}
+	if (power_down_at && now - power_down_at >= 1000) {
+		lmusic_save();
+		system("gametimectl.elf stop_all");
+		PWR_powerOff(0);
+	}
+	pad.just_pressed &= ~BTN_POWER;
+	pad.just_released &= ~BTN_POWER;
+	pad.is_pressed &= ~BTN_POWER;
+	return tap;
+}
+
+static int lock_chord(void) {
+	int one = PAD_isPressed(BTN_FN1), two = PAD_isPressed(BTN_FN2);
+	if (!one && !two) chord_armed = 1;
+	if (!one || !two) {
+		chord_since = 0;
+		return 0;
+	}
+	if (!chord_since) chord_since = SDL_GetTicks();
+	if (!chord_armed || SDL_GetTicks() - chord_since < 1000) return 0;
+	chord_armed = 0;
+	return 1;
+}
+
+static void lock_go_dark(void) {
+	lock_idle_since = 0;
+	// One black frame, so the lock screen never lights up showing a stale picture.
+	lgfx_begin_frame();
+	lgfx_end_frame();
+	PLAT_enableBacklight(0);
+	lock_state = LOCK_DARK;
+	LOG_info("launcher lock: dark\n");
+}
+
+static void lock_now(void) {
+	if (!lmusic_playing()) return;
+	if (np.open) np.open = 0;
+	if (qm.open) free_quick_menu();
+	lock_go_dark();
+}
+
+static void lock_show(void) {
+	lock_state = LOCK_SHOWN;
+	lock_shown_at = SDL_GetTicks();
+	LOG_info("launcher lock: shown\n");
+	PLAT_enableBacklight(1);
+}
+
+static void unlock(void) {
+	if (lock_state == LOCK_DARK) PLAT_enableBacklight(1);
+	lock_state = LOCK_NONE;
+	PAD_reset();
+	LOG_info("launcher lock: unlocked\n");
+}
+
+static void draw_lock_screen(void) {
+	np_update();
+	time_t now = time(NULL);
+	struct tm tm;
+	localtime_r(&now, &tm);
+	if (tm.tm_hour * 60 + tm.tm_min != lock_clock_minute) {
+		lock_clock_minute = tm.tm_hour * 60 + tm.tm_min;
+		char text[16];
+		snprintf(text, sizeof(text), "%d:%02d", tm.tm_hour, tm.tm_min);
+		ltex_free(lock_clock);
+		lock_clock = ltex_text(LFONT_HERO, text, 0);
+	}
+	if (!lock_hint) lock_hint = ltex_text(LFONT_SMALL, "A  Play/Pause     L1 R1  Track     POWER  Unlock", 0);
+
+	lgfx_begin_frame();
+	lgfx_draw_wallpaper(wallpaper, 0, 0);
+	const float shade[4] = { 0, 0, 0, 0.6f };
+	lgfx_draw_gradient(0, 0, SCREEN_W, SCREEN_H, 0, shade, shade);
+	if (lock_clock) lgfx_draw_tex(lock_clock, (SCREEN_W - lock_clock->w) * 0.5f, 40, lock_clock->w, lock_clock->h, 0, 0.95f);
+
+	float size = 280, cx = (SCREEN_W - size) * 0.5f, cy = 128;
+	lgfx_draw_shadow(cx, cy, size, size, 14, 0.7f);
+	if (np.cover) lgfx_draw_tex(np.cover, cx, cy, size, size, 22, 1);
+	else {
+		Card fake = { .hue = album_hue(lmusic_album()) };
+		float top[4], bottom[4];
+		card_colors(&fake, top, bottom);
+		lgfx_draw_gradient(cx, cy, size, size, 22, top, bottom);
+	}
+	float y = cy + size + 26;
+	if (np.title) {
+		lgfx_draw_tex(np.title, (SCREEN_W - np.title->w) * 0.5f, y, np.title->w, np.title->h, 0, 1);
+		y += np.title->h + 4;
+	}
+	if (np.sub) {
+		lgfx_draw_tex(np.sub, (SCREEN_W - np.sub->w) * 0.5f, y, np.sub->w, np.sub->h, 0, 0.75f);
+		y += np.sub->h + 22;
+	}
+	float bar_w = 440, bx = (SCREEN_W - bar_w) * 0.5f;
+	float p = lmusic_len() > 0 ? fminf(1.0f, lmusic_at() / lmusic_len()) : 0;
+	lgfx_draw_fill(bx, y, bar_w, 6, 3, 1, 1, 1, 0.22f);
+	lgfx_draw_fill(bx, y, bar_w * p, 6, 3, 1, 1, 1, 0.95f);
+	if (!lmusic_playing()) {
+		// Paused: a play triangle under the progress bar.
+		for (int i = 0; i < 22; i++) lgfx_draw_fill(SCREEN_W * 0.5f - 8 + i, y + 24 + i * 0.59f, 1, 26 - i * 1.18f, 0, 1, 1, 1, 0.9f);
+	}
+	if (lock_hint) lgfx_draw_tex(lock_hint, (SCREEN_W - lock_hint->w) * 0.5f, SCREEN_H - 44, lock_hint->w, lock_hint->h, 0, 0.6f);
+	lgfx_end_frame();
+}
+
+// Input while locked. Returns 1 when the lock was lifted.
+static int lock_input(int tap) {
+	if (lock_chord()) {
+		unlock();
+		return 1;
+	}
+	if (lock_state == LOCK_DARK) {
+		if (tap) lock_show();
+		else if (lmusic_playing()) lock_idle_since = 0;
+		else if (!lock_idle_since) lock_idle_since = SDL_GetTicks();
+		else if (SDL_GetTicks() - lock_idle_since > LOCK_IDLE_SLEEP_MS) {
+			// The music ended or was paused in the pocket: sleep for real, so the battery lasts.
+			lock_idle_since = 0;
+			lmusic_save();
+			PLAT_enableBacklight(1);
+			lock_state = LOCK_NONE;
+			PWR_sleep();
+			after_sleep();
+			return 1;
+		}
+		return 0;
+	}
+	if (tap) {
+		unlock();
+		return 1;
+	}
+	int touched = 1;
+	if (PAD_justPressed(BTN_A)) lmusic_toggle();
+	else if (PAD_justRepeated(BTN_R1)) lmusic_next();
+	else if (PAD_justRepeated(BTN_L1)) lmusic_prev();
+	else touched = 0;
+	if (touched) lock_shown_at = SDL_GetTicks();
+	if (SDL_GetTicks() - lock_shown_at > LOCK_SHOWN_MS) lock_go_dark();
+	return 0;
+}
+
 static void draw_frame(int show_setting) {
 	lgfx_begin_frame();
 	if (np.open) draw_now_playing();
@@ -1412,7 +1618,14 @@ int main(int argc, char* argv[]) {
 		last = now;
 
 		PAD_poll();
-		PWR_update(&dirty, &show_setting, NULL, NULL);
+		int tap = power_tap();
+		PWR_update(&dirty, &show_setting, before_power_change, after_sleep);
+		update_sleep_hold();
+		if (just_woke) {
+			just_woke = 0;
+			tap = 0;
+			dirty = 1;
+		}
 
 		// Development: a new build is installed by creating this file, so the launcher exits cleanly
 		// and MinUI.pak's loop starts the new binary without killing the process.
@@ -1421,11 +1634,29 @@ int main(int argc, char* argv[]) {
 			break;
 		}
 
-		if (!show_setting) {
-			if (PAD_justPressed(BTN_FN1)) quit = ldata_run_fn_action(0);
-			else if (PAD_justPressed(BTN_FN2)) quit = ldata_run_fn_action(1);
-			else if (PAD_justPressed(BTN_FN3)) quit = ldata_run_fn_action(2);
+		if (lock_state != LOCK_NONE) {
+			lmusic_update();
+			if (lock_input(tap)) dirty = 1;
+			else {
+				if (lock_state == LOCK_SHOWN) draw_lock_screen();
+				else SDL_Delay(30);
+				debug_step();
+				continue;
+			}
 		}
+		if (lock_chord() || tap) lock_now();
+		if (lock_state != LOCK_NONE) continue;
+
+		// FN1 and FN2 run their shortcut on release, and not when they were held together as the
+		// lock chord.
+		static int fn_chorded;
+		if (PAD_isPressed(BTN_FN1) && PAD_isPressed(BTN_FN2)) fn_chorded = 1;
+		if (!show_setting && !fn_chorded) {
+			if (PAD_justReleased(BTN_FN1)) quit = ldata_run_fn_action(0);
+			else if (PAD_justReleased(BTN_FN2)) quit = ldata_run_fn_action(1);
+		}
+		if (!show_setting && PAD_justPressed(BTN_FN3)) quit = ldata_run_fn_action(2);
+		if (!PAD_isPressed(BTN_FN1) && !PAD_isPressed(BTN_FN2)) fn_chorded = 0;
 
 		if (np.open && !np.closing && !quit) {
 			if (PAD_justPressed(BTN_A)) lmusic_toggle();
@@ -1436,7 +1667,8 @@ int main(int argc, char* argv[]) {
 			else if (PAD_justPressed(BTN_Y)) {
 				if (lmusic_is_book()) lmusic_cycle_speed();
 				else lmusic_cycle_mode();
-			} else if (PAD_justPressed(BTN_B) || PAD_justPressed(BTN_SELECT)) np.closing = 1;
+			} else if (PAD_justPressed(BTN_X)) lock_now();
+			else if (PAD_justPressed(BTN_B) || PAD_justPressed(BTN_SELECT)) np.closing = 1;
 		} else if (np.open) {
 			// Closing: ignore input until Now Playing has slid away.
 		} else if (qm.open && !qm.closing && !quit) {

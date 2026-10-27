@@ -9,6 +9,8 @@
 
 void lmusic_init(void);
 void lmusic_quit(void);
+// Saves the queue, position and book bookmark now, as before a power-off.
+void lmusic_save(void);
 
 // Reads the daemon, moves the queue on when a track ends, and saves state now and then.
 // Returns 1 when anything shown on screen may have changed.

@@ -11,6 +11,8 @@ This fork of NextUI is licensed under PolyForm Noncommercial 1.0.0 (see `LICENSE
   - `spikes/muse/src/musectl.c` is vendored unchanged. The `muse` binary is downloaded from the TortOS release at build time and is not committed.
   - `workspace/all/launcher/tortos/muselib.c`, `muselib.h`, `musequeue.c` and `musequeue.h` are vendored unchanged as the launcher's music library scan and play order. `tortos/library.h` is our own shim that supplies the one define muselib.h needs.
   - The launcher talks to the Muse daemon over its socket protocol (`workspace/all/launcher/lmuse.c`, our own code).
+  - The lock screen's chord handling in `workspace/all/launcher/launcher.c` (`lock_chord`: lock once per hold, and only after both keys were released) is adapted from TortOS v1.6.0 `src/main.c`.
+  - TortOS v2.0.0 and later are GPL-3.0-or-later and are not used: GPL code cannot be combined with NextUI's PolyForm Noncommercial license.
 
 ```
 MIT License

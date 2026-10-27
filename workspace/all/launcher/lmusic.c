@@ -255,6 +255,11 @@ void lmusic_init(void) {
 	if (scanned) load_state();
 }
 
+void lmusic_save(void) {
+	save_bookmark();
+	save_state();
+}
+
 void lmusic_quit(void) {
 	save_bookmark();
 	save_state();
