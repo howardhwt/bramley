@@ -598,7 +598,7 @@ void lgfx_begin_frame(void) {
 	glClearColor(0, 0, 0, 1);
 	glClear(GL_COLOR_BUFFER_BIT);
 	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE); // frame alpha stays opaque
 }
 
 void lgfx_end_frame(void) {
@@ -745,6 +745,10 @@ static void draw_tex_uv(LTex* tex, float x, float y, float w, float h, float rad
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
+void lgfx_set_dim(float dim) {
+	tex_dim = dim;
+}
+
 void lgfx_draw_tex(LTex* tex, float x, float y, float w, float h, float radius, float alpha) {
 	if (!tex) return;
 	float tex_aspect = (float)tex->w / tex->h, rect_aspect = w / h;
@@ -828,11 +832,22 @@ void lgfx_draw_tex_fit(LTex* tex, float x, float y, float w, float h, float radi
 
 // Shadow under a card rect; lift moves it down and makes it larger and softer.
 void lgfx_draw_shadow(float x, float y, float w, float h, float lift, float alpha) {
-	float pad_x = w * (SHADOW_SIZE - SHADOW_INNER) / (2.0f * SHADOW_INNER);
-	float pad_y = h * (SHADOW_SIZE - SHADOW_INNER) / (2.0f * SHADOW_INNER);
+	// Nine-slice: the shadow image's corners keep their shape and only its middle stretches, so a
+	// long row or a tall panel gets the same soft edge as a card. The softness follows the
+	// shorter side.
+	float pad = fminf(w, h) * (SHADOW_SIZE - SHADOW_INNER) / (2.0f * SHADOW_INNER);
 	float grow = 1.0f + lift * 0.01f;
-	float sw = (w + 2 * pad_x) * grow, sh = (h + 2 * pad_y) * grow;
-	draw_tex_uv(shadow, x + w * 0.5f - sw * 0.5f, y + h * 0.5f - sh * 0.5f + 8 + lift, sw, sh, 0, alpha, 0, 0, 1, 1);
+	float sw = (w + 2 * pad) * grow, sh = (h + 2 * pad) * grow;
+	float sx = x + w * 0.5f - sw * 0.5f, sy = y + h * 0.5f - sh * 0.5f + 8 + lift;
+	float c = fminf(sw, sh) * 0.5f;
+	float xs[4] = { sx, sx + c, sx + sw - c, sx + sw }, ys[4] = { sy, sy + c, sy + sh - c, sy + sh };
+	static const float t[4] = { 0.0f, 0.499f, 0.501f, 1.0f };
+	for (int j = 0; j < 3; j++)
+		for (int i = 0; i < 3; i++) {
+			float qw = xs[i + 1] - xs[i], qh = ys[j + 1] - ys[j];
+			if (qw > 0.01f && qh > 0.01f)
+				draw_tex_uv(shadow, xs[i], ys[j], qw, qh, 0, alpha, t[i], t[j], t[i + 1] - t[i], t[j + 1] - t[j]);
+		}
 }
 
 // Wallpaper slightly larger than the screen, so parallax can shift it without showing edges.
@@ -855,7 +870,7 @@ void lgfx_begin_snapshot(void) {
 	glClearColor(0, 0, 0, 1);
 	glClear(GL_COLOR_BUFFER_BIT);
 	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE); // frame alpha stays opaque
 }
 
 static void blur_pass(GLuint prog, const Target* src, const Target* dst) {

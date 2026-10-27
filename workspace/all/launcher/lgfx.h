@@ -42,6 +42,8 @@ void lgfx_draw_shine(float x, float y, float w, float h, float radius, float t);
 void lgfx_draw_art(LTex* tex, float x, float y, float w, float h, float radius, float alpha);
 // Draws tex scaled to fit inside the rect without cropping.
 void lgfx_draw_tex_fit(LTex* tex, float x, float y, float w, float h, float radius, float alpha);
+// Darkens everything drawn with the texture calls until set back to 1; 0.1 turns white text near black.
+void lgfx_set_dim(float dim);
 void lgfx_draw_shadow(float x, float y, float w, float h, float lift, float alpha);
 void lgfx_draw_wallpaper(LTex* tex, float offset_x, float offset_y);
 
