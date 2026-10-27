@@ -38,7 +38,11 @@ def finish(img,blur=0,grain=0.012,name=''):
     a=np.asarray(im).astype(np.float32)/255
     a+=rng.normal(0,grain,a.shape[:2])[...,None]
     im=Image.fromarray((np.clip(a,0,1)*255).astype(np.uint8)).resize((W,H),Image.LANCZOS)
-    path=os.path.join(OUT,name+'.jpg'); im.save(path,quality=90,optimize=True); print(path); return im
+    path=os.path.join(OUT,name+'.jpg'); im.save(path,quality=90,optimize=True); print(path)
+    # a small, already blurred copy for backgrounds such as Settings, so the device skips the blur
+    small=im.filter(ImageFilter.GaussianBlur(24)).resize((256,192),Image.LANCZOS)
+    small.save(os.path.join(OUT,name+'-blur.jpg'),quality=90,optimize=True)
+    return im
 out={}
 # 1 Dusk hills: warm layered hills at sunset
 img=vgrad('#2b1d4f','#d9677a','#f4a46a')

@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <unistd.h>
 #include <atomic>
 #include <map>
 #include <mutex>
@@ -37,6 +38,33 @@ struct BHView
 
 namespace
 {
+
+// Milliseconds since this process started, for the startup log.
+double since_start()
+{
+	struct timespec ts;
+#ifdef CLOCK_BOOTTIME
+	clock_gettime(CLOCK_BOOTTIME, &ts);
+#else
+	return -1; // the desktop build has no /proc
+#endif
+	unsigned long long start = 0;
+	if (FILE *f = fopen("/proc/self/stat", "r"))
+	{
+		char buf[1024];
+		size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+		fclose(f);
+		buf[n] = 0;
+		char *p = strrchr(buf, ')');
+		for (int field = 2; p && field < 22; field++)
+			p = strchr(p + 1, ' ');
+		if (p)
+			start = strtoull(p + 1, nullptr, 10);
+	}
+	if (!start)
+		return -1;
+	return (ts.tv_sec + ts.tv_nsec / 1e9 - (double)start / sysconf(_SC_CLK_TCK)) * 1000;
+}
 
 bool ready;
 LTex *backdrop;
@@ -394,27 +422,29 @@ void draw_top_bar()
 	text(LFONT_LABEL, clock, W - 48 - text_w(LFONT_LABEL, pct) - 28, 30, 0.8f, 1);
 }
 
-// The wallpaper behind Settings: blurred once, then darkened every frame.
+// The wallpaper behind Settings, blurred. Our own wallpapers ship a small blurred copy, which
+// loads in a few milliseconds; a bg.png of the user's own is blurred once here.
 void make_backdrop()
 {
 	char path[512];
 	snprintf(path, sizeof(path), "%s/bg.png", SDCARD_PATH);
-	LTex *wall = ltex_load(path, 0);
-	if (!wall)
+	if (LTex *wall = ltex_load(path, 0))
 	{
-		snprintf(path, sizeof(path), "%s/wallpapers/bloom.jpg", BH_DIR);
-		wall = ltex_load(path, 0);
-	}
-	lgfx_begin_snapshot();
-	if (wall)
+		lgfx_begin_snapshot();
 		lgfx_draw_wallpaper(wall, 0, 0);
-	else
+		lgfx_end_snapshot();
+		ltex_free(wall);
+		return;
+	}
+	snprintf(path, sizeof(path), "%s/wallpapers/bloom-blur.jpg", BH_DIR);
+	backdrop = ltex_load(path, 0);
+	if (!backdrop)
 	{
+		lgfx_begin_snapshot();
 		const float top[4] = {0.20f, 0.17f, 0.36f, 1}, bottom[4] = {0.10f, 0.12f, 0.22f, 1};
 		lgfx_draw_gradient(0, 0, W, H, 0, top, bottom);
+		lgfx_end_snapshot();
 	}
-	lgfx_end_snapshot();
-	ltex_free(wall);
 }
 
 // Development aid, as in the launcher: BH_DEBUG_KEYS="D D a S" presses Down, Down, A, then saves a
@@ -505,15 +535,22 @@ int bh_settings_frame(MenuList *root)
 	if (BHView::type(chain.back()) == MenuItemType::Custom)
 		return -1; // the keyboard, the colour picker and other custom pages
 
+	static int frames;
+	double t0 = frames < 2 ? since_start() : 0;
 	if (!ready)
 	{
 		lgfx_init(W, H);
+		double t1 = since_start();
 		make_backdrop();
+		LOG_info("bh_settings: first call at %.0f ms, lgfx %.0f ms, backdrop %.0f ms\n", t0, t1 - t0, since_start() - t1);
 		ready = true;
 	}
 
 	lgfx_begin_frame();
-	lgfx_draw_snapshot(1);
+	if (backdrop)
+		lgfx_draw_tex(backdrop, 0, 0, W, H, 0, 1);
+	else
+		lgfx_draw_snapshot(1);
 	lgfx_draw_fill(0, 0, W, H, 0, 0, 0, 0, 0.30f);
 	draw_top_bar();
 
@@ -593,5 +630,8 @@ int bh_settings_frame(MenuList *root)
 		save_shot();
 	}
 	lgfx_end_frame();
+	if (frames < 2)
+		LOG_info("bh_settings: frame %d drawn in %.0f ms, at %.0f ms\n", frames, since_start() - t0, since_start());
+	frames++;
 	return debugging ? 1 : 0; // a debug script keeps frames coming for its screenshots
 }
