@@ -1,15 +1,18 @@
-# Brick Hammer launcher fork
+# Bramley
 
-An Apple-inspired launcher for NextUI on the TrimUI Brick Hammer (platform `tg5040`, same hardware as the TrimUI Brick). Public and free. The full design lives in the project TDD, section 12 ("Custom Launcher Fork"). This file holds the rules that matter while coding.
+Bramley is an Apple-inspired OS for the TrimUI Brick Hammer (platform `tg5040`, same hardware as the TrimUI Brick), forked from NextUI. It was called Brick Hammer Launcher until 2026-10-27. Public and free. The full design lives in the project TDD, section 12. This file holds the rules that matter while coding.
 
 ## Hard rules
 
-- **Change only the launcher.** Our launcher lives in `workspace/all/launcher/` and leaves upstream's `nextui.c` untouched, because the stock launcher ships alongside as the crash fallback (`nextui-wrapper.sh` is installed as `nextui.elf`). Other code we add goes in new files. From v0.2 we also touch the drawing layer of `workspace/all/settings/menu.cpp`. Agreed exceptions outside drawing: a single call to `bh_order_sections(mainItems)` in `settings.cpp`, just before the main `MenuList` is built, puts the Settings sections in our order, and a single call to `bh_add_appearance_items(appearanceItems)` adds the Wallpaper row to Appearance. Both functions live in our own file, and the ordering keeps sections it does not know. In `menu.cpp`, `MenuItem::handleInput` also lets Right open an item that has no values, as A does (a few marked lines). `settings.cpp` hands each frame to `bh_settings_frame()` (three marked lines plus an include), `menu.hpp` names `BHView` as a friend of `MenuList` and `AbstractMenuItem` so `bh_settings.cpp` can read them, and the Settings makefile builds `bh_settings.cpp` and the launcher's `lgfx.c`. Renames such as "Assignments" to "Buttons" happen in the drawing code only. Do not modify `minarch`, the cores, `btmanager`, Wi-Fi or Bluetooth logic, or other platforms. If a change elsewhere seems necessary, stop and ask.
-- **Track upstream.** `upstream` points at `LoveRetro/NextUI`. Rebase on each upstream release. Keep diffs outside our files as small as possible so rebases stay cheap.
-- **License.** NextUI is PolyForm Noncommercial 1.0.0. The fork is free only. Never add anything that sells, gates, or monetizes it.
+- **We own the code.** Since 2026-10-27 Bramley is its own OS, not a launcher on top of NextUI. Change any code freely, except these, which need Howard's approval first: power, battery and charging; Wi-Fi and Bluetooth drivers and system services; anything that could touch saves, save states or user files; and the emulator cores. Put new work in new files where natural, and mark edits to NextUI's files with a `Bramley:` comment, so upstream changes stay easy to bring over.
+- **Upstream.** We stopped rebasing on NextUI. The base is frozen at upstream commit `5291344b`, four commits after NextUI v6.15.0. `upstream` still points at `LoveRetro/NextUI`: at each NextUI release, review the changes and cherry-pick the ones worth having, such as core, emulator and device fixes.
+- **Releases.** Through v0.x Bramley installs as a Pak on top of NextUI and carries our launcher, Settings, emulator and shared code. At v1.0 it ships as a full card release with its own updater and first-boot setup.
+- **Crash fallback.** NextUI's stock launcher still ships as `nextui-stock.elf`, and `nextui-wrapper.sh` (installed as `nextui.elf`) falls back to it if our launcher crashes twice in a row on start.
+- **License.** NextUI is PolyForm Noncommercial 1.0.0, and so is Bramley. It is free only, and it credits NextUI. Never add anything that sells, gates, or monetizes it.
 - **Third-party code.** Muse code from TortOS (github.com/ericreinsmidt/TortOS) is MIT. Keep its SPDX headers and copyright lines, and list it in a `THIRD-PARTY-LICENSES.md`.
 - **No Apple assets in the repo.** No SF Pro, SF Symbols, or Apple icons. Inter is the bundled font. The launcher loads SF Pro only if the user places it in a fonts folder on their card.
 - **Device writes.** Never write to the SD card or device without saying which files and paths first.
+- **Outward actions.** Publishing releases, renaming or changing the GitHub repo, deleting, and force-pushing need Howard's OK each time.
 
 ## Design decisions (from TDD section 12)
 
@@ -18,7 +21,7 @@ An Apple-inspired launcher for NextUI on the TrimUI Brick Hammer (platform `tg50
 - Game library: a horizontal row of box art per console, a styled title card when art is missing, shoulder buttons jump A to Z.
 - Blur: live blur behind panels only if it holds 60 fps at 1024x768 on the device. Otherwise use a wallpaper blurred once at load.
 - Music: port the Muse playback daemon and library from TortOS, redraw its UI inside the launcher. SELECT opens Now Playing from anywhere in the launcher. Music pauses when a game launches and offers to resume on return. Bluetooth headset buttons are deferred.
-- v0.1: home rows, game library, launching games and Paks (stock Settings), music player. v0.2: Settings drawing reskin and a shared UI kit.
+- v0.1: home rows, game library, launching games and Paks (stock Settings), music player. v0.2: Settings redrawn as a split view with the shared UI kit (TDD 12.4.3), wallpapers, faster handoffs between programs, and the rename to Bramley.
 
 ## Build and test
 
@@ -32,7 +35,7 @@ An Apple-inspired launcher for NextUI on the TrimUI Brick Hammer (platform `tg50
   - Restart the launcher after a push with `adb shell touch /tmp/launcher_reload`. Never use `kill` or `killall` on `launcher.elf` or `nextui.elf`: SIGTERM becomes an SDL_QUIT event, and NextUI's `PAD_poll` answers that with `PWR_powerOff` (`workspace/all/common/api.c:3785`), which shuts the Brick down.
 - Test on the Mac first (desktop build, or an arm64 Linux container for device binaries) before anything goes to the device.
 - Measure GPU cost on the device with stress runs that repeat the work K times per frame. On the GE8300, swap interval 0 is ignored and glFinish waits for the display, so fps and glFinish timing alone cannot show headroom.
-- Spikes and experiments live in `spikes/`, never in the launcher source.
+- Spikes and experiments live in `spikes/`, never in the shipped source.
 
 ## Writing
 
