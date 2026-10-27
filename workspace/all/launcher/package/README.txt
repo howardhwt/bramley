@@ -24,7 +24,10 @@ Library:     L1 and R1 jump A to Z, B goes back.
 Anywhere:    MENU opens the quick menu (Wi-Fi, Bluetooth, Settings, Sleep, Restart, Shut Down).
              SELECT opens Now Playing.
 Now Playing: A play or pause, L1 and R1 track (chapter for books), left and right 10 seconds,
-             Y play mode (speed for books), B closes.
+             Y play mode (speed for books), X locks the screen, B closes.
+Lock screen: while music plays, a short power press turns the screen off and the music keeps
+             going. Power again shows the lock screen, and power once more unlocks. Holding L3
+             and R3 for a second also locks and unlocks. Holding power turns the device off.
 
 Music and audiobooks
 --------------------
@@ -32,6 +35,10 @@ Music/<Artist>/<Album>/<tracks>     or   Music/<Album>/<tracks>
 Audiobooks/<Author>/<Book>/<files>  or   Audiobooks/<Book>/<files>
 A cover.jpg or folder.jpg in the album folder is used as its cover; otherwise the picture inside
 the first track, if it has one. Starting a game pauses the music; SELECT resumes it afterwards.
+
+Collections
+-----------
+NextUI's Collections/<name>.txt files appear as a Collections row, in their own order.
 
 Box art and console icons
 -------------------------
