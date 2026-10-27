@@ -1558,6 +1558,52 @@ static int lock_input(int tap) {
 	return 0;
 }
 
+///////////////////////////////////////
+// Low battery. NextUI only blinks the LED, and the device dies abruptly when the battery runs
+// out. The launcher warns at 5 percent and at 2 percent saves the music's place and powers off
+// cleanly. A single low reading can be wrong, so power-off waits for two at least 5 s apart.
+
+#define LOW_BATTERY_WARN 5
+#define LOW_BATTERY_OFF 2
+
+static void check_battery(void) {
+	static Uint32 next_check, low_since;
+	static int warned;
+	Uint32 now = SDL_GetTicks();
+	if (now < next_check) return;
+	next_check = now + 5000;
+	int pct = PWR_getBattery(), charging = PWR_isCharging();
+	// Development: LAUNCHER_DEBUG_BATTERY=<percent> simulates a battery that is not charging.
+	const char* fake = getenv("LAUNCHER_DEBUG_BATTERY");
+	if (fake) {
+		pct = atoi(fake);
+		charging = 0;
+	}
+	if (charging || pct < 0) {
+		low_since = 0;
+		warned = 0;
+		return;
+	}
+	if (pct <= LOW_BATTERY_WARN && !warned) {
+		show_toast_for("Battery low  ·  plug in soon", 4);
+		warned = 1;
+	}
+	if (pct > LOW_BATTERY_OFF) {
+		low_since = 0;
+		return;
+	}
+	if (!low_since) {
+		low_since = now;
+		return;
+	}
+	if (now - low_since < 5000) return;
+	LOG_info("launcher: battery at %d%%, powering off\n", pct);
+	lmusic_save();
+	if (lock_state == LOCK_DARK) PLAT_enableBacklight(1); // so the power-off message is seen
+	system("gametimectl.elf stop_all");
+	PWR_powerOff(0);
+}
+
 static void draw_frame(int show_setting) {
 	lgfx_begin_frame();
 	if (np.open) draw_now_playing();
@@ -1621,6 +1667,7 @@ int main(int argc, char* argv[]) {
 		int tap = power_tap();
 		PWR_update(&dirty, &show_setting, before_power_change, after_sleep);
 		update_sleep_hold();
+		check_battery();
 		if (just_woke) {
 			just_woke = 0;
 			tap = 0;
