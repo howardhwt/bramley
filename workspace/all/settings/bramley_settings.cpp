@@ -21,6 +21,7 @@ extern "C"
 {
 #include "lgfx.h"
 #include "bramley.h"
+#include "lwallpaper.h"
 }
 
 #define W 1024
@@ -422,29 +423,30 @@ void draw_top_bar()
 	text(LFONT_LABEL, clock, W - 48 - text_w(LFONT_LABEL, pct) - 28, 30, 0.8f, 1);
 }
 
-// The wallpaper behind Settings, blurred. Our own wallpapers ship a small blurred copy, which
-// loads in a few milliseconds; a bg.png of the user's own is blurred once here.
+// The chosen wallpaper behind Settings, blurred. Bramley's own wallpapers ship a small blurred
+// copy, which loads in a few milliseconds; any other picture is blurred once here.
+bool backdrop_stale = true;
+
 void make_backdrop()
 {
-	char path[512];
-	snprintf(path, sizeof(path), "%s/bg.png", SDCARD_PATH);
-	if (LTex *wall = ltex_load(path, 0))
-	{
-		lgfx_begin_snapshot();
-		lgfx_draw_wallpaper(wall, 0, 0);
-		lgfx_end_snapshot();
-		ltex_free(wall);
+	ltex_free(backdrop);
+	backdrop = nullptr;
+	backdrop_stale = false;
+	Wallpaper w;
+	wallpaper_current(&w);
+	if (w.blur[0] && (backdrop = ltex_load(w.blur, 0)))
 		return;
-	}
-	snprintf(path, sizeof(path), "%s/wallpapers/bloom-blur.jpg", BRAMLEY_RES_DIR);
-	backdrop = ltex_load(path, 0);
-	if (!backdrop)
+	LTex *wall = w.path[0] ? ltex_load(w.path, 0) : nullptr;
+	lgfx_begin_snapshot();
+	if (wall)
+		lgfx_draw_wallpaper(wall, 0, 0);
+	else
 	{
-		lgfx_begin_snapshot();
 		const float top[4] = {0.20f, 0.17f, 0.36f, 1}, bottom[4] = {0.10f, 0.12f, 0.22f, 1};
 		lgfx_draw_gradient(0, 0, W, H, 0, top, bottom);
-		lgfx_end_snapshot();
 	}
+	lgfx_end_snapshot();
+	ltex_free(wall);
 }
 
 // Development aid, as in the launcher: BRAMLEY_DEBUG_KEYS="D D a S" presses Down, Down, A, then saves a
@@ -702,6 +704,8 @@ int bramley_settings_frame(MenuList *root, SDL_Surface *screen, const SDL_Rect &
 		main_thread = SDL_ThreadID();
 		ready = true;
 	}
+	if (backdrop_stale)
+		make_backdrop(); // the wallpaper was changed in Appearance
 	last = {root, screen, list, title};
 	draw_frame(last);
 	if (shots_wanted > 0)
@@ -714,4 +718,46 @@ int bramley_settings_frame(MenuList *root, SDL_Surface *screen, const SDL_Rect &
 		LOG_info("bramley_settings: frame %d drawn in %.0f ms, at %.0f ms\n", frames, since_start() - t0, since_start());
 	frames++;
 	return debugging ? 1 : 0; // a debug script keeps frames coming for its screenshots
+}
+
+// Bramley's order for the sections, with small gaps between groups (see sections[] above).
+// Sections it does not know keep their place after these.
+void bramley_order_sections(std::vector<AbstractMenuItem *> &items)
+{
+	auto rank = [](AbstractMenuItem *item) {
+		for (size_t i = 0; i < sizeof(sections) / sizeof(sections[0]); i++)
+			if (item->getName() == sections[i].name)
+				return (int)i;
+		return 1000;
+	};
+	std::stable_sort(items.begin(), items.end(), [&](AbstractMenuItem *a, AbstractMenuItem *b) { return rank(a) < rank(b); });
+}
+
+// Adds Wallpaper at the top of Appearance. Left and right step through the wallpapers, and the
+// Settings background changes at once as a preview.
+void bramley_add_appearance_items(std::vector<AbstractMenuItem *> &items)
+{
+	static Wallpaper all[64];
+	int n = wallpaper_list(all, 64);
+	if (n == 0)
+		return;
+	std::vector<std::any> values;
+	std::vector<std::string> labels;
+	for (int i = 0; i < n; i++)
+	{
+		values.push_back(std::string(all[i].id));
+		labels.push_back(all[i].name);
+	}
+	items.insert(items.begin(), new MenuItem{ListItemType::Generic, "Wallpaper",
+		"The picture behind the home screen and Settings. Add your own to a Wallpapers folder on the card.",
+		values, labels,
+		[]() -> std::any {
+			Wallpaper w;
+			wallpaper_current(&w);
+			return std::string(w.id);
+		},
+		[](const std::any &v) {
+			wallpaper_choose(std::any_cast<std::string>(v).c_str());
+			backdrop_stale = true;
+		}});
 }

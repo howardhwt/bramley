@@ -483,6 +483,7 @@ int main(int argc, char *argv[])
             font_values.push_back(f.filename);
             font_labels.push_back(f.label);
         }
+        bramley_add_appearance_items(appearanceItems); // Bramley: Wallpaper
         appearanceItems.push_back(new MenuItem{ListItemType::Generic, "Font", "The font to render all UI text.", font_values, font_labels,
             []() -> std::any { return std::string(CFG_getFontFile()); },
             [](const std::any &value) { CFG_setFontFile(std::any_cast<std::string>(value).c_str()); },
@@ -1161,6 +1162,7 @@ int main(int argc, char *argv[])
 
         mainItems.push_back(new MenuItem{ListItemType::Generic, "About", "", {}, {}, nullptr, nullptr, DeferToSubmenu, aboutMenu});
 
+        bramley_order_sections(mainItems); // Bramley: our section order
         ctx.menu = new MenuList(MenuItemType::List, "Main", mainItems);
 
         SDL_Surface* bgbmp = IMG_Load(SDCARD_PATH "/bg.png");

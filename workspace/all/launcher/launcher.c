@@ -19,6 +19,7 @@
 #include "lradio.h"
 #include "lmusic.h"
 #include "bramley.h"
+#include "lwallpaper.h"
 
 #define SCREEN_W 1024
 #define SCREEN_H 768
@@ -157,12 +158,12 @@ static void hsv_to_rgb(float h, float s, float v, float* r, float* g, float* b) 
 	}
 }
 
-// bg.png on the card if present, otherwise a dark gradient made once.
+// The wallpaper chosen in Settings (lwallpaper.c), otherwise a dark gradient made once.
 static LTex* load_wallpaper(void) {
-	char path[256];
-	snprintf(path, sizeof(path), "%s/bg.png", SDCARD_PATH);
-	if (exists(path)) {
-		LTex* tex = ltex_load(path, 0);
+	Wallpaper w;
+	wallpaper_current(&w);
+	if (w.path[0]) {
+		LTex* tex = ltex_load(w.path, 0);
 		if (tex) return tex;
 	}
 	// Smooth colour fields, so a small image scaled up looks the same and takes a quarter of the time.
