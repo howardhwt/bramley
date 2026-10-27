@@ -2,9 +2,9 @@
 # Bramley installer Pak.
 #
 # Run it once to install Bramley on a NextUI card, run it again to remove it. Bramley replaces
-# NextUI's launcher, its Settings program and its emulator (minarch). Installing keeps each
-# stock program next to ours (nextui-stock.elf, settings-stock.elf, minarch-stock.elf) and
-# removing puts them back. The safety net (nextui-wrapper.sh, installed as nextui.elf) falls back
+# NextUI's launcher, its Settings program, its emulator (minarch) and its Wi-Fi start script.
+# Installing keeps each stock file next to ours (nextui-stock.elf, settings-stock.elf,
+# minarch-stock.elf, wifi_init-stock.sh) and removing puts them back. The safety net (nextui-wrapper.sh, installed as nextui.elf) falls back
 # to the stock launcher if ours ever crashes on start. Music bookmarks and Bramley's settings in
 # .userdata are kept either way.
 #
@@ -15,6 +15,7 @@ PAK="$(pwd)"
 BIN="$SYSTEM_PATH/bin"
 RES="$SDCARD_PATH/.system/res"
 SETTINGS="$SDCARD_PATH/Tools/$PLATFORM/Settings.pak"
+WIFI="$SYSTEM_PATH/etc/wifi"
 LOG="${LOGS_PATH:-$SDCARD_PATH/.userdata/$PLATFORM/logs}/bramley.txt"
 MARK="Bramley: safety-net wrapper"
 OLD_MARK="Brick Hammer launcher: safety-net wrapper" # Bramley's name before 2026-10-27
@@ -56,6 +57,7 @@ if installed && [ "$(cat "$BIN/.bramley-version" 2>/dev/null)" = "$(cat VERSION)
 	mv -f "$BIN/nextui-stock.elf" "$BIN/nextui.elf"
 	restore "$BIN" minarch
 	restore "$SETTINGS" settings
+	[ -f "$WIFI/wifi_init-stock.sh" ] && mv -f "$WIFI/wifi_init-stock.sh" "$WIFI/wifi_init.sh"
 	# The music daemon outlives the launcher by design, so stop it before its file goes.
 	killall muse 2>/dev/null
 	rm -f "$BIN/launcher.elf" "$BIN/muse" "$BIN/.bramley-version"
@@ -80,6 +82,10 @@ chmod +x "$BIN/nextui.elf" "$BIN/launcher.elf" "$BIN/muse" "$BIN/nextui-stock.el
 replace "$BIN" minarch "$PAK/minarch.elf" || say "install: could not install minarch; the stock one stays"
 if [ -f "$SETTINGS/settings.elf" ]; then
 	replace "$SETTINGS" settings "$PAK/settings.elf" || say "install: could not install Settings; the stock one stays"
+fi
+if [ -f "$WIFI/wifi_init.sh" ]; then
+	[ -f "$WIFI/wifi_init-stock.sh" ] || cp -f "$WIFI/wifi_init.sh" "$WIFI/wifi_init-stock.sh"
+	cp -f "$PAK/wifi_init.sh" "$WIFI/wifi_init.sh" && chmod +x "$WIFI/wifi_init.sh"
 fi
 mkdir -p "$RES/bramley"
 cp -f "$PAK"/fonts/*.ttf "$RES/"
