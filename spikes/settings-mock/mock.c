@@ -410,6 +410,57 @@ static void alt_split(int focus) {
 	text(LFONT_SMALL, "A  Open     >  Into System     B  Back", lx, H - 40, 0.55f, 0);
 }
 
+// Q6: a page one level down (In-Game, then Notifications) and three ways to show where you are.
+static int nested_style; // 0 off, 1 back label above the title, 2 path as the title, 3 title only
+static const char* notif_rows[][2] = {
+	{ "Save states", "On" }, { "Load states", "On" }, { "Screenshots", "On" },
+	{ "Vol / Display Adjustments", "On" }, { "Duration", "2 s" }, { "Reset to defaults", "" },
+};
+
+static void draw_nested(float rx, float py, float rw, int pane_focus) {
+	float ty = py + 20;
+	if (nested_style == 1) {
+		text(LFONT_BODY, "\xE2\x80\xB9  In-Game", rx + 28, py + 18, 0.5f, 0);
+		text(LFONT_TITLE, "Notifications", rx + 28, py + 52, 1, 0);
+		ty = py + 52;
+	} else if (nested_style == 2) {
+		LTex* a = ltex_text(LFONT_TITLE, "In-Game  \xE2\x80\xBA  ", 0);
+		float x = rx + 28;
+		if (a) {
+			lgfx_draw_tex(a, x, py + 20, a->w, a->h, 0, 0.45f);
+			x += a->w;
+			ltex_free(a);
+		}
+		text(LFONT_TITLE, "Notifications", x, py + 20, 1, 0);
+	} else {
+		text(LFONT_TITLE, "Notifications", rx + 28, py + 20, 1, 0);
+	}
+	float r2h = 48, y0 = ty + 70;
+	for (int i = 0; i < 6; i++) {
+		float yy = y0 + i * (r2h + 6), x = rx + 20, w = rw - 40, h = r2h;
+		int f = i == pane_focus;
+		if (f) {
+			x -= 6, w += 12, yy -= 3, h += 6;
+			lgfx_draw_shadow(x, yy, w, h, 6, 0.32f);
+			lgfx_draw_fill(x, yy, w, h, 12, 1, 1, 1, 0.96f);
+			lgfx_set_dim(0.1f);
+		} else {
+			lgfx_draw_fill(x, yy, w, h, 12, 1, 1, 1, 0.06f);
+		}
+		float tty = yy + (h - 30) * 0.5f;
+		text(LFONT_BODY, notif_rows[i][0], x + 20, tty, f ? 1 : 0.9f, 0);
+		const char* v = notif_rows[i][1];
+		if (is_toggle(v)) {
+			lgfx_set_dim(1);
+			draw_switch(x + w - 20, yy + (h - 34) * 0.5f, !strcmp(v, "On"), f);
+		} else if (v[0]) {
+			lgfx_set_dim(f ? 0.45f : 1);
+			text(LFONT_BODY, v, x + w - 20, tty, f ? 1 : 0.5f, 1);
+		}
+		lgfx_set_dim(1);
+	}
+}
+
 // The split view with NextUI's real top level on the Brick (settings.cpp:1140). order lists
 // section indexes, -1 is a gap between groups. pane_focus is -1 while the sidebar has focus,
 // else the focused row inside the pane.
@@ -448,7 +499,9 @@ static void split_real(const int* order, int n, int focus, int pane_focus, const
 	}
 	float rx = 410, rw = W - rx - 40, py = 84;
 	lgfx_draw_fill(rx, py, rw, H - py - 70, 22, 0, 0, 0, 0.18f);
-	if (focus == 3) {
+	if (nested_style) {
+		draw_nested(rx, py, rw, pane_focus);
+	} else if (focus == 3) {
 		float is = 150, ix = rx + (rw - is) * 0.5f, iy = py + 110;
 		lgfx_draw_shadow(ix, iy, is, is, 12, 0.5f);
 		LTex* ic = icon("network", 300);
@@ -606,6 +659,14 @@ int main(int argc, char* argv[]) {
 			save(path);
 			SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
 		}
+		for (int i = 1; i <= 3; i++) {
+			nested_style = i;
+			split_real(new_order, 12, 5, 1, "A  Change     B  Back to In-Game", 1);
+			snprintf(path, sizeof(path), "%s-q6-%d.bmp", prefix, i);
+			save(path);
+			SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
+		}
+		nested_style = 0;
 		void (*alts[5])(int) = { alt_grouped, alt_grid, alt_split, alt_split, alt_split };
 		const int focus[5] = { 3, 3, 2, 3, 4 };
 		for (int i = 0; i < 5; i++) {
