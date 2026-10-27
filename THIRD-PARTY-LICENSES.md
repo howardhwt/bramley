@@ -38,6 +38,37 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## Phosphor Icons
+
+- **Source:** https://github.com/phosphor-icons/web, npm package `@phosphor-icons/web` 2.1.2 (SHA-256 `40e3096099ca818c047979cece6a3764944d5200c67b64092f7bcd8bcd1d2b08`).
+- **License:** MIT.
+- **Copyright:** Copyright (c) 2020-2021 Phosphor Icons.
+- **Used in:** the palette, sun and info symbols on the Settings icons in `workspace/all/launcher/res/settings/`, rendered by `workspace/all/launcher/tools/settings-icons.py`. The font is downloaded at render time and is not committed. The other symbols and all the wallpapers in `res/wallpapers/` are our own work.
+
+```
+MIT License
+
+Copyright (c) 2020-2021 Phosphor Icons
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## Inter
 
 - **Source:** https://github.com/rsms/inter, release v4.1.
