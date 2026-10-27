@@ -774,8 +774,8 @@ void PLAT_setShaders(int nr) {
 #include <linux/fb.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
-// Brick Hammer: zeroes the page of the framebuffer that is on screen. Returns 0 if it cannot.
-static int bh_clear_visible_fb(void) {
+// Bramley: zeroes the page of the framebuffer that is on screen. Returns 0 if it cannot.
+static int bramley_clear_visible_fb(void) {
 	int fd = open("/dev/fb0", O_WRONLY);
 	if (fd < 0) return 0;
 	struct fb_var_screeninfo var;
@@ -793,7 +793,7 @@ static int bh_clear_visible_fb(void) {
 	return ok;
 }
 #else
-static int bh_clear_visible_fb(void) { return 0; }
+static int bramley_clear_visible_fb(void) { return 0; }
 #endif
 
 static void clearVideo(void) {
@@ -842,9 +842,9 @@ void PLAT_quitVideo(void) {
 	if (overlay_path) free(overlay_path);
 
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
-	// Brick Hammer: on the Brick, blank only the visible screen (3 MB) instead of the whole
+	// Bramley: on the Brick, blank only the visible screen (3 MB) instead of the whole
 	// 64 MB framebuffer, which took about 450 ms on every exit. Other platforms are unchanged.
-	if (strcmp(PLATFORM, "tg5040") || !bh_clear_visible_fb())
+	if (strcmp(PLATFORM, "tg5040") || !bramley_clear_visible_fb())
 		system("cat /dev/zero > /dev/fb0 2>/dev/null");
 }
 

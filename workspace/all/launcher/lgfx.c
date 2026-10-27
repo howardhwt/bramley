@@ -10,6 +10,7 @@
 #include "api.h"
 #include "utils.h"
 #include "lgfx.h"
+#include "bramley.h"
 
 #define SHADOW_SIZE 256
 #define SHADOW_INNER 160
@@ -180,7 +181,7 @@ static GLuint compile(GLenum type, const char* a, const char* b) {
 // Compiled programs are cached on the card on GLES (the device), where compiling the five of
 // them took about 120 ms of every launcher start. A cache file is named by a hash of the driver
 // and the shader sources, so a changed shader or a firmware update compiles afresh.
-#define SHADER_CACHE_DIR SHARED_USERDATA_PATH "/.launcher/shaders"
+#define SHADER_CACHE_DIR BRAMLEY_STATE_DIR "/shaders"
 
 static unsigned long long fnv(unsigned long long h, const char* s) {
 	for (; s && *s; s++) h = (h ^ (unsigned char)*s) * 1099511628211ull;
@@ -228,7 +229,7 @@ static void save_cached(GLuint p, const char* path) {
 	void* data = malloc(len);
 	GLenum format = 0;
 	glGetProgramBinary(p, len, NULL, &format, data);
-	mkdir(SHARED_USERDATA_PATH "/.launcher", 0755);
+	mkdir(BRAMLEY_STATE_DIR, 0755);
 	mkdir(SHADER_CACHE_DIR, 0755);
 	FILE* f = fopen(path, "wb");
 	if (f) {

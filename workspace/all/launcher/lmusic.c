@@ -4,6 +4,7 @@
 #include <sys/stat.h>
 
 #include "defines.h"
+#include "bramley.h"
 #include "api.h"
 #include "utils.h"
 #include "lmuse.h"
@@ -11,7 +12,7 @@
 
 // What the launcher remembers between runs. The launcher exits for every game and Pak, so the
 // queue is saved here and picked up again by the next launcher.
-#define STATE_DIR SHARED_USERDATA_PATH "/.launcher"
+#define STATE_DIR BRAMLEY_STATE_DIR
 #define STATE_PATH STATE_DIR "/music.txt"
 #define BOOKS_PATH STATE_DIR "/books.txt"
 #define MAX_BOOKS 64

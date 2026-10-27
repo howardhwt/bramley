@@ -1,5 +1,5 @@
-// Brick Hammer: Settings drawn with the launcher's GL kit. See bh_settings.hpp.
-#include "bh_settings.hpp"
+// Bramley: Settings drawn with the launcher's GL kit. See bramley_settings.hpp.
+#include "bramley_settings.hpp"
 
 #include <cctype>
 #include <cmath>
@@ -20,14 +20,14 @@
 extern "C"
 {
 #include "lgfx.h"
+#include "bramley.h"
 }
 
 #define W 1024
 #define H 768
-#define BH_DIR RES_PATH "/launcher"
 
 // The friend of MenuList and AbstractMenuItem (menu.hpp): reads lists, items and selections.
-struct BHView
+struct BramleyView
 {
 	static MenuItemType type(MenuList *l) { return l->type; }
 	static int selected(MenuList *l) { return l->scope.selected; }
@@ -111,7 +111,7 @@ LTex *icon(const std::string &slug, int size)
 	if (it != icons.end())
 		return it->second;
 	char path[512];
-	snprintf(path, sizeof(path), "%s/settings/%s.png", BH_DIR, key.c_str());
+	snprintf(path, sizeof(path), "%s/settings/%s.png", BRAMLEY_RES_DIR, key.c_str());
 	LTex *t = ltex_load(path, 0);
 	icons[key] = t;
 	return t;
@@ -236,7 +236,7 @@ Value value_of(AbstractMenuItem *item)
 	{
 		try
 		{
-			v.color = std::any_cast<uint32_t>(BHView::live(item));
+			v.color = std::any_cast<uint32_t>(BramleyView::live(item));
 			v.kind = K_COLOR;
 			return v;
 		}
@@ -341,9 +341,9 @@ std::map<MenuList *, int> scroll;
 
 void draw_list(MenuList *list, float x, float y, float w, float bottom, bool active)
 {
-	std::shared_lock<std::shared_mutex> lock(BHView::lock(list));
-	auto &items = BHView::items(list);
-	int n = items.size(), sel = active ? BHView::selected(list) : -1;
+	std::shared_lock<std::shared_mutex> lock(BramleyView::lock(list));
+	auto &items = BramleyView::items(list);
+	int n = items.size(), sel = active ? BramleyView::selected(list) : -1;
 	const float rh = 48, gap = 6;
 	// leave room under the rows for the focused row's description
 	int visible = (int)((bottom - y - 64) / (rh + gap));
@@ -436,7 +436,7 @@ void make_backdrop()
 		ltex_free(wall);
 		return;
 	}
-	snprintf(path, sizeof(path), "%s/wallpapers/bloom-blur.jpg", BH_DIR);
+	snprintf(path, sizeof(path), "%s/wallpapers/bloom-blur.jpg", BRAMLEY_RES_DIR);
 	backdrop = ltex_load(path, 0);
 	if (!backdrop)
 	{
@@ -447,14 +447,14 @@ void make_backdrop()
 	}
 }
 
-// Development aid, as in the launcher: BH_DEBUG_KEYS="D D a S" presses Down, Down, A, then saves a
-// screenshot to $BH_DEBUG_SHOT-<n>.bmp. One step every 0.6 s, from an SDL timer so the script
+// Development aid, as in the launcher: BRAMLEY_DEBUG_KEYS="D D a S" presses Down, Down, A, then saves a
+// screenshot to $BRAMLEY_DEBUG_SHOT-<n>.bmp. One step every 0.6 s, from an SDL timer so the script
 // keeps going while NextUI's own code draws a page. Unused on the device.
 std::atomic<int> shots_wanted;
 
 Uint32 debug_tick(Uint32 interval, void *)
 {
-	static const char *keys = getenv("BH_DEBUG_KEYS");
+	static const char *keys = getenv("BRAMLEY_DEBUG_KEYS");
 	static SDL_Keycode held;
 	if (held)
 	{
@@ -498,7 +498,7 @@ void save_shot()
 	for (int y = 0; y < h; y++)
 		memcpy((Uint8 *)img->pixels + y * img->pitch, rgba.data() + (h - 1 - y) * w * 4, w * 4);
 	char path[512];
-	snprintf(path, sizeof(path), "%s-%d.bmp", getenv("BH_DEBUG_SHOT") ? getenv("BH_DEBUG_SHOT") : "/tmp/bh-settings", shot++);
+	snprintf(path, sizeof(path), "%s-%d.bmp", getenv("BRAMLEY_DEBUG_SHOT") ? getenv("BRAMLEY_DEBUG_SHOT") : "/tmp/bramley-settings", shot++);
 	SDL_SaveBMP(img, path);
 	SDL_FreeSurface(img);
 }
@@ -512,9 +512,9 @@ void open_chain(MenuList *root, std::vector<MenuList *> &chain, std::vector<std:
 	while (true)
 	{
 		MenuList *l = chain.back();
-		std::shared_lock<std::shared_mutex> lock(BHView::lock(l));
-		auto &items = BHView::items(l);
-		int sel = BHView::selected(l);
+		std::shared_lock<std::shared_mutex> lock(BramleyView::lock(l));
+		auto &items = BramleyView::items(l);
+		int sel = BramleyView::selected(l);
 		if (sel < 0 || sel >= (int)items.size() || !items[sel]->isDeferred() || !items[sel]->getSubMenu())
 			break;
 		titles.push_back(items[sel]->getName());
@@ -535,9 +535,9 @@ void draw_scene(MenuList *root, const std::vector<MenuList *> &chain, const std:
 	int depth = chain.size() - 1;
 	AbstractMenuItem *focused_section = nullptr;
 	{
-		std::shared_lock<std::shared_mutex> lock(BHView::lock(root));
-		auto &items = BHView::items(root);
-		int sel = BHView::selected(root);
+		std::shared_lock<std::shared_mutex> lock(BramleyView::lock(root));
+		auto &items = BramleyView::items(root);
+		int sel = BramleyView::selected(root);
 		float x = 40, w = 330, rh = 52, gap = 6, y = 84;
 		int last_group = -1;
 		for (int i = 0; i < (int)items.size(); i++)
@@ -583,7 +583,7 @@ void draw_scene(MenuList *root, const std::vector<MenuList *> &chain, const std:
 		else if (focused_section)
 		{
 			text(LFONT_TITLE, shown_name(focused_section->getName()), px + 28, py + 20, 1);
-			if (sub && BHView::type(sub) != MenuItemType::Custom)
+			if (sub && BramleyView::type(sub) != MenuItemType::Custom)
 				draw_list(sub, px, py + 90, pw, pb, false);
 		}
 		text(LFONT_SMALL, "A or \xE2\x80\xBA  Open        B  Exit", 40, H - 40, 0.6f);
@@ -634,7 +634,7 @@ SDL_threadID main_thread;
 
 } // namespace
 
-bool bh_settings_overlay(const std::string &message, int mode)
+bool bramley_settings_overlay(const std::string &message, int mode)
 {
 	overlay_text = message;
 	overlay_mode = mode;
@@ -651,10 +651,10 @@ bool bh_settings_overlay(const std::string &message, int mode)
 	return true;
 }
 
-int bh_settings_frame(MenuList *root)
+int bramley_settings_frame(MenuList *root)
 {
 	static bool debugging;
-	if (!debugging && getenv("BH_DEBUG_KEYS"))
+	if (!debugging && getenv("BRAMLEY_DEBUG_KEYS"))
 	{
 		debugging = true;
 		SDL_InitSubSystem(SDL_INIT_TIMER);
@@ -665,7 +665,7 @@ int bh_settings_frame(MenuList *root)
 	std::vector<MenuList *> chain;
 	std::vector<std::string> titles;
 	open_chain(root, chain, titles);
-	if (BHView::type(chain.back()) == MenuItemType::Custom)
+	if (BramleyView::type(chain.back()) == MenuItemType::Custom)
 	{
 		last_was_ours = false;
 		return -1; // the keyboard, the colour picker and other custom pages
@@ -678,7 +678,7 @@ int bh_settings_frame(MenuList *root)
 		lgfx_init(W, H);
 		double t1 = since_start();
 		make_backdrop();
-		LOG_info("bh_settings: first call at %.0f ms, lgfx %.0f ms, backdrop %.0f ms\n", t0, t1 - t0, since_start() - t1);
+		LOG_info("bramley_settings: first call at %.0f ms, lgfx %.0f ms, backdrop %.0f ms\n", t0, t1 - t0, since_start() - t1);
 		main_thread = SDL_ThreadID();
 		ready = true;
 	}
@@ -696,7 +696,7 @@ int bh_settings_frame(MenuList *root)
 	}
 	lgfx_end_frame();
 	if (frames < 2)
-		LOG_info("bh_settings: frame %d drawn in %.0f ms, at %.0f ms\n", frames, since_start() - t0, since_start());
+		LOG_info("bramley_settings: frame %d drawn in %.0f ms, at %.0f ms\n", frames, since_start() - t0, since_start());
 	frames++;
 	return debugging ? 1 : 0; // a debug script keeps frames coming for its screenshots
 }

@@ -1,18 +1,18 @@
 #!/bin/sh
-# Builds the release zip: Tools/tg5040/Brick Hammer Launcher.pak, ready to extract to an SD card
-# that runs NextUI. Needs Docker or OrbStack (the tg5040 toolchain), curl and zip.
+# Builds the release zip: Tools/tg5040/Bramley.pak, ready to extract to an SD card that runs
+# NextUI. Needs Docker or OrbStack (the tg5040 toolchain), curl and zip.
 #
 #   sh workspace/all/launcher/package.sh
 #
-# Output: releases/BrickHammerLauncher-<version>.zip, plus its SHA-256 in a .sha256 file.
+# Output: releases/Bramley-<version>.zip, plus its SHA-256 in a .sha256 file.
 set -e
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 VERSION="$(cat "$HERE/VERSION")"
-NAME="BrickHammerLauncher-$VERSION"
+NAME="Bramley-$VERSION"
 OUT="$ROOT/build/launcher-release"
-PAK="$OUT/Tools/tg5040/Brick Hammer Launcher.pak"
+PAK="$OUT/Tools/tg5040/Bramley.pak"
 
 # The Muse playback daemon, prebuilt by TortOS (MIT). Same release and checksum as spikes/muse.
 TORTOS_TAG=v1.6.0
@@ -23,9 +23,10 @@ TORTOS_URL=https://github.com/ericreinsmidt/TortOS/releases/download/$TORTOS_TAG
 RUNTIME="$(command -v docker || command -v podman)"
 [ -n "$RUNTIME" ] || { echo "Docker or OrbStack is needed for the tg5040 toolchain" >&2; exit 1; }
 
-echo "== building launcher.elf $VERSION for tg5040"
+echo "== building the launcher, Settings and minarch $VERSION for tg5040"
 "$RUNTIME" run --rm -v "$ROOT/workspace":/root/workspace ghcr.io/loveretro/tg5040-toolchain:latest /bin/bash -c \
-	'. ~/.bashrc && export PLATFORM=tg5040 UNION_PLATFORM=tg5040 && cd /root/workspace/all/launcher && make clean && make'
+	'. ~/.bashrc && export PLATFORM=tg5040 UNION_PLATFORM=tg5040 && cd /root/workspace/all && \
+	 (cd launcher && make clean && make) && (cd settings && make clean && make) && (cd minarch && make)'
 
 echo "== fetching muse from TortOS $TORTOS_TAG"
 mkdir -p "$OUT/cache"
@@ -41,13 +42,16 @@ rm -rf "$OUT/Tools"
 mkdir -p "$PAK/fonts"
 cp "$HERE/package/launch.sh" "$PAK/"
 cp "$HERE/build/tg5040/launcher.elf" "$OUT/cache/muse" "$HERE/nextui-wrapper.sh" "$PAK/"
+cp "$HERE/../settings/build/tg5040/settings.elf" "$HERE/../minarch/build/tg5040/minarch.elf" "$PAK/"
+mkdir -p "$PAK/res"
+cp -R "$HERE/res/settings" "$HERE/res/wallpapers" "$PAK/res/"
 cp "$HERE/res/Inter-Regular.ttf" "$HERE/res/Inter-SemiBold.ttf" "$HERE/res/Inter-Bold.ttf" "$PAK/fonts/"
 cp "$HERE/VERSION" "$PAK/"
 cp "$ROOT/THIRD-PARTY-LICENSES.md" "$HERE/res/Inter-LICENSE.txt" "$PAK/"
 cp "$ROOT/LICENSE" "$PAK/LICENSE-NextUI.txt"
 cp "$HERE/package/README.txt" "$PAK/"
-chmod +x "$PAK/launch.sh" "$PAK/launcher.elf" "$PAK/muse" "$PAK/nextui-wrapper.sh"
-file "$PAK/launcher.elf" "$PAK/muse" | sed 's/,.*//'
+chmod +x "$PAK/launch.sh" "$PAK/launcher.elf" "$PAK/settings.elf" "$PAK/minarch.elf" "$PAK/muse" "$PAK/nextui-wrapper.sh"
+file "$PAK/launcher.elf" "$PAK/settings.elf" "$PAK/minarch.elf" "$PAK/muse" | sed 's/,.*//'
 
 echo "== zipping"
 mkdir -p "$ROOT/releases"

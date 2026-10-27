@@ -143,7 +143,7 @@ class AbstractMenuItem
 {
 protected:
     friend class MenuList;
-    friend struct BHView; // Brick Hammer: bh_settings.cpp reads live values to draw them
+    friend struct BramleyView; // Bramley: bramley_settings.cpp reads live values to draw them
 
     ListItemType type;
     std::string name, desc;
@@ -301,7 +301,7 @@ public:
 
 class MenuList
 {
-    friend struct BHView; // Brick Hammer: bh_settings.cpp reads the list to draw it
+    friend struct BramleyView; // Bramley: bramley_settings.cpp reads the list to draw it
 protected:
     MenuItemType type;
     std::string desc;

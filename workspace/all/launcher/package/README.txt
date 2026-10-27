@@ -1,20 +1,24 @@
-Brick Hammer Launcher
-=====================
+Bramley
+=======
 
-An Apple TV style home screen for NextUI on the TrimUI Brick Hammer and Brick. It is free and
-not for sale. It replaces only NextUI's launcher: games, emulators, Settings and Paks are stock.
+An Apple-inspired OS for the TrimUI Brick Hammer and Brick, forked from NextUI. It is free and
+not for sale. It replaces NextUI's launcher, Settings and emulator, and keeps the stock ones
+beside them. Bramley was called Brick Hammer Launcher until October 2026.
 
 Install
 -------
 1. NextUI must already be installed on the card.
-2. Copy the "Brick Hammer Launcher.pak" folder into Tools/tg5040/ on the card.
-3. On the device, open Tools, then Brick Hammer Launcher. The new home screen appears.
+2. Copy the "Bramley.pak" folder into Tools/tg5040/ on the card.
+3. On the device, open Tools, then Bramley. The new home screen appears.
+
+Installing over Brick Hammer Launcher updates it in place. Afterwards the old
+"Brick Hammer Launcher.pak" folder can be deleted.
 
 Remove
 ------
-Open the Brick Hammer Launcher Pak again (it is in Apps). The stock NextUI launcher comes back.
+Open the Bramley Pak again (it is in Apps). Stock NextUI comes back.
 
-After a NextUI update the stock launcher may return. Open the Pak again to reinstall.
+After a NextUI update the stock programs may return. Open the Pak again to reinstall.
 If the new launcher ever crashes twice in a row on start, the stock launcher opens instead.
 
 Buttons
@@ -55,5 +59,6 @@ uses Source Han Sans from the device's own firmware.
 
 Licenses
 --------
-NextUI is PolyForm Noncommercial 1.0.0 (LICENSE-NextUI.txt), so this fork is free only. The Muse
-player is from TortOS (MIT) and Inter is SIL Open Font License 1.1; see THIRD-PARTY-LICENSES.md.
+NextUI is PolyForm Noncommercial 1.0.0 (LICENSE-NextUI.txt), so Bramley is free only. The Muse
+player is from TortOS (MIT), Inter is SIL Open Font License 1.1, and three Settings symbols are
+from Phosphor Icons (MIT); see THIRD-PARTY-LICENSES.md.

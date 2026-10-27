@@ -1,4 +1,4 @@
-// Brick Hammer launcher: a tvOS-style home screen for NextUI.
+// Bramley's launcher: a tvOS-style home screen.
 // The top half is a Top Shelf showing the focused item large; the bottom half holds rows of
 // wide icons (Continue Playing, Consoles, Apps). Launching goes through NextUI's /tmp/next
 // contract, so minarch and MinUI.pak stay stock.
@@ -18,6 +18,7 @@
 #include "ldata.h"
 #include "lradio.h"
 #include "lmusic.h"
+#include "bramley.h"
 
 #define SCREEN_W 1024
 #define SCREEN_H 768
@@ -1244,7 +1245,7 @@ static void open_quick_menu(void) {
 	snprintf(text, sizeof(text), "Battery %d%%%s", PWR_getBattery(), PWR_isCharging() ? ", charging" : "");
 	qm.battery = ltex_text(LFONT_BODY, text, 0);
 	ltex_free(qm.version);
-	qm.version = ltex_text(LFONT_SMALL, "Brick Hammer Launcher " LAUNCHER_VERSION, 0);
+	qm.version = ltex_text(LFONT_SMALL, BRAMLEY_NAME " " LAUNCHER_VERSION, 0);
 	lradio_set_polling(1);
 	qm_update_states(1);
 	shine_t = 0.0f;
@@ -1636,7 +1637,15 @@ int main(int argc, char* argv[]) {
 	int nt = 0;
 	t[nt++] = now_ms();
 
-	LOG_info("Brick Hammer launcher\n");
+	LOG_info("Bramley launcher " LAUNCHER_VERSION "\n");
+	// Saved state moved from .launcher to .bramley with the rename; move an old card's state
+	// across once. A rename within the card keeps every file, so nothing is copied or lost.
+	if (!exists(BRAMLEY_STATE_DIR) && exists(BRAMLEY_OLD_STATE_DIR)) {
+		if (rename(BRAMLEY_OLD_STATE_DIR, BRAMLEY_STATE_DIR) == 0)
+			LOG_info("moved saved state from %s to %s\n", BRAMLEY_OLD_STATE_DIR, BRAMLEY_STATE_DIR);
+		else
+			LOG_error("could not move %s to %s\n", BRAMLEY_OLD_STATE_DIR, BRAMLEY_STATE_DIR);
+	}
 	InitSettings();
 	t[nt++] = now_ms();
 	GFX_init(MODE_MAIN);

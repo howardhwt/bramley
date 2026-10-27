@@ -12,7 +12,7 @@ FONT="$(cd "$(dirname "$0")/.." && pwd)/res/Inter-Bold.ttf"
 
 if [ "$1" = "restore" ]; then
 	[ -d "$KEEP" ] || { echo "nothing to restore"; exit 1; }
-	for d in Roms Music Audiobooks Tools/desktop .userdata/shared/.minui .userdata/shared/.launcher; do
+	for d in Roms Music Audiobooks Tools/desktop .userdata/shared/.minui .userdata/shared/.bramley; do
 		rm -rf "$SD/$d"
 		[ -e "$KEEP/$d" ] && mkdir -p "$(dirname "$SD/$d")" && mv "$KEEP/$d" "$SD/$d"
 	done
@@ -23,7 +23,7 @@ fi
 
 [ -d "$KEEP" ] && { echo "demo content is already in place; run with restore first"; exit 1; }
 mkdir -p "$KEEP"
-for d in Roms Music Audiobooks Tools/desktop .userdata/shared/.minui .userdata/shared/.launcher; do
+for d in Roms Music Audiobooks Tools/desktop .userdata/shared/.minui .userdata/shared/.bramley; do
 	[ -e "$SD/$d" ] && mkdir -p "$(dirname "$KEEP/$d")" && mv "$SD/$d" "$KEEP/$d"
 done
 

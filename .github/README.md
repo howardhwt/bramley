@@ -1,8 +1,8 @@
-# Brick Hammer Launcher
+# Bramley
 
-An Apple TV style home screen for [NextUI](https://github.com/LoveRetro/NextUI) on the TrimUI Brick Hammer and Brick. It replaces only NextUI's launcher. Games, emulators, Settings and Paks stay stock. It is free and not for sale.
+An Apple-inspired OS for the TrimUI Brick Hammer and Brick, forked from [NextUI](https://github.com/LoveRetro/NextUI). It has an Apple TV style home screen, a music player, and Settings redrawn in the style of iPad Settings. It is free and not for sale.
 
-**[Download the latest release](https://github.com/howardhwt/brick-hammer-launcher/releases)**. Version 0.1.1 is a pre-release, tested on one Brick Hammer with NextUI 6.15.0.
+Bramley was called Brick Hammer Launcher until October 2026. **[Download the latest release](https://github.com/howardhwt/bramley/releases)**. Version 0.1.1, released under the old name, is a pre-release tested on one Brick Hammer with NextUI 6.15.0. Bramley 0.2 is in progress.
 
 | Home | Game library |
 |---|---|
@@ -22,15 +22,18 @@ The screenshots come from the desktop build with demo content. The games and alb
 - **Collections.** NextUI's collections appear as their own row, in your own order.
 - **Low battery.** A warning at 5 percent, and a clean power-off at 2 percent instead of the device dying.
 - **Chinese, Japanese and Korean names** are drawn with Source Han Sans from the device's own firmware.
+- **Settings.** The sections sit in a sidebar with iOS-style icons, and the focused section's settings show live beside it, as on an iPad. On and off settings are switches that A flips, and levels such as volume are sliders.
+- **Wallpapers.** Eight wallpapers made for Bramley come with it.
+- **Faster switching.** Moving between the home screen, games and Settings no longer waits on a slow screen clear.
 - **Safety net.** If the launcher fails to start twice in a row, stock NextUI opens instead, so a bad build never locks you out.
 
 ## Install
 
 1. NextUI must already be installed on the card.
-2. Extract the release zip to the root of the SD card. This creates `Tools/tg5040/Brick Hammer Launcher.pak`.
-3. On the device, open Tools, then Brick Hammer Launcher. The new home screen appears.
+2. Extract the release zip to the root of the SD card. This creates `Tools/tg5040/Bramley.pak`.
+3. On the device, open Tools, then Bramley. The new home screen appears.
 
-To remove it, open the Brick Hammer Launcher Pak again from Apps. The stock NextUI launcher comes back, and your music bookmarks are kept. After a NextUI update the stock launcher may return; open the Pak again to reinstall.
+Bramley replaces NextUI's launcher, Settings and emulator, and keeps the stock ones beside them. To remove it, open the Bramley Pak again from Apps; stock NextUI comes back, and your music bookmarks are kept. After a NextUI update the stock programs may return; open the Pak again to reinstall. Installing over Brick Hammer Launcher updates it in place, and the old `Brick Hammer Launcher.pak` folder can then be deleted.
 
 ## Buttons
 
@@ -65,7 +68,7 @@ To remove it, open the Brick Hammer Launcher Pak again from Apps. The stock Next
 | Wallpaper | `bg.png` at the card root, the same as stock NextUI |
 | Fonts | `Fonts/` at the card root (see below) |
 
-The launcher never moves or renames files on the card.
+Bramley never moves or renames your files on the card. Its own saved state lives in `.userdata/shared/.bramley/`.
 
 ### Fonts
 
@@ -76,21 +79,22 @@ Inter is included. To use a font you own, put its files in `Fonts/` at the card 
 - There are no Bluetooth headset buttons and no online album art yet.
 - FN1 and FN2 shortcuts run when the button is released, since L3 and R3 together lock the screen.
 - While the screen is locked, NextUI's brightness shortcut can still turn the backlight on.
-- Settings still uses NextUI's stock look.
+- In Settings, the on-screen keyboard and the colour picker still use NextUI's stock look.
 - Save-state screenshots appear only for manual saves; NextUI does not take one for its automatic save.
 - NextUI's simple mode is not supported yet.
 
 ## Building
 
-The launcher lives in [`workspace/all/launcher`](/workspace/all/launcher). Everything else in this repository is NextUI, kept close to upstream.
+The launcher lives in [`workspace/all/launcher`](/workspace/all/launcher), and the Settings drawing in [`workspace/all/settings/bramley_settings.cpp`](/workspace/all/settings/bramley_settings.cpp). The rest of the repository is NextUI, forked at upstream commit `5291344b`. Edits to NextUI's own files are marked with a `Bramley:` comment.
 
-- **Release zip:** `sh workspace/all/launcher/package.sh`, which needs Docker or OrbStack for NextUI's tg5040 toolchain. It writes `releases/BrickHammerLauncher-<version>.zip`.
+- **Release zip:** `sh workspace/all/launcher/package.sh`, which needs Docker or OrbStack for NextUI's tg5040 toolchain. It writes `releases/Bramley-<version>.zip`.
 - **Desktop build:** the launcher builds with NextUI's `desktop` target for quick testing on a Mac. See `CLAUDE.md` for the steps, which avoid NextUI's macOS script that empties `/usr/local/bin`. `tools/fake-muse.py` stands in for the music daemon, and `tools/demo-sd.sh` fills the desktop's fake SD card with demo content.
 
 ## Credits and licenses
 
-- **[NextUI](https://github.com/LoveRetro/NextUI)** by the LoveRetro team, under PolyForm Noncommercial 1.0.0. This fork is therefore free only, and nothing in it may be sold.
+- **[NextUI](https://github.com/LoveRetro/NextUI)** by the LoveRetro team, under PolyForm Noncommercial 1.0.0. Bramley is therefore free only, and nothing in it may be sold.
 - **Muse**, the music daemon, and its library and play-order code come from **[TortOS](https://github.com/ericreinsmidt/TortOS)** by Eric Reinsmidt, under the MIT license.
 - **[Inter](https://github.com/rsms/inter)** by the Inter Project Authors, under the SIL Open Font License 1.1.
+- Three Settings symbols come from **[Phosphor Icons](https://github.com/phosphor-icons/web)**, under the MIT license. The other symbols and the wallpapers were made for Bramley.
 
 Full notices are in [`THIRD-PARTY-LICENSES.md`](/THIRD-PARTY-LICENSES.md). This project is not affiliated with Apple, TrimUI, or the NextUI team.

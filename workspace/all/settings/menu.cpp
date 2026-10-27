@@ -1,5 +1,5 @@
 #include "menu.hpp"
-#include "bh_settings.hpp" // Brick Hammer
+#include "bramley_settings.hpp" // Bramley
 
 extern "C"
 {
@@ -224,7 +224,7 @@ InputReactionHint MenuItem::handleInput(int &dirty)
                 on_set(getValue());
             dirty = 1;
         }
-        // Brick Hammer: on an item without values, Right opens it like A (once per press)
+        // Bramley: on an item without values, Right opens it like A (once per press)
         else if (submenu && on_confirm && PAD_justPressed(BTN_RIGHT))
         {
             hint = on_confirm(*this);
@@ -256,7 +256,7 @@ InputReactionHint MenuItem::handleInput(int &dirty)
         hint = NoOp; // not really, should check on_confirm
         if (on_confirm)
             hint = on_confirm(*this);
-        // Brick Hammer: A flips an on/off setting, as tapping a switch does on iOS
+        // Bramley: A flips an on/off setting, as tapping a switch does on iOS
         else if (values.size() == 2 && nextValue() && on_set)
             on_set(getValue());
         dirty = 1;
@@ -920,7 +920,7 @@ void MenuList::showOverlay(const std::string& message, OverlayDismissMode dismis
         overlayDismissMode = dismissMode;
     }
     
-    if (bh_settings_overlay(message, (int)dismissMode)) // Brick Hammer: drawn with the GL kit
+    if (bramley_settings_overlay(message, (int)dismissMode)) // Bramley: drawn with the GL kit
         return;
 
     // We want to force a draw right now since usually we are about to block
