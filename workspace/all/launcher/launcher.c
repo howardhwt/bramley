@@ -1412,7 +1412,7 @@ static int power_tap(void) {
 	}
 	Uint32 now = SDL_GetTicks();
 	int tap = 0;
-	if (PAD_justPressed(BTN_POWER)) power_down_at = now ? now : 1;
+	if (PAD_justPressed(BTN_POWER) && !power_down_at) power_down_at = now ? now : 1;
 	if (PAD_justReleased(BTN_POWER) && power_down_at) {
 		tap = now - power_down_at < 1000;
 		power_down_at = 0;
@@ -1422,9 +1422,11 @@ static int power_tap(void) {
 		system("gametimectl.elf stop_all");
 		PWR_powerOff(0);
 	}
+	// Only the edges are hidden: PWR_update reads nothing else for power, and clearing is_pressed
+	// too would make PAD_poll treat the key's repeat events as new presses (api.c PAD_poll), which
+	// restarted the hold timer so a long press never powered off.
 	pad.just_pressed &= ~BTN_POWER;
 	pad.just_released &= ~BTN_POWER;
-	pad.is_pressed &= ~BTN_POWER;
 	return tap;
 }
 

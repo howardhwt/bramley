@@ -35,6 +35,8 @@ static int game_pause;
 static char title[256], next_title[256];
 // A restored queue waits here, at its saved position, until the player presses play.
 static float resume_at = -1;
+// Set when the playing track changes; music.txt is saved once the daemon confirms it plays.
+static int save_when_playing;
 
 // Covers: 0 not looked for, 1 asked the daemon, 2 known to have none.
 static unsigned char* cover_state;
@@ -199,6 +201,7 @@ static void play_current(float at) {
 	full_path(lib.tracks[lib.albums[queue_album].first + t].path, path, sizeof(path));
 	lmuse_play(path, at, speed);
 	update_titles();
+	save_when_playing = 1;
 }
 
 // play: 1 starts playback, 0 only sets the queue up to start at `at` on play, -1 adopts what
@@ -215,12 +218,15 @@ static void start_queue(int al, int track, float at, int play) {
 	muq_init(&queue, lib.albums[al].n, track, book ? MUQ_IN_ORDER : music_mode, SDL_GetTicks());
 	failures = 0;
 	resume_at = -1;
-	if (play > 0) play_current(at);
-	else {
+	if (play > 0) {
+		play_current(at);
+		save_state();
+	} else {
+		// Restoring from music.txt: nothing changed, and saving now would overwrite the saved
+		// place with 0 before the daemon has reported where it is.
 		if (play == 0) resume_at = at;
 		update_titles();
 	}
-	save_state();
 }
 
 void lmusic_play(int al, int track) {
@@ -281,6 +287,7 @@ static int adopt_running(void) {
 	full_path(lib.tracks[lib.albums[queue_album].first + muq_current(&queue)].path, want, sizeof(want));
 	if (!exactMatch((char*)st->path, want)) return 0;
 	resume_at = -1;
+	save_when_playing = 1;
 	return 1;
 }
 
@@ -309,6 +316,10 @@ int lmusic_update(void) {
 		int t = ++failures < MAX_FAILURES ? muq_failed(&queue) : -1;
 		if (t >= 0) play_current(0);
 		changed = 1;
+	}
+	if (save_when_playing && lmusic_playing() && lmuse_status()->at > 0) {
+		save_when_playing = 0;
+		save_state();
 	}
 	if (lmusic_playing() && SDL_GetTicks() - last_book_save > SAVE_MS) {
 		save_bookmark();

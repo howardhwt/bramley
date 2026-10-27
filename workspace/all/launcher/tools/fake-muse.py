@@ -108,7 +108,14 @@ def ticker():
 
 
 def serve(conn):
+    # Like the real daemon (muse.c, accept loop): one client at a time, and the newest wins.
     with lock:
+        for old in clients:
+            try:
+                old.close()
+            except OSError:
+                pass
+        clients.clear()
         clients.append(conn)
     conn.sendall(b"READY\tproto=3\n")
     send_state()
