@@ -260,6 +260,121 @@ static void style_sections(int focus) {
 	text(LFONT_SMALL, "A  Open     B  Back", rx, H - 40, 0.55f, 0);
 }
 
+// Alternatives to the top-level page. Each section's current value, shown on its row.
+static const char* sec_value[] = { "Dark", "60%", "", "Home Wi-Fi", "Off", "", "Sleep", "", "On", "12 of 40", "v6.4" };
+
+static void top_bar(const char* title) {
+	lgfx_begin_frame();
+	const float top[4] = { 0.20f, 0.17f, 0.36f, 1 }, bottom[4] = { 0.10f, 0.12f, 0.22f, 1 };
+	lgfx_draw_gradient(0, 0, W, H, 0, top, bottom);
+	if (title) text(LFONT_LABEL, title, 56, 30, 0.55f, 0);
+	text(LFONT_LABEL, "12:47      100%", W - 56, 30, 0.8f, 1);
+}
+
+static void section_row(int i, float x, float y, float w, float h, int focused, int card, int value) {
+	if (focused) {
+		x -= 8, w += 16, y -= 3, h += 6;
+		lgfx_draw_shadow(x, y, w, h, 6, 0.32f);
+		lgfx_draw_fill(x, y, w, h, 14, 1, 1, 1, 0.96f);
+	} else if (card) {
+		lgfx_draw_fill(x, y, w, h, 14, 1, 1, 1, 0.07f);
+	}
+	LTex* ic = icon(sections[i][1], 36);
+	if (ic) {
+		lgfx_draw_tex(ic, x + 14, y + (h - 36) * 0.5f, 36, 36, 0, 1);
+		ltex_free(ic);
+	}
+	float ty = y + (h - 30) * 0.5f;
+	if (focused) lgfx_set_dim(0.1f);
+	text(LFONT_BODY, sections[i][0], x + 64, ty, focused ? 1 : 0.92f, 0);
+	lgfx_set_dim(focused ? 0.35f : 1);
+	text(LFONT_BODY, "\xE2\x80\xBA", x + w - 22, ty, focused ? 1 : 0.4f, 1);
+	if (value && sec_value[i][0]) {
+		lgfx_set_dim(focused ? 0.45f : 1);
+		text(LFONT_BODY, sec_value[i], x + w - 46, ty, focused ? 1 : 0.5f, 1);
+	}
+	lgfx_set_dim(1);
+}
+
+// A: iOS grouped list. One centred column, related sections grouped on shared cards, each row
+// showing its current value, no large icon.
+static void alt_grouped(int focus) {
+	top_bar(NULL);
+	LTex* t = ltex_text(LFONT_TITLE, "Settings", 0);
+	if (t) {
+		lgfx_draw_tex(t, (W - t->w) * 0.5f, 34, t->w, t->h, 0, 1);
+		ltex_free(t);
+	}
+	static const int order[] = { 3, 4, -1, 1, 0, -1, 5, 7, 6, -1, 8, 9, -1, 2, 10 };
+	float w = 640, x = (W - w) * 0.5f, y = 100, rh = 46;
+	int n = sizeof(order) / sizeof(order[0]), start = 0;
+	for (int k = 0; k <= n; k++) {
+		if (k == n || order[k] < 0) {
+			// one rounded card behind the group, rows divided by hairlines
+			float gh = (k - start) * rh;
+			lgfx_draw_fill(x, y, w, gh, 14, 1, 1, 1, 0.07f);
+			for (int j = start; j < k; j++) {
+				float ry = y + (j - start) * rh;
+				if (j > start) lgfx_draw_fill(x + 64, ry, w - 64, 1, 0, 1, 1, 1, 0.08f);
+				section_row(order[j], x, ry, w, rh, order[j] == focus, 0, 1);
+			}
+			y += gh + 14;
+			start = k + 1;
+		}
+	}
+}
+
+// C: a grid of large icons, like the Apps row on the home screen.
+static void alt_grid(int focus) {
+	top_bar(NULL);
+	LTex* t = ltex_text(LFONT_TITLE, "Settings", 0);
+	if (t) {
+		lgfx_draw_tex(t, (W - t->w) * 0.5f, 34, t->w, t->h, 0, 1);
+		ltex_free(t);
+	}
+	float s = 120, px = 210, py = 190, x0 = (W - 3 * px - s) * 0.5f, y0 = 130;
+	for (int i = 0; i < SECTIONS; i++) {
+		int focused = i == focus;
+		float x = x0 + (i % 4) * px, y = y0 + (i / 4) * py, z = focused ? 1.12f : 1;
+		float zs = s * z, zx = x - (zs - s) * 0.5f, zy = y - (zs - s) * 0.5f;
+		lgfx_draw_shadow(zx, zy, zs, zs, focused ? 14 : 5, focused ? 0.55f : 0.3f);
+		LTex* ic = icon(sections[i][1], 132);
+		if (ic) {
+			lgfx_draw_tex(ic, zx, zy, zs, zs, 0, 1);
+			ltex_free(ic);
+		}
+		LTex* l = ltex_text(LFONT_BODY, sections[i][0], 0);
+		if (l) {
+			lgfx_draw_tex(l, x + (s - l->w) * 0.5f, y + s + (focused ? 18 : 10), l->w, l->h, 0, focused ? 1 : 0.7f);
+			ltex_free(l);
+		}
+	}
+	text(LFONT_SMALL, "Wi-Fi and time sync.  Connected to Home Wi-Fi.", 56, H - 44, 0.6f, 0);
+}
+
+// D: split view, as on iPad. The sections on the left, the focused section's own settings live
+// on the right, so the second page is only a move to the right.
+static void alt_split(int focus) {
+	top_bar("Settings");
+	float lx = 40, lw = 330, rh = 50, gap = 6, ly = 84;
+	for (int i = 0; i < SECTIONS; i++)
+		section_row(i, lx, ly + i * (rh + gap), lw, rh, i == focus, 1, 0);
+	float rx = 410, rw = W - rx - 40, y = 84;
+	lgfx_draw_fill(rx, y, rw, H - y - 70, 22, 0, 0, 0, 0.18f);
+	text(LFONT_TITLE, sections[focus][0], rx + 28, y + 20, 1, 0);
+	float r2h = 48;
+	for (int i = 0; i < 9; i++) {
+		float yy = y + 90 + i * (r2h + 6);
+		lgfx_draw_fill(rx + 20, yy, rw - 40, r2h, 12, 1, 1, 1, 0.06f);
+		float ty = yy + (r2h - 30) * 0.5f;
+		text(LFONT_BODY, rows[i][0], rx + 40, ty, 0.85f, 0);
+		const char* v = rows[i][1];
+		if (is_toggle(v)) draw_switch(rx + rw - 40, yy + (r2h - 34) * 0.5f, !strcmp(v, "On"), 0);
+		else text(LFONT_BODY, v, rx + rw - 40, ty, 0.5f, 1);
+	}
+	text(LFONT_SMALL, "A  Open     >  Into System     B  Back", lx, H - 40, 0.55f, 0);
+}
+
 // Text in NextUI's own font, for the restyled version.
 static LTex* nextui_text(const char* s, int size) {
 	char path[256];
@@ -348,6 +463,14 @@ int main(int argc, char* argv[]) {
 		snprintf(path, sizeof(path), "%s-top.bmp", prefix);
 		save(path);
 		SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
+		void (*alts[3])(int) = { alt_grouped, alt_grid, alt_split };
+		const int focus[3] = { 3, 3, 2 };
+		for (int i = 0; i < 3; i++) {
+			alts[i](focus[i]);
+			snprintf(path, sizeof(path), "%s-top%c.bmp", prefix, "ACD"[i]);
+			save(path);
+			SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
+		}
 	}
 	const char variants[] = "ABC";
 	for (int i = 0; i < 3; i++) {
