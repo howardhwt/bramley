@@ -4,9 +4,9 @@
 # Run it once to install Bramley on a NextUI card, run it again to remove it. Bramley replaces
 # NextUI's launcher, its Settings program, its emulator (minarch) and its Wi-Fi start script.
 # Installing keeps each stock file next to ours (nextui-stock.elf, settings-stock.elf,
-# minarch-stock.elf, wifi_init-stock.sh) and removing puts them back. The safety net (nextui-wrapper.sh, installed as nextui.elf) falls back
-# to the stock launcher if ours ever crashes on start. Music bookmarks and Bramley's settings in
-# .userdata are kept either way.
+# minarch-stock.elf, wifi_init-stock.sh) and removing puts them back. The safety net
+# (nextui-wrapper.sh, installed as nextui.elf) falls back to the stock launcher if ours ever
+# crashes on start. Music bookmarks and Bramley's settings in .userdata are kept either way.
 #
 # A NextUI update can restore the stock programs; run this Pak again afterwards to reinstall.
 
