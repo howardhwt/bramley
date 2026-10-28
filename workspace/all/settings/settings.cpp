@@ -648,10 +648,7 @@ int settings_run(SDL_Surface *host_screen)
             { return TIME_getNetworkTimeSync(); }, [](const std::any &value)
             { TIME_setNetworkTimeSync(std::any_cast<bool>(value)); },
             []() { TIME_setNetworkTimeSync(false);}},
-            new MenuItem{ListItemType::Generic, "Time zone", "Your time zone", tz_values, tz_labels, []() -> std::any
-            { return std::string(TIME_getCurrentTimezone()); }, [](const std::any &value)
-            { TIME_setCurrentTimezone(std::any_cast<std::string>(value).c_str()); },
-            []() { TIME_setCurrentTimezone("Asia/Shanghai");}},
+            bramley_timezone_item(), // Bramley: a list of cities instead of left and right through 400 zones
             new MenuItem{ListItemType::Generic, "24-hour time", "Show the time as 13:00 instead of 1:00 PM.", {false, true}, on_off, []() -> std::any
             { return CFG_getClock24H(); },
             [](const std::any &value)

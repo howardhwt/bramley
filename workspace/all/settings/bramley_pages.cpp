@@ -167,6 +167,137 @@ MenuList *bramley_date_time_menu(std::vector<AbstractMenuItem *> clock_items)
 }
 
 ///////////////////////////////////////////////////////////
+// Time zone
+
+// "America/Argentina/Buenos_Aires" -> "Buenos Aires"; region "America"
+static std::string city_of(const std::string &zone)
+{
+    std::string c = zone.substr(zone.rfind('/') + 1);
+    std::replace(c.begin(), c.end(), '_', ' ');
+    return c;
+}
+
+static std::string region_of(const std::string &zone)
+{
+    size_t slash = zone.find('/');
+    return slash == std::string::npos ? "Other" : zone.substr(0, slash);
+}
+
+// Every zone NextUI knows, sorted by region, then city.
+static void list_zones(std::vector<std::string> &zones, std::vector<std::string> &regions)
+{
+    static char list[MAX_TIMEZONES][MAX_TZ_LENGTH];
+    int n = 0;
+    TIME_getTimezones(list, &n);
+    for (int i = 0; i < n; i++)
+        zones.push_back(list[i]);
+    std::stable_sort(zones.begin(), zones.end(), [](const std::string &a, const std::string &b) {
+        std::string ra = region_of(a), rb = region_of(b);
+        return ra != rb ? ra < rb : city_of(a) < city_of(b);
+    });
+    for (auto &z : zones)
+        regions.push_back(region_of(z));
+}
+
+namespace
+{
+    // a city row: shows its region, and a tick on the current zone
+    class ZoneRow : public MenuItem
+    {
+    public:
+        using MenuItem::MenuItem;
+        std::string zone, region;
+        const std::string getLabel() const override
+        {
+            return zone == TIME_getCurrentTimezone() ? region + "   \xE2\x9C\x93" : region;
+        }
+    };
+}
+
+TimezoneMenu::TimezoneMenu() : MenuList(MenuItemType::Fixed, "Time Zone", {})
+{
+    list_zones(zones, regions);
+    for (size_t i = 0; i < zones.size(); i++)
+    {
+        std::string zone = zones[i];
+        auto *row = new ZoneRow(ListItemType::Generic, city_of(zone), "", std::vector<std::any>{std::any(0)}, std::vector<std::string>{""},
+                                nullptr, nullptr, nullptr, [zone](AbstractMenuItem &) -> InputReactionHint {
+                                    TIME_setCurrentTimezone(zone.c_str());
+                                    return Exit;
+                                });
+        row->zone = zone;
+        row->region = regions[i];
+        items.push_back(row);
+    }
+    scope.count = (int)items.size();
+}
+
+void TimezoneMenu::select_current()
+{
+    std::string now = TIME_getCurrentTimezone();
+    for (size_t i = 0; i < zones.size(); i++)
+        if (zones[i] == now)
+            scope.selected = (int)i;
+}
+
+InputReactionHint TimezoneMenu::handleInput(int &dirty, int &quit)
+{
+    if (PAD_justRepeated(BTN_L1) || PAD_justRepeated(BTN_R1))
+    {
+        int i = scope.selected, n = (int)regions.size();
+        if (PAD_justRepeated(BTN_R1))
+        {
+            while (i < n - 1 && regions[i] == regions[scope.selected])
+                i++;
+        }
+        else
+        {
+            // to the start of this region, or of the one before when already there
+            if (i > 0 && regions[i - 1] == regions[i])
+                while (i > 0 && regions[i - 1] == regions[scope.selected])
+                    i--;
+            else if (i > 0)
+            {
+                i--;
+                while (i > 0 && regions[i - 1] == regions[i])
+                    i--;
+            }
+        }
+        scope.selected = i;
+        dirty = 1;
+        return NoOp;
+    }
+    if (PAD_justPressed(BTN_B) || PAD_justRepeated(BTN_LEFT))
+    {
+        quit = 1;
+        dirty = 1;
+        return NoOp;
+    }
+    return MenuList::handleInput(dirty, quit);
+}
+
+namespace
+{
+    class TimezoneItem : public MenuItem
+    {
+    public:
+        TimezoneItem(TimezoneMenu *menu)
+            : MenuItem(ListItemType::Generic, "Time zone", "", {std::any(0)}, {std::string("")}, nullptr, nullptr, nullptr,
+                       [menu](AbstractMenuItem &item) -> InputReactionHint {
+                           menu->select_current();
+                           return DeferToSubmenu(item);
+                       },
+                       menu) {}
+        const std::string getLabel() const override { return city_of(TIME_getCurrentTimezone()); }
+    };
+}
+
+AbstractMenuItem *bramley_timezone_item()
+{
+    return new TimezoneItem(new TimezoneMenu());
+}
+
+///////////////////////////////////////////////////////////
 // Lights
 
 // NextUI's effect ids, in the order shown, with plain names.

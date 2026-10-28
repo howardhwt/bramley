@@ -626,10 +626,11 @@ void draw_test_buttons(TestButtonsMenu *t, float px, float pw)
 	auto RY = [&](float v) { return by + v * bh; };
 	// shoulders on the top edge, volume on the left side, power on the right
 	float tw = bw * 0.2f, th = 22, ty = by - th - 2;
-	key(RX(0.04f), ty, tw, th, 7, "L2", "L2");
-	key(RX(0.04f) + tw + 6, ty, tw, th, 7, "L1", "L1");
-	key(RX(0.96f) - 2 * tw - 6, ty, tw, th, 7, "R1", "R1");
-	key(RX(0.96f) - tw, ty, tw, th, 7, "R2", "R2");
+	// L1 and R1 sit outside, L2 and R2 inside (checked on the device)
+	key(RX(0.04f), ty, tw, th, 7, "L1", "L1");
+	key(RX(0.04f) + tw + 6, ty, tw, th, 7, "L2", "L2");
+	key(RX(0.96f) - 2 * tw - 6, ty, tw, th, 7, "R2", "R2");
+	key(RX(0.96f) - tw, ty, tw, th, 7, "R1", "R1");
 	key(bx - 9, RY(0.06f), 6, bh * 0.07f, 3, "Volume up", nullptr);
 	key(bx - 9, RY(0.16f), 6, bh * 0.07f, 3, "Volume down", nullptr);
 	lgfx_draw_fill(bx + bw + 3, RY(0.19f), 6, bh * 0.06f, 3, 1, 1, 1, 0.08f); // power: not tested
@@ -1042,6 +1043,8 @@ void draw_scene(MenuList *root, const std::vector<MenuList *> &chain, const std:
 			hint = "Hold SELECT and START to leave";
 		else if (open_picker)
 			hint = "\xE2\x80\xB9 \xE2\x80\xBA  Column        \xE2\x86\x91 \xE2\x86\x93  Change        A  Set        B  Cancel";
+		else if (dynamic_cast<TimezoneMenu *>(chain.back()))
+			hint = "A  Choose        L1 R1  Region        B  Back";
 		else if (dynamic_cast<LightsMenu *>(chain.back()) && !static_cast<LightsMenu *>(chain.back())->same)
 			hint = "L1 R1  Light        A  Change        \xE2\x80\xB9 \xE2\x80\xBA  Adjust        B  Back";
 		text(LFONT_SMALL, hint, 40, H - 40, 0.6f);

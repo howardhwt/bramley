@@ -25,6 +25,19 @@ public:
     int columns() const { return (int)value.size(); }
 };
 
+// Time zone: every zone as a list of cities, the current one marked. Up and down move, L1 and R1
+// jump between regions, A sets the zone.
+class TimezoneMenu : public MenuList
+{
+public:
+    TimezoneMenu();
+    InputReactionHint handleInput(int &dirty, int &quit) override;
+    void select_current();
+    std::vector<std::string> zones, regions;
+};
+// The Time zone row, showing the current city.
+AbstractMenuItem *bramley_timezone_item();
+
 // Date & Time: NextUI's three clock settings, then Date and Time rows that open a ClockPicker.
 // While the clock is set automatically, Date and Time are shown dimmed and do nothing.
 MenuList *bramley_date_time_menu(std::vector<AbstractMenuItem *> clock_items);
