@@ -28,6 +28,7 @@ SOURCE = $(TARGET).c ma_cheats.c ma_rewind.c ma_audio.c ma_input.c \
          ../common/notification.c ../../$(PLATFORM)/platform/platform.c
 # Bramley: the in-game menu drawn with the launcher's GL kit
 SOURCE += bramley_menu.c ../launcher/lgfx.c
+CFLAGS += -DBRAMLEY_VERSION=\"$(shell cat ../launcher/VERSION)\"
 
 # RA support
 ifneq (,$(filter $(PLATFORM),tg5040 tg5050 h700 my355 desktop))

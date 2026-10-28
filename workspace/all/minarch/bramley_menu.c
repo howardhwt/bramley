@@ -250,6 +250,15 @@ static void ctext(int font, const char* s, float x, float y, float alpha, int ri
 	if (t) lgfx_draw_tex(t, right ? x - t->w : x, y, t->w, t->h, 0, alpha);
 }
 
+// Descriptions can hold line breaks; the kit wraps on its own, so they become spaces.
+static LTex* wrapped(int font, const char* text, int width, int lines) {
+	char buf[512];
+	snprintf(buf, sizeof(buf), "%s", text);
+	for (char* c = buf; *c; c++)
+		if (*c == '\n') *c = ' ';
+	return ltex_text_wrapped(font, buf, width, lines, 0);
+}
+
 #define DEPTH 6
 static struct {
 	MenuList* list;
@@ -380,7 +389,7 @@ void bramley_options_draw(MenuList* list, int selected, int await_input) {
 	if (!open) {
 		ctext(LFONT_TITLE, section->name, px + 28, py + 20, 1, 0);
 		if (section->desc) {
-			LTex* d = ltex_text_wrapped(LFONT_BODY, section->desc, (int)pw - 56, 4, 0);
+			LTex* d = wrapped(LFONT_BODY, section->desc, (int)pw - 56, 4);
 			if (d) {
 				lgfx_draw_tex(d, px + 28, py + 76, d->w, d->h, 0, 0.6f);
 				ltex_free(d);
@@ -413,7 +422,7 @@ void bramley_options_draw(MenuList* list, int selected, int await_input) {
 		if (*top + visible < count) ctext(LFONT_SMALL, "\xE2\x96\xBC", px + pw * 0.5f, yy - 6, 0.35f, 0);
 		const char* desc = selected >= 0 && selected < count && l->items[selected].desc ? l->items[selected].desc : l->desc;
 		if (desc) {
-			LTex* d = ltex_text_wrapped(LFONT_SMALL, desc, (int)pw - 80, 2, 0);
+			LTex* d = wrapped(LFONT_SMALL, desc, (int)pw - 80, 2);
 			if (d) {
 				lgfx_draw_tex(d, px + 40, yy + 20, d->w, d->h, 0, 0.5f);
 				ltex_free(d);
