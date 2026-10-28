@@ -421,7 +421,10 @@ int settings_run(SDL_Surface *host_screen)
 
         PWR_setCPUSpeed(CPU_SPEED_AUTO);
 
-        Context ctx = {0};
+        // Bramley: static, because the Wi-Fi and Bluetooth workers hold a reference to ctx.dirty
+        // and, inside the launcher, may still be finishing a scan after this function returns.
+        static Context ctx;
+        ctx = Context{};
         ctx.dirty = 1;
         ctx.show_setting = 0;
         ctx.screen = hosted ? host_screen : GFX_init(MODE_MAIN);
@@ -1307,7 +1310,10 @@ int settings_run(SDL_Surface *host_screen)
             std::vector<MenuList *> owned;
             for (auto &picker : pickers)
                 owned.push_back(picker.get());
-            bramley_delete_menu_tree(ctx.menu, owned);
+            // On a background thread: the Wi-Fi and Bluetooth pages wait for their workers, which
+            // can be mid-scan for a few seconds, and the home screen should not wait for that.
+            MenuList *root = ctx.menu;
+            std::thread([root, owned]() { bramley_delete_menu_tree(root, owned); }).detach();
             ctx.menu = NULL;
             CFG_sync();
             return EXIT_SUCCESS;
