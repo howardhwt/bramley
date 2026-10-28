@@ -35,4 +35,24 @@ void bramley_options_push(struct MenuList* list);
 void bramley_options_pop(void);
 void bramley_options_draw(struct MenuList* list, int selected, int await_input);
 
+
+// A message over the blurred game: the first line is the title, the rest the explanation. Waits
+// for A or B. Returns MENU_CALLBACK_NOP, as minarch's Menu_message does.
+int bramley_message(const char* message);
+
+// Achievements: the list and one achievement, drawn from what minarch reads out of rcheevos.
+typedef struct {
+	const char* title;
+	const char* description;
+	unsigned points;
+	int unlocked, muted, offline, challenge;
+	SDL_Surface* badge;   // may be NULL while it downloads
+	float rarity;         // percent of players, 0 if unknown
+	const char* status;   // "Unlocked 3 Oct 2026", "Progress: 3/10" or "Locked"
+	const char* kind;     // "Missable", "Progression" or NULL
+} BramleyAchievement;
+void bramley_achievements_draw(const char* game, unsigned unlocked, unsigned total, const BramleyAchievement* rows,
+                               int count, int selected, int top, int locked_only, int* visible);
+void bramley_achievement_draw(const BramleyAchievement* a, int index, int count);
+
 #endif

@@ -4297,6 +4297,35 @@ void PWR_disablePowerOff(void)
 {
 	pwr.can_poweroff = 0;
 }
+void (*PWR_drawPowerOffScreen)(const char *message) = NULL;
+
+// Bramley: "Bramley" in Inter Bold and the message under it, centred on black.
+static void bramley_power_screen(SDL_Surface *dst, const char *msg)
+{
+	SDL_FillRect(dst, NULL, SDL_MapRGB(dst->format, 0, 0, 0));
+	TTF_Font *big = TTF_OpenFont(RES_PATH "/Inter-Bold.ttf", 64), *small = TTF_OpenFont(RES_PATH "/Inter-Regular.ttf", 26);
+	if (!big || !small)
+	{
+		// the fonts are missing: NextUI's message instead
+		GFX_blitMessage(font.large, (char *)msg, dst, &(SDL_Rect){0, 0, dst->w, dst->h});
+	}
+	else
+	{
+		SDL_Surface *t = TTF_RenderUTF8_Blended(big, "Bramley", (SDL_Color){255, 255, 255, 255});
+		SDL_Surface *m = TTF_RenderUTF8_Blended(small, msg, (SDL_Color){150, 150, 155, 255});
+		if (t)
+			SDL_BlitSurface(t, NULL, dst, &(SDL_Rect){(dst->w - t->w) / 2, dst->h / 2 - t->h - 4});
+		if (m)
+			SDL_BlitSurface(m, NULL, dst, &(SDL_Rect){(dst->w - m->w) / 2, dst->h / 2 + 18});
+		SDL_FreeSurface(t);
+		SDL_FreeSurface(m);
+	}
+	if (big)
+		TTF_CloseFont(big);
+	if (small)
+		TTF_CloseFont(small);
+}
+
 void PWR_powerOff(int reboot)
 {
 	if (pwr.can_poweroff)
@@ -4316,26 +4345,34 @@ void PWR_powerOff(int reboot)
 		char *msg;
 		if (HAS_POWER_BUTTON || HAS_POWEROFF_BUTTON)
 		{
+			// Bramley: plainer words
 			if (exists(AUTO_RESUME_PATH))
-				msg = (char *)"Quicksave created,\npowering off";
+				msg = (char *)"Game saved. Shutting down\xE2\x80\xA6";
 			else if (reboot > 0)
-				msg = (char *)"Rebooting";
+				msg = (char *)"Restarting\xE2\x80\xA6";
 			else
-				msg = (char *)"Powering off";
+				msg = (char *)"Shutting down\xE2\x80\xA6";
 		}
 		else
 		{
-			msg = exists(AUTO_RESUME_PATH) ? (char *)"Quicksave created,\npower off now" : (char *)"Power off now";
+			msg = exists(AUTO_RESUME_PATH) ? (char *)"Game saved. You can switch off now." : (char *)"You can switch off now.";
 		}
 
 		// LOG_info("PWR_powerOff %s (%ix%i)\n", gfx.screen, gfx.screen->w, gfx.screen->h);
 
 		// TODO: for some reason screen's dimensions end up being 0x0 in GFX_blitMessage...
 
-		PLAT_clearLayers(0);
-		PLAT_clearAll();
-		GFX_blitMessage(font.large, msg, gfx.screen, &(SDL_Rect){0, 0, gfx.screen->w, gfx.screen->h}); //, NULL);
-		GFX_flip(gfx.screen);
+		// Bramley: the wordmark and the message on black. A program drawing with GL (the launcher)
+		// draws its own, since a software frame after GL frames shows black on this GPU.
+		if (PWR_drawPowerOffScreen)
+			PWR_drawPowerOffScreen(msg);
+		else
+		{
+			PLAT_clearLayers(0);
+			PLAT_clearAll();
+			bramley_power_screen(gfx.screen, msg);
+			GFX_flip(gfx.screen);
+		}
 
 		system("killall -TERM keymon.elf");
 		system("killall -TERM batmon.elf");

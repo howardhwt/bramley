@@ -2,6 +2,7 @@
 #include "defines.h"
 #include "api.h"
 #include "config.h"
+#include "msettings.h" // Bramley: the HUD reads the levels itself
 #include <string.h>
 #include <stdio.h>
 
@@ -285,31 +286,106 @@ void Notification_update(uint32_t now) {
 // Width formula must match GFX_blitHardwareIndicator in api.c:
 //   SCALE1(PILL_SIZE + SETTINGS_WIDTH + 10 + 4)
 // The 10 is internal pill content padding (not the screen-edge PADDING macro).
-static void render_system_indicator(void) {
-    int indicator_width = SCALE1(PILL_SIZE + SETTINGS_WIDTH + 10 + SYS_INDICATOR_EXTRA_PAD);
-    int indicator_height = SCALE1(PILL_SIZE);
-    int indicator_x = screen_width - SCALE1(PADDING) - indicator_width;
-    int indicator_y = SCALE1(PADDING);
-    
-    // Create a temporary surface with the SAME format as gfx.screen
-    // This is critical because theme colors (THEME_COLOR2, etc.) were mapped
-    // using SDL_MapRGB(gfx.screen->format, ...), so they only work correctly
-    // on surfaces with that same pixel format.
-    SDL_Surface* indicator_surface = GFX_createScreenFormatSurface(indicator_width, indicator_height);
-    if (indicator_surface) {
-        SDL_FillRect(indicator_surface, NULL, 0);
-        GFX_blitHardwareIndicator(indicator_surface, 0, 0, (IndicatorType)system_indicator_type);
-        
-        // Convert to RGBA for the notification overlay
-        SDL_Surface* converted = SDL_ConvertSurfaceFormat(indicator_surface, SDL_PIXELFORMAT_ABGR8888, 0);
-        if (converted) {
-            SDL_SetSurfaceBlendMode(converted, SDL_BLENDMODE_NONE);
-            SDL_Rect dst_rect = {indicator_x, indicator_y, indicator_width, indicator_height};
-            SDL_BlitSurface(converted, NULL, gl_notification_surface, &dst_rect);
-            SDL_FreeSurface(converted);
+///////////////////////////////
+// Bramley: the volume and brightness HUD and the toasts, drawn in Bramley's style: dark glass
+// pills with Inter text. The HUD sits at the top centre; toasts at the bottom centre.
+///////////////////////////////
+
+static TTF_Font* bram_font;   // Inter, for toasts
+static TTF_Font* bram_small;  // Inter SemiBold, for the HUD's percent
+
+static void bram_fonts(void) {
+    if (!bram_font) bram_font = TTF_OpenFont(RES_PATH "/Inter-Regular.ttf", 22);
+    if (!bram_small) bram_small = TTF_OpenFont(RES_PATH "/Inter-SemiBold.ttf", 18);
+}
+
+// Blends one RGBA pixel over the overlay (straight alpha).
+static void bram_blend(SDL_Surface* s, int x, int y, float r, float g, float b, float a) {
+    if (x < 0 || y < 0 || x >= s->w || y >= s->h || a <= 0) return;
+    Uint8* p = (Uint8*)s->pixels + y * s->pitch + x * 4; // ABGR8888: R, G, B, A in memory
+    float da = p[3] / 255.0f, oa = a + da * (1 - a);
+    if (oa <= 0) return;
+    p[0] = (Uint8)((r * a + p[0] / 255.0f * da * (1 - a)) / oa * 255);
+    p[1] = (Uint8)((g * a + p[1] / 255.0f * da * (1 - a)) / oa * 255);
+    p[2] = (Uint8)((b * a + p[2] / 255.0f * da * (1 - a)) / oa * 255);
+    p[3] = (Uint8)(oa * 255);
+}
+
+// A filled rounded rectangle with smooth edges: coverage from the signed distance to the shape.
+static void bram_round(SDL_Surface* s, float x, float y, float w, float h, float rad, float r, float g, float b, float a) {
+    if (rad > w / 2) rad = w / 2;
+    if (rad > h / 2) rad = h / 2;
+    float hx = w * 0.5f - rad, hy = h * 0.5f - rad, mx = x + w * 0.5f, my = y + h * 0.5f;
+    for (int py = (int)y - 1; py <= (int)(y + h) + 1; py++)
+        for (int px = (int)x - 1; px <= (int)(x + w) + 1; px++) {
+            float qx = SDL_fabsf(px + 0.5f - mx) - hx, qy = SDL_fabsf(py + 0.5f - my) - hy;
+            float ox = qx > 0 ? qx : 0, oy = qy > 0 ? qy : 0;
+            float inside = qx > qy ? qx : qy;
+            float d = SDL_sqrtf(ox * ox + oy * oy) + (inside < 0 ? inside : 0) - rad;
+            float cover = 0.5f - d;
+            if (cover > 1) cover = 1;
+            if (cover > 0) bram_blend(s, px, py, r, g, b, a * cover);
         }
-        SDL_FreeSurface(indicator_surface);
+}
+
+static void bram_glass(SDL_Surface* s, float x, float y, float w, float h) {
+    bram_round(s, x - 2, y + 3, w + 4, h + 4, h * 0.5f + 2, 0, 0, 0, 0.18f); // soft shadow
+    bram_round(s, x, y, w, h, h * 0.5f, 0.11f, 0.11f, 0.13f, 0.88f);
+}
+
+static void bram_text(SDL_Surface* s, TTF_Font* f, const char* t, int x, int y, Uint8 alpha) {
+    if (!f || !t || !*t) return;
+    SDL_Surface* ts = TTF_RenderUTF8_Blended(f, t, (SDL_Color){255, 255, 255, 255});
+    if (!ts) return;
+    SDL_SetSurfaceAlphaMod(ts, alpha);
+    SDL_SetSurfaceBlendMode(ts, SDL_BLENDMODE_BLEND);
+    SDL_BlitSurface(ts, NULL, s, &(SDL_Rect){x, y, ts->w, ts->h});
+    SDL_FreeSurface(ts);
+}
+
+// Speaker: a body and a cone, then a wave for each third of the volume.
+static void bram_speaker(SDL_Surface* s, float x, float y, int level, int max) {
+    bram_round(s, x, y + 8, 7, 10, 1.5f, 1, 1, 1, 1);
+    for (int i = 0; i < 7; i++) bram_round(s, x + 6 + i, y + 8 - i * 1.1f, 1.6f, 10 + i * 2.2f, 0.5f, 1, 1, 1, 1);
+    int waves = level <= 0 ? 0 : 1 + (level * 2) / (max > 0 ? max : 1);
+    for (int w = 0; w < waves && w < 3; w++) {
+        float r = 6 + w * 5, cx = x + 13, cy = y + 13;
+        for (float a = -0.9f; a <= 0.9f; a += 0.02f)
+            bram_round(s, cx + r * SDL_cosf(a) - 1, cy + r * SDL_sinf(a) - 1, 2.2f, 2.2f, 1.1f, 1, 1, 1, 0.9f);
     }
+    if (level <= 0) // muted: a slash
+        for (int i = 0; i < 18; i++) bram_round(s, x + 14 + i * 0.7f, y + 4 + i, 2.2f, 2.2f, 1.1f, 1, 1, 1, 1);
+}
+
+static void bram_sun(SDL_Surface* s, float cx, float cy) {
+    bram_round(s, cx - 6, cy - 6, 12, 12, 6, 1, 1, 1, 1);
+    for (int i = 0; i < 8; i++) {
+        float a = i * 0.7854f;
+        bram_round(s, cx + SDL_cosf(a) * 11 - 2, cy + SDL_sinf(a) * 11 - 2, 4, 4, 2, 1, 1, 1, 1);
+    }
+}
+
+static void render_system_indicator(void) {
+    bram_fonts();
+    int value, lo, hi, volume = system_indicator_type == SYSTEM_INDICATOR_VOLUME;
+    if (system_indicator_type == SYSTEM_INDICATOR_BRIGHTNESS) value = GetBrightness(), lo = BRIGHTNESS_MIN, hi = BRIGHTNESS_MAX;
+    else if (system_indicator_type == SYSTEM_INDICATOR_COLORTEMP) value = GetColortemp(), lo = COLORTEMP_MIN, hi = COLORTEMP_MAX;
+    else value = GetVolume(), lo = VOLUME_MIN, hi = VOLUME_MAX;
+    float frac = hi > lo ? (float)(value - lo) / (hi - lo) : 0;
+    if (frac < 0) frac = 0;
+    if (frac > 1) frac = 1;
+    float w = 300, h = 52, x = (screen_width - w) * 0.5f, y = 22;
+    bram_glass(gl_notification_surface, x, y, w, h);
+    if (volume) bram_speaker(gl_notification_surface, x + 18, y + 13, value - lo, hi - lo);
+    else bram_sun(gl_notification_surface, x + 32, y + 26);
+    float bx = x + 62, bw = w - 62 - 70, by = y + h * 0.5f - 4;
+    bram_round(gl_notification_surface, bx, by, bw, 8, 4, 1, 1, 1, 0.2f);
+    if (frac > 0) bram_round(gl_notification_surface, bx, by, bw * frac < 8 ? 8 : bw * frac, 8, 4, 1, 1, 1, 1);
+    char pct[16];
+    snprintf(pct, sizeof(pct), "%d%%", (int)(frac * 100 + 0.5f));
+    int tw = 0, th = 0;
+    if (bram_small) TTF_SizeUTF8(bram_small, pct, &tw, &th);
+    bram_text(gl_notification_surface, bram_small, pct, (int)(x + w - 18 - tw), (int)(y + (h - th) * 0.5f), 220);
 }
 
 // Render progress indicator pill (top-left)
@@ -442,96 +518,29 @@ static void render_challenge_indicator(int count) {
 }
 
 // Render a single notification pill
-static void render_notification_pill(Notification* n, int x, int y, SDL_Color text_color, SDL_Color bg_color_sdl) {
-    int text_w = 0, text_h = 0;
-    TTF_SizeUTF8(font.tiny, n->message, &text_w, &text_h);
-    
-    int icon_w = 0, icon_h = 0, icon_total_w = 0;
-    if (n->icon) {
-        icon_h = text_h;
-        icon_w = (n->icon->w * icon_h) / n->icon->h;
-        icon_total_w = icon_w + notif_icon_gap;
-    }
-    
-    // Wifi-off indicator for offline achievement notifications
-    int wifi_icon_w = 0;
-    if (n->type == NOTIFICATION_OFFLINE_ACHIEVEMENT) {
-        wifi_icon_w = SCALE1(12) + notif_icon_gap;  // icon natural size + gap
-    }
-    
-    int pill_w = icon_total_w + wifi_icon_w + text_w + (notif_padding_x * 2);
-    int pill_h = text_h + (notif_padding_y * 2);
-    int corner_radius = pill_h / 2;
-    
-    SDL_Surface* notif_surface = SDL_CreateRGBSurfaceWithFormat(
-        0, pill_w, pill_h, 32, SDL_PIXELFORMAT_ABGR8888
-    );
-    if (!notif_surface) return;
-    
-    SDL_FillRect(notif_surface, NULL, 0);
-    Uint32 bg_color = SDL_MapRGBA(notif_surface->format, bg_color_sdl.r, bg_color_sdl.g, bg_color_sdl.b, 255);
-    draw_rounded_rect(notif_surface, 0, 0, pill_w, pill_h, corner_radius, bg_color);
-    
-    int content_x = notif_padding_x;
-    
-    if (n->icon && icon_w > 0 && icon_h > 0) {
-        SDL_Rect icon_dst = {content_x, notif_padding_y, icon_w, icon_h};
-        SDL_SetSurfaceBlendMode(n->icon, SDL_BLENDMODE_BLEND);
-        SDL_BlitScaled(n->icon, NULL, notif_surface, &icon_dst);
-        content_x += icon_total_w;
-    }
-    
-    // Blit wifi-off icon between badge and text for offline achievements
-    if (n->type == NOTIFICATION_OFFLINE_ACHIEVEMENT) {
-        int wifi_size = SCALE1(12);
-        int wifi_y = notif_padding_y + (text_h - wifi_size) / 2;
-        GFX_blitAssetColor(ASSET_WIFI_OFF, NULL, notif_surface,
-                           &(SDL_Rect){content_x, wifi_y}, THEME_COLOR1_255);
-        content_x += wifi_size + notif_icon_gap;
-    }
-    
-    SDL_Surface* text_surf = TTF_RenderUTF8_Blended(font.tiny, n->message, text_color);
-    if (text_surf) {
-        SDL_SetSurfaceBlendMode(text_surf, SDL_BLENDMODE_BLEND);
-        SDL_Rect text_dst = {content_x, notif_padding_y, text_surf->w, text_surf->h};
-        SDL_BlitSurface(text_surf, NULL, notif_surface, &text_dst);
-        SDL_FreeSurface(text_surf);
-    }
-    
-    SDL_SetSurfaceBlendMode(notif_surface, SDL_BLENDMODE_NONE);
-    SDL_Rect dst_rect = {x, y, pill_w, pill_h};
-    SDL_BlitSurface(notif_surface, NULL, gl_notification_surface, &dst_rect);
-    SDL_FreeSurface(notif_surface);
-}
-
-// Render notification stack (bottom-left, stacking upward)
+// Bramley: toasts at the bottom centre, newest at the bottom, each with a coloured dot (green for
+// saves, gold for achievements, blue for the rest) or the achievement's badge.
 static void render_notification_stack(void) {
-    SDL_Color text_color = uintToColour(THEME_COLOR1_255);
-    SDL_Color bg_color_sdl = uintToColour(THEME_COLOR2_255);
-    
-    int base_x = notif_margin;
-    int base_y = screen_height - notif_margin;
-    
-    for (int i = 0; i < notification_count; i++) {
+    bram_fonts();
+    if (!bram_font) return;
+    float h = 52, gap = 10, y = screen_height - 88 - h; // clear of the letterbox and the edge
+    for (int i = notification_count - 1; i >= 0; i--, y -= h + gap) {
         Notification* n = &notifications[i];
-        
-        int text_h = 0;
-        TTF_SizeUTF8(font.tiny, n->message, NULL, &text_h);
-        int pill_h = text_h + (notif_padding_y * 2);
-        
-        // Calculate stack offset (how far up from base)
-        int stack_offset = 0;
-        for (int j = i + 1; j < notification_count; j++) {
-            int other_text_h = 0;
-            TTF_SizeUTF8(font.tiny, notifications[j].message, NULL, &other_text_h);
-            int other_pill_h = other_text_h + (notif_padding_y * 2);
-            stack_offset += other_pill_h + notif_stack_gap;
+        int tw = 0, th = 0;
+        TTF_SizeUTF8(bram_font, n->message, &tw, &th);
+        float w = tw + 76, x = (screen_width - w) * 0.5f;
+        bram_glass(gl_notification_surface, x, y, w, h);
+        if (n->icon) {
+            SDL_Rect dst = {(int)x + 14, (int)y + 10, 32, 32};
+            SDL_SetSurfaceBlendMode(n->icon, SDL_BLENDMODE_BLEND);
+            SDL_BlitScaled(n->icon, NULL, gl_notification_surface, &dst);
+        } else {
+            int ach = n->type == NOTIFICATION_ACHIEVEMENT || n->type == NOTIFICATION_OFFLINE_ACHIEVEMENT;
+            int save = n->type == NOTIFICATION_SAVE_STATE || n->type == NOTIFICATION_LOAD_STATE;
+            float r = save ? 0.20f : ach ? 1.0f : 0.04f, g = save ? 0.78f : ach ? 0.75f : 0.52f, b = save ? 0.35f : ach ? 0.2f : 1.0f;
+            bram_round(gl_notification_surface, x + 20, y + 16, 20, 20, ach ? 5 : 10, r, g, b, 1);
         }
-        
-        int x = base_x;
-        int y = base_y - pill_h - stack_offset;
-        
-        render_notification_pill(n, x, y, text_color, bg_color_sdl);
+        bram_text(gl_notification_surface, bram_font, n->message, (int)(x + 54), (int)(y + (h - th) * 0.5f), 255);
     }
 }
 

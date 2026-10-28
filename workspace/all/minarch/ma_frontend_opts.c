@@ -1,5 +1,6 @@
 #include "ma_internal.h"
 #include "ma_frontend_opts.h"
+#include "bramley_menu.h"
 #include "ma_cheats.h"
 #include "ra_integration.h"
 #include "notification.h"
@@ -10,6 +11,7 @@
 #include <libgen.h>
 
 int Menu_messageWithFont(char* message, char** pairs, TTF_Font* f) {
+	if (bramley_menu_active()) return bramley_message(message); // Bramley: a card over the blurred game
 	GFX_setMode(MODE_MAIN);
 	int dirty = 1;
 	while (1) {
@@ -216,10 +218,10 @@ int OptionEmulator_openMenu(MenuList* list, int index) {
 	}
 	else {
 		if (list->category) {
-			Menu_message("This category has no options.", (char*[]){ "B","BACK", NULL });
+			Menu_message("Nothing to change here\nThis category has no options.", (char*[]){ "B","BACK", NULL });
 		}
 		else {
-			Menu_message("This core has no options.", (char*[]){ "B","BACK", NULL });
+			Menu_message("Nothing to change here\nThis emulator has no options.", (char*[]){ "B","BACK", NULL });
 		}
 	}
 
@@ -646,7 +648,7 @@ static int OptionPragmas_openMenu(MenuList* list, int i) {
 	if (PragmasOptions_menu.items[0].name) {
 		Menu_options(&PragmasOptions_menu);
 	} else {
-		Menu_message("No extra settings found", (char*[]){"B", "BACK", NULL});
+		Menu_message("No extra settings\nThis shader has no settings to change.", (char*[]){"B", "BACK", NULL});
 	}
 
 	return MENU_CALLBACK_NOP;
@@ -692,7 +694,7 @@ int OptionShaders_openMenu(MenuList* list, int i) {
 
 	// Check if folder read failed or no files found
 	if (!filelist || filecount == 0) {
-		Menu_message("No shaders available\n/Shaders folder or shader files not found", (char*[]){"B", "BACK", NULL});
+		Menu_message("No shaders available\nAdd shader files to the Shaders folder on the card, then open this menu again.", (char*[]){"B", "BACK", NULL});
 		return MENU_CALLBACK_NOP;
 	}
 
@@ -721,7 +723,7 @@ int OptionShaders_openMenu(MenuList* list, int i) {
 	if (ShaderOptions_menu.items[0].name) {
 		Menu_options(&ShaderOptions_menu);
 	} else {
-		Menu_message("No shaders available\n/Shaders folder or shader files not found", (char*[]){"B", "BACK", NULL});
+		Menu_message("No shaders available\nAdd shader files to the Shaders folder on the card, then open this menu again.", (char*[]){"B", "BACK", NULL});
 	}
 
 	return MENU_CALLBACK_NOP;

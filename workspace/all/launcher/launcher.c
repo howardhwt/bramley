@@ -165,6 +165,19 @@ static void crash_report(int sig) {
 // NextUI's seven theme colors, set to Bramley's palette. Bramley draws its own interface and no
 // longer offers these in Settings; this keeps Paks that still draw with NextUI's code, and its
 // overlays, in Bramley's colors. Written only when something differs.
+// Shutting down or restarting: the wordmark and PWR_powerOff's message, drawn with the GL kit.
+static void power_screen(const char* message) {
+	lgfx_begin_frame();
+	lgfx_draw_fill(0, 0, SCREEN_W, SCREEN_H, 0, 0, 0, 0, 1);
+	LTex* t = ltex_text(LFONT_HERO, BRAMLEY_NAME, 0);
+	LTex* m = ltex_text(LFONT_BODY, message, 0);
+	if (t) lgfx_draw_tex(t, (SCREEN_W - t->w) * 0.5f, SCREEN_H * 0.5f - t->h - 4, t->w, t->h, 0, 1);
+	if (m) lgfx_draw_tex(m, (SCREEN_W - m->w) * 0.5f, SCREEN_H * 0.5f + 18, m->w, m->h, 0, 0.6f);
+	ltex_free(t);
+	ltex_free(m);
+	lgfx_end_frame();
+}
+
 static void apply_bramley_palette(void) {
 	static const uint32_t palette[7] = {
 		0xFFFFFFFFu, // main: white
@@ -1819,6 +1832,7 @@ int main(int argc, char* argv[]) {
 	PAD_reset();
 
 	lgfx_init(SCREEN_W, SCREEN_H);
+	PWR_drawPowerOffScreen = power_screen; // shutting down from the launcher draws with the kit
 	t[nt++] = now_ms();
 	lradio_start();
 	lmusic_init();

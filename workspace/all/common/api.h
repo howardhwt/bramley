@@ -573,6 +573,8 @@ void PWR_updateFrequency(int secs, int updateWifi);
 
 void PWR_disablePowerOff(void);
 void PWR_powerOff(int reboot);
+// Bramley: when set, PWR_powerOff calls this to show its message instead of drawing in software.
+extern void (*PWR_drawPowerOffScreen)(const char *message);
 int PWR_isPoweringOff(void);
 
 void PWR_sleep(void);

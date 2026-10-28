@@ -326,6 +326,27 @@ static void ach_sort_achievements(const rc_client_achievement_t** achievements, 
 	}
 }
 
+// Bramley: one achievement as the Bramley menu draws it. status holds the text it points to.
+static BramleyAchievement bramley_ach(const rc_client_achievement_t* a, char* status, size_t size) {
+	BramleyAchievement b = { a->title, a->description, a->points, a->unlocked != 0,
+	                         RA_isAchievementMuted(a->id), RA_isAchievementOfflinePending(a->id),
+	                         a->bucket == RC_CLIENT_ACHIEVEMENT_BUCKET_ACTIVE_CHALLENGE,
+	                         RA_Badges_get(a->badge_name, !a->unlocked), a->rarity, status, NULL };
+	if (a->unlocked && a->unlock_time > 0) {
+		struct tm tm;
+		localtime_r(&a->unlock_time, &tm);
+		strftime(status, size, "%e %b %Y", &tm);
+		if (status[0] == ' ') memmove(status, status + 1, strlen(status));
+	} else if (a->measured_progress[0])
+		snprintf(status, size, "%s", a->measured_progress);
+	else
+		snprintf(status, size, "Locked");
+	if (a->type == RC_CLIENT_ACHIEVEMENT_TYPE_MISSABLE) b.kind = "Missable: it can be lost for good in this playthrough.";
+	else if (a->type == RC_CLIENT_ACHIEVEMENT_TYPE_PROGRESSION) b.kind = "Progression: earned by playing through the game.";
+	else if (a->type == RC_CLIENT_ACHIEVEMENT_TYPE_WIN) b.kind = "Win condition: earned by finishing the game.";
+	return b;
+}
+
 static int OptionAchievements_showDetail(MenuList* list, int i) {
 	if (!ach_menu_achievements || i < 0 || i >= ach_menu_count) {
 		return MENU_CALLBACK_NOP;
@@ -365,7 +386,13 @@ static int OptionAchievements_showDetail(MenuList* list, int i) {
 		
 		PWR_update(&dirty, NULL, Menu_beforeSleep, Menu_afterSleep);
 		
-		if (dirty) {
+		if (dirty && bramley_menu_active()) { // Bramley
+			char status[64];
+			BramleyAchievement b = bramley_ach(ach, status, sizeof(status));
+			bramley_achievement_draw(&b, i, ach_menu_count);
+			dirty = 0;
+		}
+		else if (dirty) {
 			bool is_muted = RA_isAchievementMuted(ach->id);
 			bool is_offline_pending = RA_isAchievementOfflinePending(ach->id);
 			
@@ -522,7 +549,7 @@ static int OptionAchievements_showDetail(MenuList* list, int i) {
 
 static int OptionAchievements_openMenu(MenuList* list, int i) {
 	if (!RA_isGameLoaded()) {
-		Menu_message("No achievements found for this game.\n\nThis ROM may need a compatibility patch\nor may not be a supported version.\n\nVisit retroachievements.org to check\nsupported game files.", (char*[]){"B","BACK", NULL});
+		Menu_message("No achievements for this game\nThis file may need a patch, or may not be a version RetroAchievements supports. Check the game on retroachievements.org.", (char*[]){"B","BACK", NULL});
 		return MENU_CALLBACK_NOP;
 	}
 
@@ -530,7 +557,7 @@ static int OptionAchievements_openMenu(MenuList* list, int i) {
 	RA_getAchievementSummary(&unlocked, &total);
 
 	if (total == 0) {
-		Menu_message("No achievements available for this game.\n\nThis game may not have achievements yet.\n\nVisit retroachievements.org for details.", (char*[]){"B","BACK", NULL});
+		Menu_message("No achievements yet\nNobody has made achievements for this game so far. Check retroachievements.org for news.", (char*[]){"B","BACK", NULL});
 		return MENU_CALLBACK_NOP;
 	}
 
@@ -551,7 +578,7 @@ static int OptionAchievements_openMenu(MenuList* list, int i) {
 		RC_CLIENT_ACHIEVEMENT_CATEGORY_CORE, RC_CLIENT_ACHIEVEMENT_LIST_GROUPING_PROGRESS);
 
 	if (!ach_menu_list) {
-		Menu_message("Failed to load achievements", (char*[]){"B","BACK", NULL});
+		Menu_message("Achievements could not load\nTry again in a moment.", (char*[]){"B","BACK", NULL});
 		return MENU_CALLBACK_NOP;
 	}
 
@@ -566,7 +593,7 @@ static int OptionAchievements_openMenu(MenuList* list, int i) {
 		ach_menu_list = NULL;
 		// This can happen with unsupported game versions where pseudo-achievements
 		// are counted in the summary but not available in the achievement list
-		Menu_message("Achievement list not available", (char*[]){"B","BACK", NULL});
+		Menu_message("No achievement list\nRetroAchievements sent no list for this version of the game.", (char*[]){"B","BACK", NULL});
 		return MENU_CALLBACK_NOP;
 	}
 
@@ -649,7 +676,7 @@ static int OptionAchievements_openMenu(MenuList* list, int i) {
 				ach_menu_list = NULL;
 				ach_menu_achievements = NULL;
 				ach_menu_count = 0;
-				Menu_message("No achievements found", (char*[]){"B","BACK", NULL});
+				Menu_message("No achievements to show", (char*[]){"B","BACK", NULL});
 				return MENU_CALLBACK_NOP;
 			}
 
@@ -733,7 +760,21 @@ static int OptionAchievements_openMenu(MenuList* list, int i) {
 			filter_dirty = 1;
 		}
 
-		if (dirty) {
+		if (dirty && bramley_menu_active()) { // Bramley
+			int top = start, vis = max_visible;
+			BramleyAchievement rows[64];
+			static char status[64][64];
+			int n = 0;
+			// only the rows on screen, around the selection
+			if (selected < top) top = selected;
+			for (int j = top; j < filtered_count && n < 64; j++, n++) rows[n] = bramley_ach(filtered[j], status[n], sizeof(status[n]));
+			char name[256];
+			getDisplayName(game.alt_name, name);
+			bramley_achievements_draw(name, unlocked, total, rows, n, selected - top, 0, ach_filter_locked_only, &vis);
+			max_visible = vis;
+			dirty = 0;
+		}
+		else if (dirty) {
 			end = MIN(start + max_visible, filtered_count);
 			
 			GFX_clear(screen);

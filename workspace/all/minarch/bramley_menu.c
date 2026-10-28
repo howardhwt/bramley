@@ -244,6 +244,11 @@ static LTex* cached_text(int font, const char* s) {
 	return t;
 }
 
+static float text_width(int font, const char* s) {
+	LTex* t = cached_text(font, s);
+	return t ? t->w : 0;
+}
+
 static void ctext(int font, const char* s, float x, float y, float alpha, int right) {
 	if (!s || !*s) return;
 	LTex* t = cached_text(font, s);
@@ -432,6 +437,197 @@ void bramley_options_draw(MenuList* list, int selected, int await_input) {
 		      is_input ? "A  Set button        X  Clear        B  Back" : "A  Select        \xE2\x80\xB9 \xE2\x80\xBA  Change        B  Back", 40, H - 40, 0.6f, 0);
 	}
 
+	lgfx_end_frame();
+	lgfx_restore_gl_state();
+}
+
+///////////////////////////////////////////////////////////
+// Messages
+
+int bramley_message(const char* message) {
+	char title[160] = "", body[512] = "";
+	const char* nl = strchr(message, '\n');
+	if (nl) {
+		snprintf(title, sizeof(title), "%.*s", (int)(nl - message), message);
+		snprintf(body, sizeof(body), "%s", nl + 1);
+		for (char* c = body; *c; c++)
+			if (*c == '\n') *c = ' ';
+	} else
+		snprintf(title, sizeof(title), "%s", message);
+	int dirty = 1;
+	for (;;) {
+		GFX_startFrame();
+		PAD_poll();
+		if (PAD_justPressed(BTN_A) || PAD_justPressed(BTN_B)) break;
+		PWR_update(&dirty, NULL, NULL, NULL);
+		if (!dirty) {
+			SDL_Delay(16);
+			continue;
+		}
+		lgfx_save_gl_state();
+		lgfx_begin_frame();
+		lgfx_draw_snapshot(1);
+		lgfx_draw_fill(0, 0, W, H, 0, 0, 0, 0, 0.45f);
+		LTex* t = ltex_text_wrapped(LFONT_TITLE, title, 480, 2, 1);
+		LTex* d = body[0] ? ltex_text_wrapped(LFONT_BODY, body, 480, 5, 1) : NULL;
+		float w = 560, bh = 52, h = 36 + (t ? t->h : 0) + (d ? 16 + d->h : 0) + 28 + bh + 28;
+		float x = (W - w) * 0.5f, y = (H - h) * 0.5f - 20, cy = y + 36;
+		lgfx_draw_shadow(x, y, w, h, 14, 0.5f);
+		lgfx_draw_fill(x, y, w, h, 26, 0.13f, 0.13f, 0.16f, 0.96f);
+		if (t) {
+			lgfx_draw_tex(t, x + (w - t->w) * 0.5f, cy, t->w, t->h, 0, 1);
+			cy += t->h;
+			ltex_free(t);
+		}
+		if (d) {
+			cy += 16;
+			lgfx_draw_tex(d, x + (w - d->w) * 0.5f, cy, d->w, d->h, 0, 0.7f);
+			cy += d->h;
+			ltex_free(d);
+		}
+		float bw = 200, bx = x + (w - bw) * 0.5f, by = cy + 28;
+		lgfx_draw_fill(bx, by, bw, bh, bh * 0.5f, 1, 1, 1, 0.96f);
+		lgfx_set_dim(0.1f);
+		LTex* ok = cached_text(LFONT_BODY, "OK");
+		if (ok) lgfx_draw_tex(ok, bx + (bw - ok->w) * 0.5f, by + (bh - ok->h) * 0.5f, ok->w, ok->h, 0, 1);
+		lgfx_set_dim(1);
+		lgfx_end_frame();
+		lgfx_restore_gl_state();
+		dirty = 0;
+	}
+	return 0; // MENU_CALLBACK_NOP
+}
+
+///////////////////////////////////////////////////////////
+// Achievements
+
+// The badge, or a grey tile with a dot while it downloads.
+static void draw_badge(SDL_Surface* badge, float x, float y, float s, int unlocked) {
+	LTex* t = badge ? ltex_from_surface(badge, 0) : NULL;
+	if (t) {
+		lgfx_draw_tex(t, x, y, s, s, s * 0.16f, 1);
+		ltex_free(t);
+		return;
+	}
+	const float a[4] = { 0.35f, 0.35f, 0.38f, 1 }, b[4] = { 0.2f, 0.2f, 0.22f, 1 };
+	lgfx_draw_gradient(x, y, s, s, s * 0.16f, a, b);
+	lgfx_draw_fill(x + s * 0.3f, y + s * 0.3f, s * 0.4f, s * 0.4f, s * 0.2f, 1, 1, 1, unlocked ? 0.9f : 0.35f);
+}
+
+static void ach_top(const char* game) {
+	lgfx_begin_frame();
+	lgfx_draw_snapshot(1);
+	lgfx_draw_fill(0, 0, W, H, 0, 0, 0, 0, 0.55f);
+	if (game) {
+		char up[128];
+		snprintf(up, sizeof(up), "%s", game);
+		for (char* c = up; *c; c++)
+			if (*c >= 'a' && *c <= 'z') *c -= 32;
+		ctext(LFONT_LABEL, up, 72, 52, 0.55f, 0);
+	}
+}
+
+void bramley_achievements_draw(const char* game, unsigned unlocked, unsigned total, const BramleyAchievement* rows,
+                               int count, int selected, int top, int locked_only, int* visible) {
+	lgfx_save_gl_state();
+	ach_top(game);
+	ctext(LFONT_TITLE, locked_only ? "Locked Achievements" : "Achievements", 72, 76, 1, 0);
+	char p[48];
+	snprintf(p, sizeof(p), "%u of %u unlocked", unlocked, total);
+	ctext(LFONT_BODY, p, W - 72, 66, 0.85f, 1);
+	lgfx_draw_fill(W - 72 - 260, 104, 260, 8, 4, 1, 1, 1, 0.18f);
+	if (total) lgfx_draw_fill(W - 72 - 260, 104, 260.0f * unlocked / total, 8, 4, 0.20f, 0.78f, 0.35f, 1);
+
+	float x = 72, w = W - 144, y = 150, rh = 86, gap = 8;
+	int fit = (int)((H - 70 - y) / (rh + gap));
+	if (visible) *visible = fit;
+	for (int i = top; i < count && i < top + fit; i++, y += rh + gap) {
+		const BramleyAchievement* a = &rows[i];
+		int f = i == selected;
+		float fx = x, fy = y, fw = w, fh = rh;
+		if (f) {
+			fx -= 8, fw += 16, fy -= 3, fh += 6;
+			lgfx_draw_shadow(fx, fy, fw, fh, 6, 0.32f);
+			lgfx_draw_fill(fx, fy, fw, fh, 18, 1, 1, 1, 0.96f);
+		} else
+			lgfx_draw_fill(fx, fy, fw, fh, 18, 1, 1, 1, 0.07f);
+		draw_badge(a->badge, fx + 14, fy + 12, fh - 24, a->unlocked);
+		if (f) lgfx_set_dim(0.1f);
+		char t[200];
+		snprintf(t, sizeof(t), "%s%s%s", a->challenge ? "\xE2\x97\x8F " : "", a->muted ? "(muted) " : "", a->title ? a->title : "");
+		LTex* tt = ltex_text(LFONT_BODY, t, (int)(fw - fh - 170));
+		if (tt) {
+			lgfx_draw_tex(tt, fx + fh + 6, fy + 12, tt->w, tt->h, 0, a->unlocked || f ? 1 : 0.75f);
+			ltex_free(tt);
+		}
+		LTex* dt = a->description ? ltex_text(LFONT_SMALL, a->description, (int)(fw - fh - 170)) : NULL;
+		if (dt) {
+			lgfx_draw_tex(dt, fx + fh + 6, fy + 48, dt->w, dt->h, 0, f ? 0.7f : 0.55f);
+			ltex_free(dt);
+		}
+		snprintf(p, sizeof(p), "%u pts", a->points);
+		ctext(LFONT_BODY, p, fx + fw - 24, fy + (fh - 30) * 0.5f, f ? 1 : 0.6f, 1);
+		lgfx_set_dim(1);
+		if (a->unlocked) lgfx_draw_fill(fx + fw - 130, fy + fh * 0.5f - 6, 12, 12, 6, 0.20f, 0.78f, 0.35f, 1);
+	}
+	if (top > 0) ctext(LFONT_SMALL, "\xE2\x96\xB2", W * 0.5f, 126, 0.35f, 0);
+	if (top + fit < count) ctext(LFONT_SMALL, "\xE2\x96\xBC", W * 0.5f, y - 6, 0.35f, 0);
+	int muted = selected >= 0 && selected < count && rows[selected].muted;
+	char hint[160];
+	snprintf(hint, sizeof(hint), "A  Details        Y  %s        X  %s        B  Back", locked_only ? "Show all" : "Show locked",
+	         muted ? "Unmute" : "Mute");
+	ctext(LFONT_SMALL, hint, 40, H - 40, 0.6f, 0);
+	lgfx_end_frame();
+	lgfx_restore_gl_state();
+}
+
+void bramley_achievement_draw(const BramleyAchievement* a, int index, int count) {
+	lgfx_save_gl_state();
+	ach_top(NULL);
+	float s = 200, bx = (W - s) * 0.5f, by = 90;
+	lgfx_draw_shadow(bx, by, s, s, 14, 0.5f);
+	draw_badge(a->badge, bx, by, s, a->unlocked);
+	lgfx_draw_fill(W * 0.5f - 320, by + s + 14, 640, 270, 24, 0, 0, 0, 0.35f);
+	LTex* t = ltex_text_wrapped(LFONT_TITLE, a->title ? a->title : "", 580, 2, 1);
+	float y = by + s + 34;
+	if (t) {
+		lgfx_draw_tex(t, (W - t->w) * 0.5f, y, t->w, t->h, 0, 1);
+		y += t->h + 8;
+		ltex_free(t);
+	}
+	LTex* d = a->description ? ltex_text_wrapped(LFONT_BODY, a->description, 580, 3, 1) : NULL;
+	if (d) {
+		lgfx_draw_tex(d, (W - d->w) * 0.5f, y, d->w, d->h, 0, 0.7f);
+		y += d->h;
+		ltex_free(d);
+	}
+	// three facts: points, status, and how many players have it
+	char pts[16], rare[32];
+	snprintf(pts, sizeof(pts), "%u", a->points);
+	if (a->rarity > 0) snprintf(rare, sizeof(rare), "%.1f%%", a->rarity);
+	else snprintf(rare, sizeof(rare), "\xE2\x80\x94");
+	const char* lab[3] = { "POINTS", a->unlocked ? "UNLOCKED" : "STATUS", "PLAYERS" };
+	const char* val[3] = { pts, a->status ? a->status : (a->unlocked ? "Yes" : "Locked"), rare };
+	float cy = by + s + 196, pw = 190, gap = 14, px = (W - 3 * pw - 2 * gap) * 0.5f;
+	for (int i = 0; i < 3; i++) {
+		float x = px + i * (pw + gap);
+		lgfx_draw_fill(x, cy, pw, 72, 16, 1, 1, 1, 0.07f);
+		LTex* l = cached_text(LFONT_LABEL, lab[i]);
+		if (l) lgfx_draw_tex(l, x + (pw - l->w) * 0.5f, cy + 12, l->w, l->h, 0, 0.55f);
+		LTex* v = ltex_text(LFONT_BODY, val[i], (int)pw - 16);
+		if (v) {
+			lgfx_draw_tex(v, x + (pw - v->w) * 0.5f, cy + 34, v->w, v->h, 0, 0.95f);
+			ltex_free(v);
+		}
+	}
+	char foot[96];
+	if (a->offline) snprintf(foot, sizeof(foot), "Unlocked offline. It will sync when Wi-Fi is on.");
+	else if (a->kind) snprintf(foot, sizeof(foot), "%s", a->kind);
+	else foot[0] = 0;
+	if (foot[0]) ctext(LFONT_SMALL, foot, W * 0.5f - text_width(LFONT_SMALL, foot) * 0.5f, cy + 92, 0.55f, 0);
+	char hint[128];
+	snprintf(hint, sizeof(hint), "\xE2\x80\xB9 \xE2\x80\xBA  %d of %d        X  %s        B  Back", index + 1, count, a->muted ? "Unmute" : "Mute");
+	ctext(LFONT_SMALL, hint, 40, H - 40, 0.6f, 0);
 	lgfx_end_frame();
 	lgfx_restore_gl_state();
 }
