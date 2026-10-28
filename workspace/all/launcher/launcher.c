@@ -9,6 +9,9 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <execinfo.h>
+#include <fcntl.h>
+#include <signal.h>
 
 #include "defines.h"
 #include "api.h"
@@ -129,6 +132,24 @@ static void debug_step(void) {
 		SDL_FreeSurface(img);
 		free(rgba);
 	}
+}
+
+// On a crash, append the signal and the call stack to the crash log, which survives restarts,
+// then crash as before so the safety net sees it. Map the addresses with addr2line on the
+// unstripped build.
+static void crash_report(int sig) {
+	void* frames[64];
+	int n = backtrace(frames, 64);
+	int fd = open(SDCARD_PATH "/.userdata/" PLATFORM "/logs/bramley-crashes.txt", O_WRONLY | O_APPEND | O_CREAT, 0644);
+	if (fd >= 0) {
+		char head[64];
+		int len = snprintf(head, sizeof(head), "signal %d in thread %ld, stack:\n", sig, (long)getpid());
+		write(fd, head, len);
+		backtrace_symbols_fd(frames, n, fd);
+		close(fd);
+	}
+	signal(sig, SIG_DFL);
+	raise(sig);
 }
 
 static int spring_step(Spring* s, float target, float dt) {
@@ -1694,6 +1715,11 @@ int main(int argc, char* argv[]) {
 	VIB_init();
 	PWR_init();
 	if (!HAS_POWER_BUTTON) PWR_disableSleep();
+	// after SDL, whose own crash handler would otherwise catch the signal first and hide the stack
+	signal(SIGSEGV, crash_report);
+	signal(SIGBUS, crash_report);
+	signal(SIGABRT, crash_report);
+	signal(SIGFPE, crash_report);
 	t[nt++] = now_ms();
 	system("gametimectl.elf stop_all");
 	t[nt++] = now_ms();

@@ -326,7 +326,7 @@ protected:
 
 public:
     MenuList(MenuItemType type, const std::string &desc, std::vector<AbstractMenuItem*> items, MenuListCallback on_change = nullptr, MenuListCallback on_confirm = nullptr);
-    ~MenuList();
+    virtual ~MenuList(); // Bramley: virtual, so deleting a page as a MenuList runs its own cleanup (stopping worker threads)
     MenuList(MenuList &) = delete;
 
     static void showOverlay(const std::string& message, OverlayDismissMode dismissMode = OverlayDismissMode::None);
