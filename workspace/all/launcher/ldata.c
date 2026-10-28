@@ -241,6 +241,9 @@ static int load_tools(Card* cards) {
 	struct dirent* dp;
 	while ((dp = readdir(dh)) && count < MAX_CARDS) {
 		if (hide(dp->d_name) || !suffixMatch(".pak", dp->d_name)) continue;
+		// NextUI's over-the-air updater would put stock NextUI over Bramley's files, so it is not
+		// listed. Nothing is deleted: removing Bramley brings it back.
+		if (!strcmp(dp->d_name, "Updater.pak")) continue;
 		Card* card = &cards[count];
 		memset(card, 0, sizeof(*card));
 		card->kind = CARD_TOOL;

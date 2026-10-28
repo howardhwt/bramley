@@ -22,9 +22,9 @@ The screenshots come from the desktop build with demo content. The games and alb
 - **Collections.** NextUI's collections appear as their own row, in your own order.
 - **Low battery.** A warning at 5 percent, and a clean power-off at 2 percent instead of the device dying.
 - **Chinese, Japanese and Korean names** are drawn with Source Han Sans from the device's own firmware.
-- **Settings.** The sections sit in a sidebar with iOS-style icons, and the focused section's settings show live beside it, as on an iPad. On and off settings are switches that A flips, and levels such as volume are sliders.
+- **Settings.** Settings opens inside the launcher, so it appears and closes at once. The sections sit in a sidebar with iOS-style icons, and the focused section's settings show live beside it, as on an iPad. On and off settings are switches that only A flips, levels such as volume are sliders, and the on-screen keyboard is redrawn to match. Wi-Fi and Bluetooth switch in the background and show what they are doing. SELECT opens Now Playing over Settings.
 - **Wallpapers.** Eight wallpapers made for Bramley come with it.
-- **Faster switching.** Moving between the home screen, games and Settings no longer waits on a slow screen clear.
+- **Faster switching.** Shared startup work is trimmed, so the launcher starts in about 650 ms instead of 940 ms on the Brick, Wi-Fi is online about 3.5 seconds after switching on instead of about 6, and the brief jump to full volume on every program start is gone.
 - **Safety net.** If the launcher fails to start twice in a row, stock NextUI opens instead, so a bad build never locks you out.
 
 ## Install
@@ -33,7 +33,7 @@ The screenshots come from the desktop build with demo content. The games and alb
 2. Extract the release zip to the root of the SD card. This creates `Tools/tg5040/Bramley.pak`.
 3. On the device, open Tools, then Bramley. The new home screen appears.
 
-Bramley replaces NextUI's launcher, Settings and emulator, and keeps the stock ones beside them. To remove it, open the Bramley Pak again from Apps; stock NextUI comes back, and your music bookmarks are kept. After a NextUI update the stock programs may return; open the Pak again to reinstall. Installing over Brick Hammer Launcher updates it in place, and the old `Brick Hammer Launcher.pak` folder can then be deleted.
+Bramley replaces NextUI's launcher, Settings and emulator, and keeps the stock ones beside them. To remove it, open the Bramley Pak again from Apps; stock NextUI comes back, and your music bookmarks are kept. Do not run NextUI's own Updater with Bramley installed: it would put stock NextUI back over Bramley's files, so Bramley hides it from Apps. Bramley will get its own updater. Installing over Brick Hammer Launcher updates it in place, and the old `Brick Hammer Launcher.pak` folder can then be deleted.
 
 ## Buttons
 
@@ -79,7 +79,7 @@ Inter is included. To use a font you own, put its files in `Fonts/` at the card 
 - There are no Bluetooth headset buttons and no online album art yet.
 - FN1 and FN2 shortcuts run when the button is released, since L3 and R3 together lock the screen.
 - While the screen is locked, NextUI's brightness shortcut can still turn the backlight on.
-- In Settings, the on-screen keyboard and the colour picker still use NextUI's stock look.
+- In Settings, the colour picker still uses NextUI's stock look.
 - Save-state screenshots appear only for manual saves; NextUI does not take one for its automatic save.
 - NextUI's simple mode is not supported yet.
 

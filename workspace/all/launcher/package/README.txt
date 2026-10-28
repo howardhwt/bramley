@@ -18,7 +18,8 @@ Remove
 ------
 Open the Bramley Pak again (it is in Apps). Stock NextUI comes back.
 
-After a NextUI update the stock programs may return. Open the Pak again to reinstall.
+Do not run NextUI's own Updater with Bramley installed: it would put stock NextUI back over
+Bramley's files, so Bramley hides it from Apps. Bramley will get its own updater.
 If the new launcher ever crashes twice in a row on start, the stock launcher opens instead.
 
 Buttons
