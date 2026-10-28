@@ -152,6 +152,32 @@ static void crash_report(int sig) {
 	raise(sig);
 }
 
+// NextUI's seven theme colors, set to Bramley's palette. Bramley draws its own interface and no
+// longer offers these in Settings; this keeps Paks that still draw with NextUI's code, and its
+// overlays, in Bramley's colors. Written only when something differs.
+static void apply_bramley_palette(void) {
+	static const uint32_t palette[7] = {
+		0xFFFFFFFFu, // main: white
+		0x0A84FFFFu, // accent: Bramley blue
+		0x2C2C2EFFu, // second accent: dark gray
+		0xFFFFFFFFu, // list text
+		0x1C1C1EFFu, // selected list text, on the white highlight
+		0xAEAEB2FFu, // hints
+		0x101018FFu, // background without a wallpaper
+	};
+	int changed = 0;
+	for (int i = 0; i < 7; i++)
+		if (CFG_getColor(i + 1) != palette[i]) {
+			CFG_setColor(i + 1, palette[i]);
+			changed = 1;
+		}
+	if (changed) {
+		CFG_clearPalette();
+		CFG_sync();
+		LOG_info("launcher: theme colors set to Bramley's palette\n");
+	}
+}
+
 static int spring_step(Spring* s, float target, float dt) {
 	const float k = 260.0f, c = 2.0f * sqrtf(k) * 0.72f;
 	for (int i = 0; i < 4; i++) {
@@ -1752,6 +1778,7 @@ int main(int argc, char* argv[]) {
 	t[nt++] = now_ms();
 	GFX_keepScreenOnInit = 1;
 	screen = GFX_init(MODE_MAIN);
+	apply_bramley_palette();
 	t[nt++] = now_ms();
 	PAD_init();
 	VIB_init();

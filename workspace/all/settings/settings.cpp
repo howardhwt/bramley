@@ -514,9 +514,11 @@ int settings_run(SDL_Surface *host_screen)
             []() -> std::any { return CFG_getFontStyle(); },
             [](const std::any &value) { CFG_setFontStyle(std::any_cast<int>(value)); },
             []() { CFG_setFontStyle(CFG_DEFAULT_FONT_STYLE); }});
-        appearanceItems.push_back(buildPaletteMenuItem());
+        // Bramley: the color palette and the seven theme colors are gone. They only colored NextUI's
+        // own interface, which Bramley draws itself; the launcher keeps them at Bramley's palette
+        // for Paks that still draw with NextUI's code.
         for (auto *item : colorMenuItems)
-            appearanceItems.push_back(item);
+            delete item;
         appearanceItems.push_back(new MenuItem{ListItemType::Generic, "Show battery percentage", "Show battery level as percent in the status pill", {false, true}, on_off,
             []() -> std::any { return CFG_getShowBatteryPercent(); },
             [](const std::any &value) { CFG_setShowBatteryPercent(std::any_cast<bool>(value)); },
