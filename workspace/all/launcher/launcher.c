@@ -196,12 +196,46 @@ static int is_settings(const Card* card) {
 
 static void open_settings(void);
 
+// The full wallpaper is decoded on a thread (about 70 ms for a 1024x768 JPEG on the Brick), so the
+// first frame shows at once over its small blurred copy, or the gradient, and the sharp picture
+// replaces it a moment later (wallpaper_arrived()).
+static SDL_Surface* wall_decoded;
+static SDL_atomic_t wall_done;
+static SDL_Thread* wall_thread;
+
+static int decode_wallpaper(void* path) {
+	wall_decoded = IMG_Load((char*)path);
+	free(path);
+	SDL_AtomicSet(&wall_done, 1);
+	return 0;
+}
+
+// Swaps in the decoded wallpaper once it is ready. Returns 1 when it did.
+static int wallpaper_arrived(void) {
+	if (!wall_thread || !SDL_AtomicGet(&wall_done)) return 0;
+	SDL_WaitThread(wall_thread, NULL);
+	wall_thread = NULL;
+	if (!wall_decoded) return 0;
+	LTex* tex = ltex_from_surface(wall_decoded, 0);
+	SDL_FreeSurface(wall_decoded);
+	wall_decoded = NULL;
+	if (!tex) return 0;
+	ltex_free(wallpaper);
+	wallpaper = tex;
+	return 1;
+}
+
 // The wallpaper chosen in Settings (lwallpaper.c), otherwise a dark gradient made once.
 static LTex* load_wallpaper(void) {
 	Wallpaper w;
 	wallpaper_current(&w);
 	if (w.path[0]) {
-		LTex* tex = ltex_load(w.path, 0);
+		if (wall_thread) SDL_WaitThread(wall_thread, NULL); // an earlier load still running
+		if (wall_decoded) SDL_FreeSurface(wall_decoded);
+		wall_decoded = NULL;
+		SDL_AtomicSet(&wall_done, 0);
+		wall_thread = SDL_CreateThread(decode_wallpaper, "wallpaper", strdup(w.path));
+		LTex* tex = w.blur[0] ? ltex_load(w.blur, 0) : NULL;
 		if (tex) return tex;
 	}
 	// Smooth colour fields, so a small image scaled up looks the same and takes a quarter of the time.
@@ -1716,6 +1750,7 @@ int main(int argc, char* argv[]) {
 	}
 	InitSettings();
 	t[nt++] = now_ms();
+	GFX_keepScreenOnInit = 1;
 	screen = GFX_init(MODE_MAIN);
 	t[nt++] = now_ms();
 	PAD_init();
@@ -1728,7 +1763,7 @@ int main(int argc, char* argv[]) {
 	signal(SIGABRT, crash_report);
 	signal(SIGFPE, crash_report);
 	t[nt++] = now_ms();
-	system("gametimectl.elf stop_all");
+	system("gametimectl.elf stop_all &"); // in the background: nothing here waits on it
 	t[nt++] = now_ms();
 	GFX_setVsync(VSYNC_STRICT);
 	PWR_setCPUSpeed(CPU_SPEED_AUTO);
@@ -1928,6 +1963,7 @@ int main(int argc, char* argv[]) {
 		}
 		if (quit) break;
 
+		if (wallpaper_arrived()) dirty = 1;
 		int animating = lmusic_update();
 		if (np.open) {
 			animating |= spring_step(&np.slide, np.closing ? 0.0f : 1.0f, dt);
@@ -2010,6 +2046,7 @@ int main(int argc, char* argv[]) {
 				         t[1] - t[0], t[2] - t[1], t[3] - t[2], t[4] - t[3], t[5] - t[4], t[6] - t[5], t[7] - t[6],
 				         t[8] - t[7], now_ms() - t[0]);
 				first_frame = 0;
+				lgfx_warm_up(); // after the first frame is on screen
 			}
 			dirty = 0;
 		} else {

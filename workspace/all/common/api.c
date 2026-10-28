@@ -405,6 +405,12 @@ int GFX_updateColors(void)
 	return 0;
 }
 
+int GFX_keepScreenOnInit = 0;
+
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
+}
 SDL_Surface *GFX_init(int mode)
 {
 	// Platform init may use the active output to select panel rotation.
@@ -435,7 +441,12 @@ SDL_Surface *GFX_init(int mode)
 
 	// We always have to symlink, does not depend on NTP being enabled
 	PLAT_initTimezones();
-	PLAT_setCurrentTimezone(PLAT_getCurrentTimezone());
+	// Bramley: only when the timezone link is missing (the first program after boot). Setting it
+	// runs five shell commands and commits the system config to flash, about 45 ms on every
+	// program start, though the link survives until the next reboot. Settings still sets it
+	// whenever the timezone is changed.
+	if (access("/tmp/localtime", F_OK) != 0)
+		PLAT_setCurrentTimezone(PLAT_getCurrentTimezone());
 
 	PLAT_initLid();
 	LEDS_initLeds();
@@ -568,7 +579,8 @@ SDL_Surface *GFX_init(int mode)
 		LOG_info("missing inputs, you're about to segfault dummy!\n");
 	gfx.inputs = IMG_Load(input_path);
 
-	PLAT_clearAll();
+	if (!GFX_keepScreenOnInit) // Bramley: the launcher draws its own first frame at once
+		PLAT_clearAll();
 
 	return gfx.screen;
 }

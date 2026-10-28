@@ -15,6 +15,9 @@ enum { LFONT_SMALL, LFONT_LABEL, LFONT_BODY, LFONT_TITLE, LFONT_HERO, LFONT_COUN
 
 void lgfx_init(int screen_w, int screen_h);
 void lgfx_quit(void);
+// Runs one snapshot blur so the driver prepares its targets. Call it once after the first frame,
+// where its cost (about 40 ms the first time) is not on the way to the screen.
+void lgfx_warm_up(void);
 
 void lgfx_begin_frame(void);
 void lgfx_end_frame(void);

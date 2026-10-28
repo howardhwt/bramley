@@ -2,9 +2,10 @@
 # Bramley installer Pak.
 #
 # Run it once to install Bramley on a NextUI card, run it again to remove it. Bramley replaces
-# NextUI's launcher, its Settings program, its emulator (minarch) and its Wi-Fi start script.
-# Installing keeps each stock file next to ours (nextui-stock.elf, settings-stock.elf,
-# minarch-stock.elf, wifi_init-stock.sh) and removing puts them back. The safety net
+# NextUI's launcher, its Settings program, its emulator (minarch), its settings library and its
+# Wi-Fi start script. Installing keeps each stock file next to ours (nextui-stock.elf,
+# settings-stock.elf, minarch-stock.elf, libmsettings-stock.so, wifi_init-stock.sh) and removing
+# puts them back. The safety net
 # (nextui-wrapper.sh, installed as nextui.elf) falls back to the stock launcher if ours ever
 # crashes on start. Music bookmarks and Bramley's settings in .userdata are kept either way.
 #
@@ -16,6 +17,7 @@ BIN="$SYSTEM_PATH/bin"
 RES="$SDCARD_PATH/.system/res"
 SETTINGS="$SDCARD_PATH/Tools/$PLATFORM/Settings.pak"
 WIFI="$SYSTEM_PATH/etc/wifi"
+LIB="$SYSTEM_PATH/lib"
 LOG="${LOGS_PATH:-$SDCARD_PATH/.userdata/$PLATFORM/logs}/bramley.txt"
 MARK="Bramley: safety-net wrapper"
 OLD_MARK="Brick Hammer launcher: safety-net wrapper" # Bramley's name before 2026-10-27
@@ -58,6 +60,7 @@ if installed && [ "$(cat "$BIN/.bramley-version" 2>/dev/null)" = "$(cat VERSION)
 	restore "$BIN" minarch
 	restore "$SETTINGS" settings
 	[ -f "$WIFI/wifi_init-stock.sh" ] && mv -f "$WIFI/wifi_init-stock.sh" "$WIFI/wifi_init.sh"
+	[ -f "$LIB/libmsettings-stock.so" ] && mv -f "$LIB/libmsettings-stock.so" "$LIB/libmsettings.so"
 	# The music daemon outlives the launcher by design, so stop it before its file goes.
 	killall muse 2>/dev/null
 	rm -f "$BIN/launcher.elf" "$BIN/muse" "$BIN/.bramley-version"
@@ -86,6 +89,10 @@ fi
 if [ -f "$WIFI/wifi_init.sh" ]; then
 	[ -f "$WIFI/wifi_init-stock.sh" ] || cp -f "$WIFI/wifi_init.sh" "$WIFI/wifi_init-stock.sh"
 	cp -f "$PAK/wifi_init.sh" "$WIFI/wifi_init.sh" && chmod +x "$WIFI/wifi_init.sh"
+fi
+if [ -f "$LIB/libmsettings.so" ]; then
+	[ -f "$LIB/libmsettings-stock.so" ] || cp -f "$LIB/libmsettings.so" "$LIB/libmsettings-stock.so"
+	cp -f "$PAK/libmsettings.so" "$LIB/libmsettings.so"
 fi
 mkdir -p "$RES/bramley"
 cp -f "$PAK"/fonts/*.ttf "$RES/"

@@ -26,7 +26,7 @@ RUNTIME="$(command -v docker || command -v podman)"
 echo "== building the launcher, Settings and minarch $VERSION for tg5040"
 "$RUNTIME" run --rm -v "$ROOT/workspace":/root/workspace ghcr.io/loveretro/tg5040-toolchain:latest /bin/bash -c \
 	'. ~/.bashrc && export PLATFORM=tg5040 UNION_PLATFORM=tg5040 && cd /root/workspace/all && \
-	 (cd launcher && make clean && make) && (cd settings && make clean && make) && (cd minarch && make)'
+	 (cd ../tg5040/libmsettings && make) && (cd launcher && make clean && make) && (cd settings && make clean && make) && (cd minarch && make)'
 
 echo "== fetching muse from TortOS $TORTOS_TAG"
 mkdir -p "$OUT/cache"
@@ -43,7 +43,7 @@ mkdir -p "$PAK/fonts"
 cp "$HERE/package/launch.sh" "$PAK/"
 cp "$HERE/build/tg5040/launcher.elf" "$OUT/cache/muse" "$HERE/nextui-wrapper.sh" "$PAK/"
 cp "$HERE/../settings/build/tg5040/settings.elf" "$HERE/../minarch/build/tg5040/minarch.elf" "$PAK/"
-cp "$ROOT/skeleton/SYSTEM/tg5040/etc/wifi/wifi_init.sh" "$PAK/"
+cp "$ROOT/skeleton/SYSTEM/tg5040/etc/wifi/wifi_init.sh" "$ROOT/workspace/tg5040/libmsettings/libmsettings.so" "$PAK/"
 mkdir -p "$PAK/res"
 cp -R "$HERE/res/settings" "$HERE/res/wallpapers" "$PAK/res/"
 cp "$HERE/res/Inter-Regular.ttf" "$HERE/res/Inter-SemiBold.ttf" "$HERE/res/Inter-Bold.ttf" "$PAK/fonts/"

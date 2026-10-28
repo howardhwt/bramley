@@ -330,6 +330,8 @@ static void applyDisplayCalDefaultsForDevice(Settings *target) {
 	target->displaycal_blue_gain = defaults.blue_gain;
 }
 
+static int get_audiocodec_card_num(); // Bramley: used by InitSettings
+
 void InitSettings(void) {	
 	char* device = getenv("DEVICE");
 	is_brick = exactMatch("brick", device);
@@ -535,14 +537,26 @@ void InitSettings(void) {
 		// settings->jack = 0;
 		settings->mute = 0;
 	}
-	// printf("brightness: %i\nspeaker: %i \n", settings->brightness, settings->speaker);
-	system("amixer");
-
-	// make sure all these volume-influencing controls are set to defaults, we will set volume with 'digital volume'
+	// Bramley: make sure the volume-influencing controls are at their defaults, as NextUI did with
+	// four amixer commands (40 to 60 ms each, on every program start), but through tinyalsa in
+	// this process (about 1 ms). The amixer dump of every control is gone, and 'digital volume'
+	// is no longer forced to full first: SetMute() below sets it straight to the user's volume,
+	// so the brief jump to full volume on every program start is gone too.
 	if(GetAudioSink() == AUDIO_SINK_DEFAULT) {
-		system("amixer sset 'Headphone' 0");	  // 100%
-		system("amixer sset 'digital volume' 0"); // 100%
-		system("amixer sset 'DAC Swap' Off"); // Fix L/R channels
+		int card_num = get_audiocodec_card_num();
+		struct mixer *mixer = mixer_open(card_num < 0 ? 0 : card_num);
+		if (mixer) {
+			struct mixer_ctl *hp = mixer_get_ctl_by_name(mixer, "Headphone Volume");
+			if (hp) {
+				unsigned int n = mixer_ctl_get_num_values(hp);
+				for (unsigned int i = 0; i < n; i++)
+					mixer_ctl_set_value(hp, i, 0); // as 'amixer sset Headphone 0'
+			}
+			struct mixer_ctl *swap = mixer_get_ctl_by_name(mixer, "DAC Swap");
+			if (swap)
+				mixer_ctl_set_enum_by_string(swap, "Off"); // fix L/R channels
+			mixer_close(mixer);
+		}
 	}
 
 	// This will implicitly update all other settings based on FN switch state
@@ -1269,7 +1283,7 @@ static int get_a2dp_simple_control_name(char *buf, size_t buflen) {
 }
 
 static int get_usbc_card_num() {
-	FILE *fp = popen("cat /proc/asound/cards", "r");
+	FILE *fp = fopen("/proc/asound/cards", "r"); // Bramley: read directly, not through a shell
 	if (!fp) return -1;
 
 	char line[256];
@@ -1277,18 +1291,18 @@ static int get_usbc_card_num() {
 		if (strstr(line, "audiocodec") == NULL) { // skip the built-in codec
 			int card_num;
 			if (sscanf(line, " %d ", &card_num) == 1) {
-				pclose(fp);
+				fclose(fp);
 				return card_num;
 			}
 		}
 	}
 
-	pclose(fp);
+	fclose(fp);
 	return -1;
 }
 
 static int get_audiocodec_card_num() {
-	FILE *fp = popen("cat /proc/asound/cards", "r");
+	FILE *fp = fopen("/proc/asound/cards", "r"); // Bramley: read directly, not through a shell
 	if (!fp) return -1;
 
 	char line[256];
@@ -1296,13 +1310,13 @@ static int get_audiocodec_card_num() {
 		if (strstr(line, "audiocodec") != NULL) { // look for the built-in codec
 			int card_num;
 			if (sscanf(line, " %d ", &card_num) == 1) {
-				pclose(fp);
+				fclose(fp);
 				return card_num;
 			}
 		}
 	}
 
-	pclose(fp);
+	fclose(fp);
 	return -1;
 }
 

@@ -309,6 +309,9 @@ enum {
 	LAYER_IDK2 = 5, // unused?
 };
 
+// Bramley: set to 1 before GFX_init() to skip its final screen clear, for a program that draws its
+// own first frame at once (the launcher). The previous program's last frame stays up until then.
+extern int GFX_keepScreenOnInit;
 SDL_Surface* GFX_init(int mode);
 #define GFX_resize PLAT_resizeVideo				// (int w, int h, int pitch);
 #define GFX_setSharpness PLAT_setSharpness // (int sharpness)

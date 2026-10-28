@@ -532,8 +532,8 @@ void lgfx_init(int w, int h) {
 	shadow = make_shadow();
 	double t2 = LGFX_MS();
 
-	// Snapshot blur targets at framebuffer size, and one blur now so the driver prepares them
-	// before the first panel opens (the first use took 32 ms on the Brick in spikes/home).
+	// Snapshot blur targets at framebuffer size. lgfx_warm_up() runs one blur after the first frame
+	// so the driver prepares them before the first panel opens.
 	snap = make_target(fb_w, fb_h);
 	down[0] = snap;
 	down[1] = make_target(fb_w / 2, fb_h / 2);
@@ -542,10 +542,6 @@ void lgfx_init(int w, int h) {
 	up[0] = make_target(fb_w, fb_h);
 	up[1] = make_target(fb_w / 2, fb_h / 2);
 	up[2] = make_target(fb_w / 4, fb_h / 4);
-	lgfx_begin_snapshot();
-	lgfx_end_snapshot();
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	glFinish();
 	double t3 = LGFX_MS();
 
 	if (!TTF_WasInit()) TTF_Init();
@@ -561,6 +557,13 @@ void lgfx_init(int w, int h) {
 	LOG_info("lgfx_init: shaders %.0f, shadow %.0f, blur targets %.0f, fonts %.0f ms\n", t1 - t0, t2 - t1, t3 - t2,
 	         LGFX_MS() - t3);
 #undef LGFX_MS
+}
+
+void lgfx_warm_up(void) {
+	// The first blur took 32 ms on the Brick (spikes/home), so do it once while nothing waits on it.
+	lgfx_begin_snapshot();
+	lgfx_end_snapshot();
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 void lgfx_quit(void) {
