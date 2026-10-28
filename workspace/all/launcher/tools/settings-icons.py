@@ -3,7 +3,7 @@
 
 Each icon is a squircle tile in the iOS 26 style (Apple's published dark-mode colour values, a
 diagonal gradient, a glass rim brighter at the top left, a soft sheen) with a white symbol.
-The gear, Wi-Fi, Bluetooth, gamepad, switch, face-button and battery symbols are drawn here from simple
+The gear, Wi-Fi, Bluetooth, gamepad, switch, face-button, battery and lights symbols are drawn here from simple
 shapes for this project. The palette, sun and info symbols come from Phosphor Icons 2.1.2
 (MIT), downloaded and checked against a pinned hash. No Apple artwork is used.
 
@@ -144,12 +144,25 @@ def battery(S):
     return soften(m, S)
 
 
+def lights(S):
+    # a light bar with three rays above it
+    m, d, u = canvas(S)
+    d.rounded_rectangle(u(0.20, 0.56, 0.80, 0.70), radius=0.07 * S, fill=255)
+    w = int(0.075 * S)
+    for x0, y0, x1, y1 in ((0.50, 0.24, 0.50, 0.42), (0.27, 0.31, 0.35, 0.45), (0.73, 0.31, 0.65, 0.45)):
+        d.line([(x0 * S, y0 * S), (x1 * S, y1 * S)], fill=255, width=w)
+        for x, y in ((x0, y0), (x1, y1)):
+            d.ellipse((x * S - w / 2, y * S - w / 2, x * S + w / 2, y * S + w / 2), fill=255)
+    return soften(m, S)
+
+
 # slug, tile colour, symbol
 ICONS = [
     ("network", BLUE, wifi),
     ("bluetooth", BLUE, bluetooth),
     ("display", BLUE, phosphor(0xE472)),     # sun
     ("appearance", INDIGO, phosphor(0xE6C8)),  # palette
+    ("lights", ORANGE, lights),
     ("in-game", PINK, gamepad),
     ("buttons", GRAY2, face_buttons),
     ("fn-switch", ORANGE, switch),

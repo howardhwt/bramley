@@ -4834,8 +4834,10 @@ FALLBACK_IMPLEMENTATION void PLAT_initTimezones() {}
 FALLBACK_IMPLEMENTATION void PLAT_getTimezones(char timezones[MAX_TIMEZONES][MAX_TZ_LENGTH], int *tz_count) { tz_count = 0; }
 FALLBACK_IMPLEMENTATION char *PLAT_getCurrentTimezone() { return "Foo/Bar"; }
 FALLBACK_IMPLEMENTATION void PLAT_setCurrentTimezone(const char *tz) {}
-FALLBACK_IMPLEMENTATION bool PLAT_getNetworkTimeSync(void) { return true; }
-FALLBACK_IMPLEMENTATION void PLAT_setNetworkTimeSync(bool on) {}
+// Bramley: remembered for the session, so the desktop build can test Date & Time with it off
+static bool fallback_time_sync = true;
+FALLBACK_IMPLEMENTATION bool PLAT_getNetworkTimeSync(void) { return fallback_time_sync; }
+FALLBACK_IMPLEMENTATION void PLAT_setNetworkTimeSync(bool on) { fallback_time_sync = on; }
 
 /////////////////////////////////////////////////////////////////////////////////////////
 

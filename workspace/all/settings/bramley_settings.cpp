@@ -22,6 +22,7 @@
 #include "wifimenu.hpp"
 #include "colorpickermenu.hpp"
 #include "bramley_battery.h"
+#include "bramley_pages.hpp"
 
 extern "C"
 {
@@ -145,6 +146,7 @@ struct Section
 const Section sections[] = {
 	{"Network", "network", "Network", 0},       {"Bluetooth", "bluetooth", "Bluetooth", 0},
 	{"Display", "display", "Display", 1},       {"Appearance", "appearance", "Appearance", 1},
+	{"Lights", "lights", "Lights", 1},
 	{"In-Game", "in-game", "In-Game", 2},       {"Assignments", "buttons", "Buttons", 2},
 	{"FN switch", "fn-switch", "FN Switch", 2}, {"Battery", "battery", "Battery", 3},
 	{"System", "system", "System", 3},          {"About", "about", "About", 3},
@@ -379,6 +381,13 @@ bool marking_wifi;
 
 void draw_row(AbstractMenuItem *item, float x, float y, float w, float h, bool focused, bool active)
 {
+	if (bramley_clock_row_disabled(item))
+	{
+		// set from the internet: shown, but resting; a faint card marks focus
+		if (focused)
+			lgfx_draw_fill(x, y, w, h, 12, 1, 1, 1, 0.16f);
+		active = false, focused = false;
+	}
 	if (focused)
 	{
 		x -= 6, w += 12, y -= 3, h += 6;
@@ -452,16 +461,85 @@ void draw_row(AbstractMenuItem *item, float x, float y, float w, float h, bool f
 // Scroll position per list, so the focused row stays in view.
 std::map<MenuList *, int> scroll;
 
+// The Date or Time picker, when one is open: drawn in place of its row, in draw_list.
+ClockPicker *open_picker;
+const float PICKER_H = 200;
+
+void draw_picker(ClockPicker *p, const std::string &name, float x, float y, float w)
+{
+	x -= 6, w += 12;
+	lgfx_draw_shadow(x, y - 3, w, PICKER_H, 6, 0.32f);
+	lgfx_draw_fill(x, y - 3, w, PICKER_H, 14, 1, 1, 1, 0.96f);
+	lgfx_set_dim(0.1f);
+	text(LFONT_BODY, name, x + 26, y + 9, 1);
+	int n = p->columns();
+	float cw = 120, cx = x + (w - n * cw) * 0.5f, cy = y + 52;
+	for (int c = 0; c < n; c++)
+	{
+		float mx = cx + c * cw + cw * 0.5f;
+		int v = p->value[c], span = p->hi[c] - p->lo[c] + 1;
+		int before = p->lo[c] + ((v - p->lo[c] - 1) % span + span) % span, after = p->lo[c] + (v - p->lo[c] + 1) % span;
+		lgfx_set_dim(1);
+		if (c == p->column)
+			lgfx_draw_fill(cx + c * cw + 8, cy + 44, cw - 16, 48, 12, 0.04f, 0.52f, 1.0f, 1);
+		else
+			lgfx_draw_fill(cx + c * cw + 8, cy + 44, cw - 16, 48, 12, 0, 0, 0, 0.07f);
+		lgfx_set_dim(c == p->column ? 1 : 0.1f);
+		std::string now = p->label(c, v);
+		text(LFONT_BODY, now, mx - text_w(LFONT_BODY, now) * 0.5f, cy + 53, 1);
+		lgfx_set_dim(0.1f);
+		std::string b = p->label(c, before), a = p->label(c, after);
+		text(LFONT_BODY, b, mx - text_w(LFONT_BODY, b) * 0.5f, cy + 6, 0.22f);
+		text(LFONT_BODY, a, mx - text_w(LFONT_BODY, a) * 0.5f, cy + 100, 0.22f);
+	}
+	lgfx_set_dim(1);
+}
+
+// The strip of lights on the Lights page: each light in its colour, the chosen one outlined (all
+// of them while they match).
+const float STRIP_H = 92;
+
+void draw_light_strip(LightsMenu *m, float x, float y, float w)
+{
+	int n = LightsMenu::count();
+	float gap = 10, sw = (w - (n - 1) * gap) / n, sh = 76;
+	bool on = LightsMenu::on();
+	for (int i = 0; i < n; i++)
+	{
+		bool chosen = m->same || i == m->zone;
+		float zx = x + i * (sw + gap);
+		lgfx_draw_fill(zx, y, sw, sh, 14, 1, 1, 1, chosen ? 0.20f : 0.06f);
+		if (chosen)
+			lgfx_draw_ring(zx, y, sw, sh, 14, 2.5f, 1, 1, 1, 0.9f);
+		uint32_t c = LightsMenu::zone_rgb(i);
+		float r = (c >> 16 & 0xFF) / 255.0f, g = (c >> 8 & 0xFF) / 255.0f, b = (c & 0xFF) / 255.0f;
+		// the LED colours are dim values, so lift them to show the hue
+		float top = std::max(r, std::max(g, b));
+		if (top > 0)
+			r /= top, g /= top, b /= top;
+		if (!on)
+			r = g = b = 0.35f;
+		float lw = sw * 0.6f, lx = zx + (sw - lw) * 0.5f;
+		lgfx_draw_fill(lx - 4, y + 14, lw + 8, 18, 9, r, g, b, on ? 0.35f : 0.15f);
+		lgfx_draw_fill(lx, y + 18, lw, 10, 5, r, g, b, 1);
+		std::string name = LightsMenu::zone_name(i);
+		text(LFONT_SMALL, name, zx + (sw - text_w(LFONT_SMALL, name)) * 0.5f, y + 42, chosen ? 1 : 0.6f);
+	}
+}
+
 void draw_list(MenuList *list, float x, float y, float w, float bottom, bool active)
 {
 	std::shared_lock<std::shared_mutex> lock(BramleyView::lock(list));
 	auto &items = BramleyView::items(list);
 	int n = items.size(), sel = active ? BramleyView::selected(list) : -1;
 	const float rh = 48, gap = 6;
+	LightsMenu *lights = dynamic_cast<LightsMenu *>(list);
+	ClockPicker *picker = active ? open_picker : nullptr;
 	if (marking_wifi)
 		wifi_networks = n > 2 ? n - 2 : 0; // the first two rows are the Wi-Fi switches
-	// leave room under the rows for the focused row's description
-	int visible = (int)((bottom - y - 64) / (rh + gap));
+	// leave room under the rows for the focused row's description, the strip and an open picker
+	float room = bottom - y - 64 - (lights ? STRIP_H : 0) - (picker ? PICKER_H - rh : 0);
+	int visible = (int)(room / (rh + gap));
 	if (visible < 1)
 		visible = 1;
 	int &top = scroll[list];
@@ -477,20 +555,130 @@ void draw_list(MenuList *list, float x, float y, float w, float bottom, bool act
 	if (top < 0)
 		top = 0;
 	float yy = y;
-	for (int i = top; i < n && i < top + visible; i++, yy += rh + gap)
-		draw_row(items[i], x + 20, yy, w - 40, rh, i == sel, active);
+	for (int i = top; i < n && i < top + visible; i++)
+	{
+		if (lights && i == 2)
+		{
+			draw_light_strip(lights, x + 20, yy + 4, w - 40);
+			yy += STRIP_H;
+		}
+		if (picker && i == sel)
+		{
+			draw_picker(picker, items[i]->getName(), x + 20, yy, w - 40);
+			yy += PICKER_H + gap + 2;
+			continue;
+		}
+		draw_row(items[i], x + 20, yy, w - 40, rh, i == sel && !picker, active);
+		yy += rh + gap;
+	}
 	if (top > 0)
 		text(LFONT_SMALL, "\xE2\x96\xB2", x + w * 0.5f, y - 26, 0.35f);
 	if (top + visible < n)
 		text(LFONT_SMALL, "\xE2\x96\xBC", x + w * 0.5f, yy - 6, 0.35f);
-	if (sel >= 0 && sel < n && !items[sel]->getDesc().empty())
+	AbstractMenuItem *focused = sel >= 0 && sel < n ? items[sel] : nullptr;
+	std::string desc = focused ? focused->getDesc() : "";
+	if (focused && bramley_clock_row_disabled(focused))
+		desc = "Set from the internet. Turn off Set automatically to change it.";
+	std::replace(desc.begin(), desc.end(), '\n', ' '); // NextUI breaks lines by hand; ours wrap
+	if (!picker && !desc.empty())
 	{
-		LTex *d = ltex_text_wrapped(LFONT_SMALL, items[sel]->getDesc().c_str(), (int)w - 80, 2, 0);
+		LTex *d = ltex_text_wrapped(LFONT_SMALL, desc.c_str(), (int)w - 80, 2, 0);
 		if (d)
 		{
 			lgfx_draw_tex(d, x + 40, yy + 20, d->w, d->h, 0, 0.5f);
 			ltex_free(d);
 		}
+	}
+}
+
+// Test Buttons: the Brick Hammer drawn to its real layout (TrimUI's product photos), each button
+// lit blue while held and green once pressed.
+void draw_test_buttons(TestButtonsMenu *t, float px, float pw)
+{
+	auto state = [&](const char *name) {
+		for (auto &b : t->buttons)
+			if (!strcmp(b.name, name))
+				return b.held ? 1 : b.tested ? 2 : 0;
+		return 0;
+	};
+	auto colour = [](int st, float &r, float &g, float &b, float &a) {
+		if (st == 1)
+			r = 0.04f, g = 0.52f, b = 1.0f, a = 1;
+		else if (st == 2)
+			r = 0.20f, g = 0.78f, b = 0.35f, a = 0.75f;
+		else
+			r = g = b = 1, a = 0.14f;
+	};
+	auto key = [&](float x, float y, float w, float h, float radius, const char *name, const char *label) {
+		float r, g, b, a;
+		int st = state(name);
+		colour(st, r, g, b, a);
+		lgfx_draw_fill(x, y, w, h, radius, r, g, b, a);
+		if (label)
+			text(LFONT_SMALL, label, x + (w - text_w(LFONT_SMALL, label)) * 0.5f, y + (h - 22) * 0.5f, st ? 1 : 0.7f);
+	};
+	char count[32];
+	snprintf(count, sizeof(count), "%d of %d tested", t->tested(), (int)t->buttons.size());
+	text(LFONT_SMALL, count, px + pw - 28, 146, 0.6f, 1);
+
+	float bh = 466, bw = bh * 0.657f, bx = px + (pw - bw) * 0.5f, by = 214;
+	auto RX = [&](float v) { return bx + v * bw; };
+	auto RY = [&](float v) { return by + v * bh; };
+	// shoulders on the top edge, volume on the left side, power on the right
+	float tw = bw * 0.2f, th = 22, ty = by - th - 2;
+	key(RX(0.04f), ty, tw, th, 7, "L2", "L2");
+	key(RX(0.04f) + tw + 6, ty, tw, th, 7, "L1", "L1");
+	key(RX(0.96f) - 2 * tw - 6, ty, tw, th, 7, "R1", "R1");
+	key(RX(0.96f) - tw, ty, tw, th, 7, "R2", "R2");
+	key(bx - 9, RY(0.06f), 6, bh * 0.07f, 3, "Volume up", nullptr);
+	key(bx - 9, RY(0.16f), 6, bh * 0.07f, 3, "Volume down", nullptr);
+	lgfx_draw_fill(bx + bw + 3, RY(0.19f), 6, bh * 0.06f, 3, 1, 1, 1, 0.08f); // power: not tested
+	// body and screen, with the buttons held now
+	lgfx_draw_fill(bx, by, bw, bh, 22, 1, 1, 1, 0.05f);
+	lgfx_draw_ring(bx, by, bw, bh, 22, 2, 1, 1, 1, 0.18f);
+	lgfx_draw_fill(RX(0.03f), RY(0.02f), bw * 0.94f, bh * 0.48f, 8, 0, 0, 0, 0.40f);
+	std::string held = t->held_names();
+	if (held.empty())
+		held = "Press any button";
+	text(LFONT_BODY, held, bx + (bw - text_w(LFONT_BODY, held)) * 0.5f, RY(0.24f) - 14, held == "Press any button" ? 0.4f : 0.9f);
+	// F1 and F2
+	float fw = bw * 0.11f;
+	key(RX(0.424f) - fw * 0.5f, RY(0.579f) - 5, fw, 10, 5, "F1", nullptr);
+	key(RX(0.572f) - fw * 0.5f, RY(0.579f) - 5, fw, 10, 5, "F2", nullptr);
+	text(LFONT_SMALL, "F1", RX(0.424f) - text_w(LFONT_SMALL, "F1") * 0.5f, RY(0.579f) + 8, 0.45f);
+	text(LFONT_SMALL, "F2", RX(0.572f) - text_w(LFONT_SMALL, "F2") * 0.5f, RY(0.579f) + 8, 0.45f);
+	// d-pad: the cross, then each arm in its own state
+	float cx = RX(0.225f), cy = RY(0.658f), k = bw * 0.09f;
+	lgfx_draw_fill(cx - k * 0.5f, cy - k * 1.5f, k, k * 3, 5, 1, 1, 1, 0.14f);
+	lgfx_draw_fill(cx - k * 1.5f, cy - k * 0.5f, k * 3, k, 5, 1, 1, 1, 0.14f);
+	const struct { const char *n; float dx, dy; } arms[4] = {{"Up", 0, -1}, {"Down", 0, 1}, {"Left", -1, 0}, {"Right", 1, 0}};
+	for (auto &a : arms)
+		if (state(a.n))
+			key(cx + a.dx * k - k * 0.5f, cy + a.dy * k - k * 0.5f, k, k, 5, a.n, nullptr);
+	// face buttons
+	float fx = RX(0.779f), fy = RY(0.658f), sp = bw * 0.105f, d = bw * 0.108f;
+	key(fx - d * 0.5f, fy - sp - d * 0.5f, d, d, d * 0.5f, "X", "X");
+	key(fx - sp - d * 0.5f, fy - d * 0.5f, d, d, d * 0.5f, "Y", "Y");
+	key(fx + sp - d * 0.5f, fy - d * 0.5f, d, d, d * 0.5f, "A", "A");
+	key(fx - d * 0.5f, fy + sp - d * 0.5f, d, d, d * 0.5f, "B", "B");
+	// MENU, SELECT, START with the marks printed on them
+	float rd = bw * 0.075f, ry = RY(0.905f);
+	const char *names[3] = {"MENU", "SELECT", "START"};
+	const float xs[3] = {0.361f, 0.499f, 0.637f};
+	for (int i = 0; i < 3; i++)
+	{
+		float c = RX(xs[i]);
+		key(c - rd * 0.5f, ry - rd * 0.5f, rd, rd, rd * 0.5f, names[i], nullptr);
+		if (i == 0)
+			for (int j = 0; j < 3; j++)
+			{
+				float an = j * 2.094f - 1.571f;
+				lgfx_draw_fill(c + cosf(an) * 4.5f - 2.5f, ry + sinf(an) * 4.5f - 2.5f, 5, 5, 2.5f, 1, 1, 1, 0.7f);
+			}
+		else if (i == 1)
+			lgfx_draw_fill(c - 5, ry - 4, 10, 8, 1.5f, 1, 1, 1, 0.7f);
+		else
+			text(LFONT_SMALL, "\xE2\x96\xB6", c - text_w(LFONT_SMALL, "\xE2\x96\xB6") * 0.5f + 1, ry - 11, 0.7f);
 	}
 }
 
@@ -832,8 +1020,11 @@ void draw_scene(MenuList *root, const std::vector<MenuList *> &chain, const std:
 			rows = ty + 84;
 		}
 		marking_wifi = network;
+		auto *tester = dynamic_cast<TestButtonsMenu *>(chain.back());
 		if (depth == 1 && titles[0] == "Battery")
 			draw_battery(chain.back(), px, py, pw, pb, true);
+		else if (tester)
+			draw_test_buttons(tester, px, pw);
 		else
 			draw_list(chain.back(), px, rows, pw, pb, true);
 		marking_wifi = false;
@@ -846,7 +1037,14 @@ void draw_scene(MenuList *root, const std::vector<MenuList *> &chain, const std:
 		}
 		if (!network)
 			wifi_networks = -1;
-		text(LFONT_SMALL, "A  Change        \xE2\x80\xB9 \xE2\x80\xBA  Adjust        B  Back", 40, H - 40, 0.6f);
+		const char *hint = "A  Change        \xE2\x80\xB9 \xE2\x80\xBA  Adjust        B  Back";
+		if (tester)
+			hint = "Hold SELECT and START to leave";
+		else if (open_picker)
+			hint = "\xE2\x80\xB9 \xE2\x80\xBA  Column        \xE2\x86\x91 \xE2\x86\x93  Change        A  Set        B  Cancel";
+		else if (dynamic_cast<LightsMenu *>(chain.back()) && !static_cast<LightsMenu *>(chain.back())->same)
+			hint = "L1 R1  Light        A  Change        \xE2\x80\xB9 \xE2\x80\xBA  Adjust        B  Back";
+		text(LFONT_SMALL, hint, 40, H - 40, 0.6f);
 	}
 
 }
@@ -1135,6 +1333,17 @@ void draw_frame(const Frame &f, bool begin = true)
 		draw_backdrop();
 		draw_color_picker(cp);
 	}
+	else if (auto *picker = dynamic_cast<ClockPicker *>(chain.back()))
+	{
+		// the picker opens in place, so the page under it is drawn with it
+		chain.pop_back();
+		titles.pop_back();
+		open_picker = picker;
+		draw_scene(f.root, chain, titles);
+		open_picker = nullptr;
+	}
+	else if (dynamic_cast<TestButtonsMenu *>(chain.back()))
+		draw_scene(f.root, chain, titles);
 	else if (BramleyView::type(chain.back()) == MenuItemType::Custom)
 		draw_classic(f.root, f.screen, f.list, f.title);
 	else

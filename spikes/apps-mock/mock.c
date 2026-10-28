@@ -428,6 +428,318 @@ static void activity_d(void) {
 	text(LFONT_SMALL, "A  Play        \xE2\x80\xB9 \xE2\x80\xBA  Game        B  Back", 40, H - 40, 0.6f, 0);
 }
 
+// A Settings row: a value on the right ("" none), a switch (sw 0 or 1), or a colour dot.
+static void srow(float x, float y, float w, const char* name, const char* value, int sw, const float* dot, int focused) {
+	float h = 48;
+	if (focused) {
+		x -= 6, w += 12, y -= 3, h += 6;
+		lgfx_draw_shadow(x, y, w, h, 6, 0.32f);
+		lgfx_draw_fill(x, y, w, h, 12, 1, 1, 1, 0.96f);
+		lgfx_set_dim(0.1f);
+	} else
+		lgfx_draw_fill(x, y, w, h, 12, 1, 1, 1, 0.06f);
+	float ty = y + (h - 30) * 0.5f, right = x + w - 20;
+	text(LFONT_BODY, name, x + 20, ty, 1, 0);
+	lgfx_set_dim(1);
+	if (sw >= 0) {
+		float sw_w = 58, sh = 34, sy = y + (h - sh) * 0.5f;
+		if (sw) lgfx_draw_fill(right - sw_w, sy, sw_w, sh, sh * 0.5f, GREEN[0], GREEN[1], GREEN[2], 1);
+		else lgfx_draw_fill(right - sw_w, sy, sw_w, sh, sh * 0.5f, focused ? 0 : 1, focused ? 0 : 1, focused ? 0 : 1, focused ? 0.15f : 0.22f);
+		float k = sh - 6;
+		lgfx_draw_fill(sw ? right - k - 3 : right - sw_w + 3, sy + 3, k, k, k * 0.5f, 1, 1, 1, 1);
+	} else if (dot) {
+		lgfx_draw_fill(right - 28, y + (h - 28) * 0.5f, 28, 28, 14, dot[0], dot[1], dot[2], 1);
+		lgfx_draw_ring(right - 28, y + (h - 28) * 0.5f, 28, 28, 14, 1.5f, focused ? 0 : 1, focused ? 0 : 1, focused ? 0 : 1, 0.3f);
+	} else if (value && value[0]) {
+		lgfx_set_dim(focused ? 0.45f : 1);
+		text(LFONT_BODY, value, right, ty, focused ? 1 : 0.5f, 1);
+		lgfx_set_dim(1);
+	}
+}
+
+static void page_title(const char* back, const char* title) {
+	float px = 410, py = 84;
+	if (back) {
+		char b[64];
+		snprintf(b, sizeof(b), "\xE2\x80\xB9  %s", back);
+		text(LFONT_BODY, b, px + 28, py + 18, 0.5f, 0);
+		text(LFONT_TITLE, title, px + 28, py + 52, 1, 0);
+	} else
+		text(LFONT_TITLE, title, px + 28, py + 20, 1, 0);
+}
+
+// Date & Time, under System. auto_on: set from the internet, so the date and time rows are dimmed.
+// Otherwise the date row is open for changing, as three columns that move with up and down.
+static void dim_row(float x, float y, float w, const char* name, const char* value) {
+	lgfx_draw_fill(x, y, w, 48, 12, 1, 1, 1, 0.03f);
+	text(LFONT_BODY, name, x + 20, y + 9, 0.4f, 0);
+	text(LFONT_BODY, value, x + w - 20, y + 9, 0.3f, 1);
+}
+
+static void date_time(int auto_on) {
+	background();
+	top_bar("Settings");
+	sidebar(9, 1);
+	pane();
+	page_title("System", "Date & Time");
+	float x = 430, w = 534, y = 206, step = 54;
+	srow(x, y, w, "Set automatically", NULL, auto_on, NULL, auto_on);
+	srow(x, y += step, w, "Time zone", "Hong Kong", -1, NULL, 0);
+	srow(x, y += step, w, "24-hour time", NULL, 1, NULL, 0);
+	y += step;
+	if (auto_on) {
+		dim_row(x, y, w, "Date", "28 Oct 2026");
+		dim_row(x, y + step, w, "Time", "16:12");
+		LTex* d = ltex_text_wrapped(LFONT_SMALL, "Set from the internet when Wi-Fi is on. Turn this off to set the date and time yourself.", (int)w - 40, 2, 0);
+		if (d) lgfx_draw_tex(d, x + 20, y + 2 * step + 16, d->w, d->h, 0, 0.5f), ltex_free(d);
+		text(LFONT_SMALL, "A  Change        B  Back", 40, H - 40, 0.6f, 0);
+		return;
+	}
+	float h = 200, rx = x - 6, rw = w + 12;
+	lgfx_draw_shadow(rx, y - 3, rw, h, 6, 0.32f);
+	lgfx_draw_fill(rx, y - 3, rw, h, 14, 1, 1, 1, 0.96f);
+	lgfx_set_dim(0.1f);
+	text(LFONT_BODY, "Date", rx + 26, y + 9, 1, 0);
+	static const char* cols[3][3] = { { "27", "28", "29" }, { "Sep", "Oct", "Nov" }, { "2025", "2026", "2027" } };
+	float cw = 120, cx = rx + rw - 26 - 3 * cw, cy = y + 52;
+	for (int c = 0; c < 3; c++) {
+		float mx = cx + c * cw + cw * 0.5f;
+		lgfx_set_dim(1);
+		if (c == 0) lgfx_draw_fill(cx + c * cw + 8, cy + 44, cw - 16, 48, 12, BLUE[0], BLUE[1], BLUE[2], 1);
+		else lgfx_draw_fill(cx + c * cw + 8, cy + 44, cw - 16, 48, 12, 0, 0, 0, 0.07f);
+		lgfx_set_dim(c == 0 ? 1 : 0.1f);
+		text(LFONT_BODY, cols[c][1], mx, cy + 53, 1, 2);
+		lgfx_set_dim(0.1f);
+		text(LFONT_BODY, cols[c][0], mx, cy + 6, 0.22f, 2);
+		text(LFONT_BODY, cols[c][2], mx, cy + 100, 0.22f, 2);
+	}
+	lgfx_set_dim(1);
+	srow(x, y + h + 8, w, "Time", "16:12", -1, NULL, 0);
+	text(LFONT_SMALL, "\xE2\x80\xB9 \xE2\x80\xBA  Day, month, year        \xE2\x86\x91 \xE2\x86\x93  Change        A  Done        B  Cancel", 40, H - 40, 0.6f, 0);
+}
+
+// Lights: on or off first, then whether all lights match, then the light strip and its settings.
+static void lights(void) {
+	background();
+	top_bar("Settings");
+	sidebar(4, 1);
+	pane();
+	page_title(NULL, "Lights");
+	float px = 410, pw = W - 450, x = 430, w = 534, step = 54;
+	srow(x, 150, w, "Lights", NULL, 1, NULL, 0);
+	srow(x, 150 + step, w, "Same for all lights", NULL, 0, NULL, 0);
+	static const char* zones[] = { "F1", "F2", "Top", "Triggers" };
+	float sx = px + 28, sw = (pw - 56 - 3 * 10) / 4, sy = 272;
+	const float purple[3] = { 0.55f, 0.20f, 0.85f };
+	for (int i = 0; i < 4; i++) {
+		int f = i == 2;
+		float zx = sx + i * (sw + 10);
+		lgfx_draw_fill(zx, sy, sw, 76, 14, 1, 1, 1, f ? 0.22f : 0.06f);
+		if (f) lgfx_draw_ring(zx, sy, sw, 76, 14, 2.5f, 1, 1, 1, 0.9f);
+		float lw = sw * 0.6f, lx = zx + (sw - lw) * 0.5f;
+		lgfx_draw_fill(lx - 4, sy + 14, lw + 8, 18, 9, purple[0], purple[1], purple[2], 0.35f);
+		lgfx_draw_fill(lx, sy + 18, lw, 10, 5, purple[0] * 1.3f, purple[1] * 1.3f, purple[2] * 1.3f, 1);
+		text(LFONT_SMALL, zones[i], zx + sw * 0.5f, sy + 42, f ? 1 : 0.6f, 2);
+	}
+	float y = 366;
+	srow(x, y, w, "Effect", "\xE2\x80\xB9  Breathe  \xE2\x80\xBA", -1, NULL, 1);
+	srow(x, y += step, w, "Colour", NULL, -1, purple, 0);
+	srow(x, y += step, w, "Brightness", "100%", -1, NULL, 0);
+	srow(x, y += step, w, "Speed", "Slow", -1, NULL, 0);
+	text(LFONT_SMALL, "Static, Breathe, Blink, Rainbow, Fire, Twinkle, More effects", x + 20, y + step + 10, 0.45f, 0);
+	text(LFONT_SMALL, "L R  Light        \xE2\x80\xB9 \xE2\x80\xBA  Change        B  Back", 40, H - 40, 0.6f, 0);
+}
+
+// Test Buttons, under Buttons: the Brick drawn plainly. A held control lights blue; once pressed,
+// it stays green, so the screen works as a checklist.
+static void key(float x, float y, float w, float h, const char* label, int state) {
+	// state 0 untested, 1 held, 2 tested
+	float r = state == 1 ? BLUE[0] : state == 2 ? GREEN[0] : 1, g = state == 1 ? BLUE[1] : state == 2 ? GREEN[1] : 1,
+	      b = state == 1 ? BLUE[2] : state == 2 ? GREEN[2] : 1, a = state == 1 ? 1 : state == 2 ? 0.75f : 0.14f;
+	lgfx_draw_fill(x, y, w, h, h < w ? h * 0.5f : w * 0.5f, r, g, b, a);
+	if (label) text(LFONT_SMALL, label, x + w * 0.5f, y + (h - 22) * 0.5f, state ? 1 : 0.7f, 2);
+}
+
+// The Brick's front, drawn as one shape: the shoulders are tabs behind the top edge (style 'A'),
+// or left off for a separate top view (style 'B').
+static void brick_front(float bx, float by, float bw, float bh, char style) {
+	if (style == 'A') {
+		// side by side tabs behind the top edge, each showing 30 px above it: L2 outside, L1 inside
+		float tw = 76, th = 60, ty = by - 30;
+		struct { float x; const char* n; int st; } t[4] = {
+			{ bx + 20, "L2", 0 }, { bx + 20 + tw + 8, "L1", 2 }, { bx + bw - 20 - 2 * tw - 8, "R1", 1 }, { bx + bw - 20 - tw, "R2", 0 },
+		};
+		for (int i = 0; i < 4; i++) {
+			const float* c = t[i].st == 1 ? BLUE : t[i].st == 2 ? GREEN : NULL;
+			lgfx_draw_fill(t[i].x, ty, tw, th, 14, c ? c[0] : 1, c ? c[1] : 1, c ? c[2] : 1, c ? (t[i].st == 2 ? 0.75f : 1) : 0.16f);
+			text(LFONT_SMALL, t[i].n, t[i].x + tw * 0.5f, ty + 4, t[i].st ? 1 : 0.7f, 2);
+		}
+	}
+	// the body, opaque so the tabs show only above its edge
+	lgfx_draw_fill(bx, by, bw, bh, 36, 0.16f, 0.15f, 0.22f, 1);
+	lgfx_draw_fill(bx, by, bw, bh, 36, 1, 1, 1, 0.06f);
+	lgfx_draw_ring(bx, by, bw, bh, 36, 1.5f, 1, 1, 1, 0.16f);
+	lgfx_draw_fill(bx + 50, by + 24, bw - 100, 140, 10, 0, 0, 0, 0.45f);
+	text(LFONT_BODY, "R1  \xC2\xB7  A", bx + bw * 0.5f, by + 78, 0.9f, 2);
+	float dx = bx + 90, dy = by + 268, k = 38;
+	lgfx_draw_fill(dx - k * 0.5f, dy - k * 1.5f, k, k * 3, 8, 1, 1, 1, 0.14f);
+	lgfx_draw_fill(dx - k * 1.5f, dy - k * 0.5f, k * 3, k, 8, 1, 1, 1, 0.14f);
+	lgfx_draw_fill(dx - k * 0.5f, dy - k * 1.5f, k, k, 8, GREEN[0], GREEN[1], GREEN[2], 0.75f);
+	lgfx_draw_fill(dx + k * 0.5f, dy - k * 0.5f, k, k, 8, GREEN[0], GREEN[1], GREEN[2], 0.75f);
+	float fx = bx + bw - 90, fy = by + 268, r = 40;
+	key(fx - r * 0.5f, fy - r * 1.5f, r, r, "X", 0);
+	key(fx - r * 0.5f, fy + r * 0.5f, r, r, "B", 2);
+	key(fx - r * 1.5f, fy - r * 0.5f, r, r, "Y", 0);
+	key(fx + r * 0.5f, fy - r * 0.5f, r, r, "A", 1);
+	key(bx + bw * 0.5f - 60, by + 180, 52, 22, "FN1", 0);
+	key(bx + bw * 0.5f + 8, by + 180, 52, 22, "FN2", 0);
+	float my = by + bh - 46;
+	key(bx + bw * 0.5f - 130, my, 76, 24, "SELECT", 0);
+	key(bx + bw * 0.5f - 38, my, 76, 24, "MENU", 0);
+	key(bx + bw * 0.5f + 54, my, 76, 24, "START", 0);
+}
+
+static void test_buttons(char style) {
+	background();
+	top_bar("Settings");
+	sidebar(6, 1);
+	pane();
+	page_title("Buttons", "Test Buttons");
+	text(LFONT_SMALL, "7 of 18 tested", 438 + 520, 168, 0.6f, 1);
+	float px = 410, pw = W - 450, bw = 400, bx = px + (pw - bw) * 0.5f;
+	if (style == 'A') {
+		brick_front(bx, 268, bw, 400, 'A');
+	} else {
+		// the top edge as its own strip, then the front
+		float ty = 206, tw = bw, th = 40;
+		lgfx_draw_fill(bx, ty, tw, th, 12, 1, 1, 1, 0.06f);
+		text(LFONT_SMALL, "TOP", bx - 12, ty + 9, 0.4f, 1);
+		const char* names[4] = { "L2", "L1", "R1", "R2" };
+		int states[4] = { 0, 2, 1, 0 };
+		float kw = 72, gap = 10, kx[4] = { bx + 12, bx + 12 + kw + gap, bx + tw - 12 - 2 * kw - gap, bx + tw - 12 - kw };
+		for (int i = 0; i < 4; i++) key(kx[i], ty + 7, kw, th - 14, names[i], states[i]);
+		brick_front(bx, 266, bw, 400, 'B');
+	}
+	text(LFONT_SMALL, "Hold SELECT and START to leave", 40, H - 40, 0.6f, 0);
+}
+
+// Hybrid: the earlier glass body (translucent, outlined, round keys) with A's shoulder tabs, which
+// sit flush on the top edge as part of the shape.
+static void test_buttons_hybrid(void) {
+	background();
+	top_bar("Settings");
+	sidebar(6, 1);
+	pane();
+	page_title("Buttons", "Test Buttons");
+	text(LFONT_SMALL, "7 of 18 tested", 438, 196, 0.6f, 0);
+	float px = 410, pw = W - 450, bw = 440, bx = px + (pw - bw) * 0.5f, by = 276, bh = 396;
+	// shoulder tabs: rounded on top, square where they meet the body
+	float tw = 84, th = 26, ty = by - th - 2;
+	struct { float x; const char* n; int st; } t[4] = {
+		{ bx + 24, "L2", 0 }, { bx + 24 + tw + 8, "L1", 2 }, { bx + bw - 24 - 2 * tw - 8, "R1", 1 }, { bx + bw - 24 - tw, "R2", 0 },
+	};
+	for (int i = 0; i < 4; i++) {
+		const float* c = t[i].st == 1 ? BLUE : t[i].st == 2 ? GREEN : NULL;
+		float r = c ? c[0] : 1, g = c ? c[1] : 1, b = c ? c[2] : 1, a = c ? (t[i].st == 2 ? 0.75f : 1) : 0.14f;
+		lgfx_draw_fill(t[i].x, ty, tw, th, 7, r, g, b, a);
+		text(LFONT_SMALL, t[i].n, t[i].x + tw * 0.5f, ty + 2, t[i].st ? 1 : 0.7f, 2);
+	}
+	lgfx_draw_fill(bx, by, bw, bh, 36, 1, 1, 1, 0.05f);
+	lgfx_draw_ring(bx, by, bw, bh, 36, 2, 1, 1, 1, 0.18f);
+	lgfx_draw_fill(bx + 56, by + 26, bw - 112, 140, 10, 0, 0, 0, 0.35f);
+	text(LFONT_BODY, "R1  \xC2\xB7  A", bx + bw * 0.5f, by + 80, 0.9f, 2);
+	key(bx + bw * 0.5f - 62, by + 182, 54, 24, "FN1", 0);
+	key(bx + bw * 0.5f + 8, by + 182, 54, 24, "FN2", 0);
+	float dx = bx + 100, dy = by + 262, k = 40;
+	key(dx - k * 0.5f, dy - k * 1.5f, k, k, NULL, 2);
+	key(dx - k * 0.5f, dy + k * 0.5f, k, k, NULL, 2);
+	key(dx - k * 1.5f, dy - k * 0.5f, k, k, NULL, 0);
+	key(dx + k * 0.5f, dy - k * 0.5f, k, k, NULL, 2);
+	float fx = bx + bw - 100, fy = by + 262, r = 40;
+	key(fx - r * 0.5f, fy - r * 1.5f, r, r, "X", 0);
+	key(fx - r * 0.5f, fy + r * 0.5f, r, r, "B", 2);
+	key(fx - r * 1.5f, fy - r * 0.5f, r, r, "Y", 0);
+	key(fx + r * 0.5f, fy - r * 0.5f, r, r, "A", 1);
+	float my = by + bh - 44;
+	key(bx + bw * 0.5f - 130, my, 76, 26, "SELECT", 0);
+	key(bx + bw * 0.5f - 38, my, 76, 26, "MENU", 0);
+	key(bx + bw * 0.5f + 54, my, 76, 26, "START", 0);
+	text(LFONT_SMALL, "Hold SELECT and START to leave", 40, H - 40, 0.6f, 0);
+}
+
+// The hybrid drawn to the Brick Hammer's real layout (from TrimUI's product photo): a tall body,
+// the screen across the top half, F1 and F2 as pills under it, three round buttons at the bottom
+// (MENU, SELECT, START), the shoulders as tabs on the top edge, volume on the left side, power on the right.
+static void test_buttons_real(void) {
+	background();
+	top_bar("Settings");
+	sidebar(6, 1);
+	pane();
+	page_title("Buttons", "Test Buttons");
+	text(LFONT_SMALL, "7 of 18 tested", 956, 146, 0.6f, 1);
+	float px = 410, pw = W - 450, bh = 466, bw = bh * 0.657f, bx = px + (pw - bw) * 0.5f, by = 214;
+	#define RX(v) (bx + (v) * bw)
+	#define RY(v) (by + (v) * bh)
+	// shoulders on the top edge
+	float tw = bw * 0.2f, th = 22, ty = by - th - 2;
+	struct { float x; const char* n; int st; } t[4] = {
+		{ RX(0.04f), "L2", 0 }, { RX(0.04f) + tw + 6, "L1", 2 }, { RX(0.96f) - 2 * tw - 6, "R1", 1 }, { RX(0.96f) - tw, "R2", 0 },
+	};
+	for (int i = 0; i < 4; i++) {
+		const float* c = t[i].st == 1 ? BLUE : t[i].st == 2 ? GREEN : NULL;
+		lgfx_draw_fill(t[i].x, ty, tw, th, 7, c ? c[0] : 1, c ? c[1] : 1, c ? c[2] : 1, c ? (t[i].st == 2 ? 0.75f : 1) : 0.14f);
+		text(LFONT_SMALL, t[i].n, t[i].x + tw * 0.5f, ty, t[i].st ? 1 : 0.7f, 2);
+	}
+	// side buttons: volume on the left, power on the right
+	key(bx - 9, RY(0.06f), 6, bh * 0.07f, NULL, 0);
+	key(bx - 9, RY(0.16f), 6, bh * 0.07f, NULL, 0);
+	key(bx + bw + 3, RY(0.19f), 6, bh * 0.06f, NULL, 0);
+	// the body and screen
+	lgfx_draw_fill(bx, by, bw, bh, 22, 1, 1, 1, 0.05f);
+	lgfx_draw_ring(bx, by, bw, bh, 22, 2, 1, 1, 1, 0.18f);
+	lgfx_draw_fill(RX(0.03f), RY(0.02f), bw * 0.94f, bh * 0.48f, 8, 0, 0, 0, 0.40f);
+	text(LFONT_BODY, "R1  \xC2\xB7  A", bx + bw * 0.5f, RY(0.24f) - 14, 0.9f, 2);
+	// F1, F2
+	float fw = bw * 0.11f, fh = 10;
+	key(RX(0.424f) - fw * 0.5f, RY(0.579f) - fh * 0.5f, fw, fh, NULL, 0);
+	key(RX(0.572f) - fw * 0.5f, RY(0.579f) - fh * 0.5f, fw, fh, NULL, 0);
+	text(LFONT_SMALL, "F1", RX(0.424f), RY(0.579f) + 8, 0.45f, 2);
+	text(LFONT_SMALL, "F2", RX(0.572f), RY(0.579f) + 8, 0.45f, 2);
+	// d-pad as one cross, each arm lighting on its own
+	float cx = RX(0.225f), cy = RY(0.658f), k = bw * 0.09f;
+	lgfx_draw_fill(cx - k * 0.5f, cy - k * 1.5f, k, k * 3, 5, 1, 1, 1, 0.14f);
+	lgfx_draw_fill(cx - k * 1.5f, cy - k * 0.5f, k * 3, k, 5, 1, 1, 1, 0.14f);
+	lgfx_draw_fill(cx - k * 0.5f, cy - k * 1.5f, k, k, 5, GREEN[0], GREEN[1], GREEN[2], 0.75f);
+	lgfx_draw_fill(cx - k * 0.5f, cy + k * 0.5f, k, k, 5, GREEN[0], GREEN[1], GREEN[2], 0.75f);
+	lgfx_draw_fill(cx + k * 0.5f, cy - k * 0.5f, k, k, 5, GREEN[0], GREEN[1], GREEN[2], 0.75f);
+	// face buttons
+	float fx = RX(0.779f), fy = RY(0.658f), sp = bw * 0.105f, d = bw * 0.108f;
+	key(fx - d * 0.5f, fy - sp - d * 0.5f, d, d, "X", 0);
+	key(fx - sp - d * 0.5f, fy - d * 0.5f, d, d, "Y", 0);
+	key(fx + sp - d * 0.5f, fy - d * 0.5f, d, d, "A", 1);
+	key(fx - d * 0.5f, fy + sp - d * 0.5f, d, d, "B", 2);
+	// MENU, SELECT, START
+	float rd = bw * 0.075f, ry = RY(0.905f);
+	const char* bn[3] = { "MENU", "SELECT", "START" };
+	float bxs[3] = { 0.361f, 0.499f, 0.637f };
+	(void)bn;
+	for (int i = 0; i < 3; i++) {
+		float c = RX(bxs[i]);
+		key(c - rd * 0.5f, ry - rd * 0.5f, rd, rd, NULL, 0);
+		// the symbol printed on each button: three dots, a square, a play mark
+		if (i == 0)
+			for (int j = 0; j < 3; j++) {
+				float a = j * 2.094f - 1.571f, dx = cosf(a) * 4.5f, dy = sinf(a) * 4.5f;
+				lgfx_draw_fill(c + dx - 2.5f, ry + dy - 2.5f, 5, 5, 2.5f, 1, 1, 1, 0.7f);
+			}
+		else if (i == 1) lgfx_draw_fill(c - 5, ry - 4, 10, 8, 1.5f, 1, 1, 1, 0.7f);
+		else text(LFONT_SMALL, "\xE2\x96\xB6", c + 1, ry - 11, 0.7f, 2);
+	}
+	#undef RX
+	#undef RY
+	text(LFONT_SMALL, "Hold SELECT and START to leave", 40, H - 40, 0.6f, 0);
+}
+
 int main(int argc, char* argv[]) {
 	res = argc > 1 ? argv[1] : "../../workspace/all/launcher/res";
 	const char* prefix = argc > 2 ? argv[2] : "/tmp/apps-mock";
@@ -462,5 +774,16 @@ int main(int argc, char* argv[]) {
 	activity_d();
 	snprintf(path, sizeof(path), "%s-activity-D.bmp", prefix);
 	save(path);
+	const char* names[7] = { "date-time", "date-time-auto", "lights", "test-buttons-A", "test-buttons-B", "test-buttons-hybrid", "test-buttons-real" };
+	for (int i = 0; i < 7; i++) {
+		SDL_GL_SwapWindow(SDL_GL_GetCurrentWindow());
+		if (i < 2) date_time(i);
+		else if (i == 2) lights();
+		else if (i < 5) test_buttons(i == 3 ? 'A' : 'B');
+		else if (i == 5) test_buttons_hybrid();
+		else test_buttons_real();
+		snprintf(path, sizeof(path), "%s-%s.bmp", prefix, names[i]);
+		save(path);
+	}
 	return 0;
 }

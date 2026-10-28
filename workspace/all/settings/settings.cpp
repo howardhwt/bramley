@@ -28,6 +28,7 @@ extern "C"
 #include "palettemenu.hpp"
 #include "fnbuttonmenu.hpp"
 #include "bramley_settings.hpp" // Bramley
+#include "bramley_pages.hpp"    // Bramley
 
 #define BUSYBOX_STOCK_VERSION "1.27.2"
 
@@ -641,6 +642,23 @@ int settings_run(SDL_Surface *host_screen)
 
         auto displayMenu = new MenuList(MenuItemType::Fixed, "Display", displayItems);
 
+        // Bramley: the clock settings and NextUI's Clock app together, as Date & Time in System
+        MenuList *dateTimeMenu = bramley_date_time_menu({
+            new MenuItem{ListItemType::Generic, "Set automatically", "Set from the internet when Wi-Fi is on. Turn this off to set the date and time yourself.", {false, true}, on_off, []() -> std::any
+            { return TIME_getNetworkTimeSync(); }, [](const std::any &value)
+            { TIME_setNetworkTimeSync(std::any_cast<bool>(value)); },
+            []() { TIME_setNetworkTimeSync(false);}},
+            new MenuItem{ListItemType::Generic, "Time zone", "Your time zone", tz_values, tz_labels, []() -> std::any
+            { return std::string(TIME_getCurrentTimezone()); }, [](const std::any &value)
+            { TIME_setCurrentTimezone(std::any_cast<std::string>(value).c_str()); },
+            []() { TIME_setCurrentTimezone("Asia/Shanghai");}},
+            new MenuItem{ListItemType::Generic, "24-hour time", "Show the time as 13:00 instead of 1:00 PM.", {false, true}, on_off, []() -> std::any
+            { return CFG_getClock24H(); },
+            [](const std::any &value)
+            { CFG_setClock24H(std::any_cast<bool>(value)); },
+            []() { CFG_setClock24H(CFG_DEFAULT_CLOCK24H);}}
+        });
+
         std::vector<AbstractMenuItem*> systemItems = {
             new MenuItem{ListItemType::Generic, "Volume", "Speaker volume",
             {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20},
@@ -666,24 +684,13 @@ int settings_run(SDL_Surface *host_screen)
             []() -> std::any { return CFG_getDefaultView(); },
             [](const std::any &value){ CFG_setDefaultView(std::any_cast<int>(value)); },
             []() { CFG_setDefaultView(CFG_DEFAULT_VIEW);}},
-            new MenuItem{ListItemType::Generic, "Show 24h time format", "Show clock in the 24hrs time format", {false, true}, on_off, []() -> std::any
-            { return CFG_getClock24H(); },
-            [](const std::any &value)
-            { CFG_setClock24H(std::any_cast<bool>(value)); },
-            []() { CFG_setClock24H(CFG_DEFAULT_CLOCK24H);}},
+            new MenuItem{ListItemType::Generic, "Date & Time", "", {}, {}, nullptr, nullptr, DeferToSubmenu, dateTimeMenu},
+
             new MenuItem{ListItemType::Generic, "Show clock", "Show clock in the status pill", {false, true}, on_off, []() -> std::any
             { return CFG_getShowClock(); },
             [](const std::any &value)
             { CFG_setShowClock(std::any_cast<bool>(value)); },
             []() { CFG_setShowClock(CFG_DEFAULT_SHOWCLOCK);}},
-            new MenuItem{ListItemType::Generic, "Set time and date automatically", "Automatically adjust system time\nwith NTP (requires internet access)", {false, true}, on_off, []() -> std::any
-            { return TIME_getNetworkTimeSync(); }, [](const std::any &value)
-            { TIME_setNetworkTimeSync(std::any_cast<bool>(value)); },
-            []() { TIME_setNetworkTimeSync(false);}}, // default from stock
-            new MenuItem{ListItemType::Generic, "Time zone", "Your time zone", tz_values, tz_labels, []() -> std::any
-            { return std::string(TIME_getCurrentTimezone()); }, [](const std::any &value)
-            { TIME_setCurrentTimezone(std::any_cast<std::string>(value).c_str()); },
-            []() { TIME_setCurrentTimezone("Asia/Shanghai");}}, // default from Stock
             new MenuItem{ListItemType::Generic, "Save format", "The save format to use.\nMinUI: Game.gba.sav, Retroarch: Game.srm, Generic: Game.sav",
             {(int)SAVE_FORMAT_SAV, (int)SAVE_FORMAT_SRM, (int)SAVE_FORMAT_SRM_UNCOMPRESSED, (int)SAVE_FORMAT_GEN},
             {"MinUI (default)", "Retroarch (compressed)", "Retroarch (uncompressed)", "Generic"}, []() -> std::any
@@ -1161,6 +1168,9 @@ int settings_run(SDL_Surface *host_screen)
         if(deviceInfo.hasBluetooth())
             mainItems.push_back(new MenuItem{ListItemType::Generic, "Bluetooth", "", {}, {}, nullptr, nullptr, DeferToSubmenu, new Bluetooth::Menu(appQuit, ctx.dirty)});
 
+        // Bramley: Lights, in place of NextUI's LedControl app
+        if (MenuList *lightsMenu = bramley_lights_menu())
+            mainItems.push_back(new MenuItem{ListItemType::Generic, "Lights", "", {}, {}, nullptr, nullptr, DeferToSubmenu, lightsMenu});
         // Bramley: Battery, in place of NextUI's Battery app
         mainItems.push_back(new MenuItem{ListItemType::Generic, "Battery", "", {}, {}, nullptr, nullptr, DeferToSubmenu, bramley_battery_menu()});
         mainItems.push_back(new MenuItem{ListItemType::Generic, "About", "", {}, {}, nullptr, nullptr, DeferToSubmenu, aboutMenu});

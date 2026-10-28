@@ -1,4 +1,5 @@
 #include "fnbuttonmenu.hpp"
+#include "bramley_pages.hpp"
 
 extern "C" {
 #include "config.h"
@@ -171,9 +172,9 @@ MenuList* buildFnButtonMenu()
             DeferToSubmenu, submenu});
     }
 
-    if (items.empty())
-        return nullptr; // no assignable buttons on this device
-
+    // Bramley: Test Buttons, in place of NextUI's Input app, heads the Buttons section, so the
+    // section is there even on a device with no assignable buttons
+    items.insert(items.begin(), bramley_test_buttons_item());
     items.push_back(new MenuItem{ListItemType::Button, "Reset to defaults",
         "Resets all options in this menu to their default values.", ResetCurrentMenu});
     return new MenuList(MenuItemType::Fixed, "Assignments", std::move(items));
