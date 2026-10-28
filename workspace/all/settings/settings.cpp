@@ -683,11 +683,7 @@ int settings_run(SDL_Surface *host_screen)
             []() { CFG_setDefaultView(CFG_DEFAULT_VIEW);}},
             new MenuItem{ListItemType::Generic, "Date & Time", "", {}, {}, nullptr, nullptr, DeferToSubmenu, dateTimeMenu},
 
-            new MenuItem{ListItemType::Generic, "Show clock", "Show clock in the status pill", {false, true}, on_off, []() -> std::any
-            { return CFG_getShowClock(); },
-            [](const std::any &value)
-            { CFG_setShowClock(std::any_cast<bool>(value)); },
-            []() { CFG_setShowClock(CFG_DEFAULT_SHOWCLOCK);}},
+            // Bramley: "Show clock" is gone; Bramley's status bar always shows the time
             new MenuItem{ListItemType::Generic, "Save format", "The save format to use.\nMinUI: Game.gba.sav, Retroarch: Game.srm, Generic: Game.sav",
             {(int)SAVE_FORMAT_SAV, (int)SAVE_FORMAT_SRM, (int)SAVE_FORMAT_SRM_UNCOMPRESSED, (int)SAVE_FORMAT_GEN},
             {"MinUI (default)", "Retroarch (compressed)", "Retroarch (uncompressed)", "Generic"}, []() -> std::any
