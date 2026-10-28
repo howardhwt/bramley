@@ -559,6 +559,65 @@ void lgfx_init(int w, int h) {
 #undef LGFX_MS
 }
 
+// Programs that also draw through SDL's renderer (minarch) keep a record of the GL state they
+// left; these put it back exactly after a frame of ours. Vertex attributes live in the bound
+// vertex array, and ours is separate, so restoring the binding restores them.
+static struct {
+	GLint program, active, tex[4], array_buffer, vao, fbo, viewport[4], scissor_box[4], unpack;
+	GLint src_rgb, dst_rgb, src_a, dst_a, eq_rgb, eq_a;
+	GLboolean blend, scissor, depth, cull;
+	GLfloat clear[4];
+} saved;
+
+void lgfx_save_gl_state(void) {
+	glGetIntegerv(GL_CURRENT_PROGRAM, &saved.program);
+	glGetIntegerv(GL_ACTIVE_TEXTURE, &saved.active);
+	for (int i = 0; i < 4; i++) {
+		glActiveTexture(GL_TEXTURE0 + i);
+		glGetIntegerv(GL_TEXTURE_BINDING_2D, &saved.tex[i]);
+	}
+	glActiveTexture(saved.active);
+	glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &saved.array_buffer);
+	glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &saved.vao);
+	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &saved.fbo);
+	glGetIntegerv(GL_VIEWPORT, saved.viewport);
+	glGetIntegerv(GL_SCISSOR_BOX, saved.scissor_box);
+	glGetIntegerv(GL_UNPACK_ALIGNMENT, &saved.unpack);
+	glGetIntegerv(GL_BLEND_SRC_RGB, &saved.src_rgb);
+	glGetIntegerv(GL_BLEND_DST_RGB, &saved.dst_rgb);
+	glGetIntegerv(GL_BLEND_SRC_ALPHA, &saved.src_a);
+	glGetIntegerv(GL_BLEND_DST_ALPHA, &saved.dst_a);
+	glGetIntegerv(GL_BLEND_EQUATION_RGB, &saved.eq_rgb);
+	glGetIntegerv(GL_BLEND_EQUATION_ALPHA, &saved.eq_a);
+	saved.blend = glIsEnabled(GL_BLEND);
+	saved.scissor = glIsEnabled(GL_SCISSOR_TEST);
+	saved.depth = glIsEnabled(GL_DEPTH_TEST);
+	saved.cull = glIsEnabled(GL_CULL_FACE);
+	glGetFloatv(GL_COLOR_CLEAR_VALUE, saved.clear);
+}
+
+void lgfx_restore_gl_state(void) {
+	glUseProgram(saved.program);
+	for (int i = 0; i < 4; i++) {
+		glActiveTexture(GL_TEXTURE0 + i);
+		glBindTexture(GL_TEXTURE_2D, saved.tex[i]);
+	}
+	glActiveTexture(saved.active);
+	glBindVertexArray(saved.vao);
+	glBindBuffer(GL_ARRAY_BUFFER, saved.array_buffer);
+	glBindFramebuffer(GL_FRAMEBUFFER, saved.fbo);
+	glViewport(saved.viewport[0], saved.viewport[1], saved.viewport[2], saved.viewport[3]);
+	glScissor(saved.scissor_box[0], saved.scissor_box[1], saved.scissor_box[2], saved.scissor_box[3]);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, saved.unpack);
+	glBlendFuncSeparate(saved.src_rgb, saved.dst_rgb, saved.src_a, saved.dst_a);
+	glBlendEquationSeparate(saved.eq_rgb, saved.eq_a);
+	(saved.blend ? glEnable : glDisable)(GL_BLEND);
+	(saved.scissor ? glEnable : glDisable)(GL_SCISSOR_TEST);
+	(saved.depth ? glEnable : glDisable)(GL_DEPTH_TEST);
+	(saved.cull ? glEnable : glDisable)(GL_CULL_FACE);
+	glClearColor(saved.clear[0], saved.clear[1], saved.clear[2], saved.clear[3]);
+}
+
 void lgfx_warm_up(void) {
 	// The first blur took 32 ms on the Brick (spikes/home), so do it once while nothing waits on it.
 	lgfx_begin_snapshot();

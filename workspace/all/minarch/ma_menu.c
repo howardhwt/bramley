@@ -22,6 +22,7 @@
 #include "ma_video.h"
 #include "ma_frontend_opts.h"
 #include "ma_menu.h"
+#include "bramley_menu.h" // Bramley
 
 ///////////////////////////////
 
@@ -1829,6 +1830,7 @@ void Menu_loop(void) {
 
 	//set vid.blit to null for menu drawing no need for blitrender drawing
 	GFX_clearShaders();
+	int bramley = bramley_menu_begin(menu.bitmap); // Bramley: draw the menu with the GL kit
 	while (show_menu) {
 
 		GFX_startFrame();
@@ -1941,7 +1943,16 @@ void Menu_loop(void) {
 		}
 
 		PWR_update(&dirty, &show_setting, Menu_beforeSleep, Menu_afterSleep);
-		if(dirty) {
+		if (dirty && bramley) { // Bramley
+			BramleyMenuView view = {
+				.title = rom_name, .rom_path = game.path, .items = menu.items, .count = MENU_ITEM_COUNT,
+				.selected = selected, .total_discs = menu.total_discs, .disc = menu.disc, .slot = menu.slot,
+				.save_exists = menu.save_exists, .preview_exists = menu.preview_exists, .preview_path = menu.bmp_path,
+			};
+			bramley_menu_draw(&view);
+			dirty = 0;
+		}
+		else if(dirty) {
 			GFX_clear(screen);
 
 			GFX_drawOnLayer(menu.bitmap,0,0,DEVICE_WIDTH,DEVICE_HEIGHT,0.4f,1,0);
@@ -2081,6 +2092,7 @@ void Menu_loop(void) {
 		hdmimon();
 	}
 	
+	if (bramley) bramley_menu_end(); // Bramley
 	SDL_FreeSurface(preview);
 	if(menu.bitmap) SDL_FreeSurface(menu.bitmap);
 	PAD_reset();

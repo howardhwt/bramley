@@ -18,6 +18,10 @@ void lgfx_quit(void);
 // Runs one snapshot blur so the driver prepares its targets. Call it once after the first frame,
 // where its cost (about 40 ms the first time) is not on the way to the screen.
 void lgfx_warm_up(void);
+// For programs that also draw through SDL's renderer: save the GL state before a frame of ours
+// and restore it after the swap, so SDL finds it as it left it.
+void lgfx_save_gl_state(void);
+void lgfx_restore_gl_state(void);
 
 void lgfx_begin_frame(void);
 void lgfx_end_frame(void);
