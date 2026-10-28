@@ -407,10 +407,6 @@ int GFX_updateColors(void)
 
 int GFX_keepScreenOnInit = 0;
 
-	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
-}
 SDL_Surface *GFX_init(int mode)
 {
 	// Platform init may use the active output to select panel rotation.
