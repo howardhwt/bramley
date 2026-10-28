@@ -19,6 +19,8 @@
 
 #include "menu.hpp"
 #include "keyboardprompt.hpp"
+#include "wifimenu.hpp"
+#include "colorpickermenu.hpp"
 
 extern "C"
 {
@@ -39,6 +41,15 @@ struct BramleyView
 	static std::vector<AbstractMenuItem *> &items(MenuList *l) { return l->items; }
 	static std::any live(AbstractMenuItem *i) { return i->on_get ? i->on_get() : i->getValue(); }
 	static const KeyboardState &keyboard(KeyboardPrompt *k) { return k->state.keyboard; }
+	static const WIFI_network &network(Wifi::NetworkItem *n) { return n->net; }
+	static bool connected(Wifi::NetworkItem *n) { return n->connected; }
+	struct Picker
+	{
+		int r, g, b, a, selected;
+		const std::vector<ColorPreset> *presets;
+		const std::string *label;
+	};
+	static Picker picker(ColorPickerMenu *p) { return {p->r, p->g, p->b, p->a, p->selected, &p->presets, &p->label_}; }
 	static const KeyboardLayout &layout(KeyboardPrompt *k) { return k->getCurrentLayout(k->state); }
 };
 
@@ -340,6 +351,28 @@ void draw_slider(float right, float cy, float frac, bool focused)
 }
 
 // One setting row in the pane.
+// Signal strength as three rising bars, and a padlock for a secured network, drawn right to left
+// from right. Returns the x where whatever comes next should end.
+float draw_network_marks(const WIFI_network &net, float right, float cy, bool focused)
+{
+	int bars = net.rssi >= -60 ? 3 : net.rssi >= -70 ? 2 : 1;
+	float c = focused ? 0.1f : 1, x = right - 26;
+	for (int i = 0; i < 3; i++)
+	{
+		float bh = 7 + i * 5;
+		lgfx_draw_fill(x + i * 9, cy + 9 - bh, 6, bh, 2, c, c, c, i < bars ? 0.95f : 0.25f);
+	}
+	x -= 12;
+	if (net.security != SECURITY_NONE)
+	{
+		// the shackle as a ring, half hidden behind the body
+		lgfx_draw_ring(x - 12, cy - 11, 10, 14, 5, 2.2f, c, c, c, 0.85f);
+		lgfx_draw_fill(x - 14, cy - 3, 14, 11, 3, c, c, c, 0.85f);
+		x -= 22;
+	}
+	return x - 6;
+}
+
 // Set while the Network page is drawn, so the connected network's row says so.
 bool marking_wifi;
 
@@ -385,21 +418,32 @@ void draw_row(AbstractMenuItem *item, float x, float y, float w, float h, bool f
 		break;
 	}
 	case K_NONE:
-		if (marking_wifi && !radio.ssid.empty() && item->getName() == radio.ssid)
+	{
+		// a Wi-Fi network: signal bars and a lock at the right, as iOS shows them
+		if (auto *n = dynamic_cast<Wifi::NetworkItem *>(item))
 		{
-			// the connected network: a green dot and "Connected", as iOS marks it
+			lgfx_set_dim(1);
+			right = draw_network_marks(BramleyView::network(n), right, y + h * 0.5f, focused);
+		}
+		bool connected_here = marking_wifi && !radio.ssid.empty() && item->getName() == radio.ssid;
+		if (auto *n = dynamic_cast<Wifi::NetworkItem *>(item))
+			connected_here = connected_here || BramleyView::connected(n);
+		if (connected_here)
+		{
+			// the connected network: a green dot and "Connected"
 			float tw = text_w(LFONT_BODY, "Connected");
 			lgfx_set_dim(focused ? 0.45f : 1);
 			text(LFONT_BODY, "Connected", right, ty, focused ? 1 : 0.7f, 1);
 			lgfx_set_dim(1);
 			lgfx_draw_fill(right - tw - 22, y + h * 0.5f - 6, 12, 12, 6, 0.20f, 0.78f, 0.35f, 1);
 		}
-		else if (item->getSubMenu())
+		else if (item->getSubMenu() && !dynamic_cast<Wifi::NetworkItem *>(item))
 		{
 			lgfx_set_dim(focused ? 0.35f : 1);
 			text(LFONT_BODY, "\xE2\x80\xBA", right, ty, focused ? 1 : 0.4f, 1);
 		}
 		break;
+	}
 	}
 	lgfx_set_dim(1);
 }
@@ -829,6 +873,131 @@ void draw_keyboard(KeyboardPrompt *kp)
 	text(LFONT_SMALL, "A  Type        B  Delete        SELECT  Shift        X  Done        Y  Cancel", W * 0.5f - 300, H - 44, 0.6f);
 }
 
+// A horizontal colour ramp from a to b, drawn as thin bands (the kit's gradients are vertical).
+void draw_ramp(float x, float y, float w, float h, const float a[3], const float b[3])
+{
+	// round caps in the end colours, square bands between them
+	lgfx_draw_fill(x, y, h, h, h * 0.5f, a[0], a[1], a[2], 1);
+	lgfx_draw_fill(x + w - h, y, h, h, h * 0.5f, b[0], b[1], b[2], 1);
+	const int n = 32;
+	float bx = x + h * 0.5f, bw = (w - h) / n;
+	for (int i = 0; i < n; i++)
+	{
+		float t = (i + 0.5f) / n;
+		lgfx_draw_fill(bx + i * bw, y, bw + 0.5f, h, 0, a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t,
+		               a[2] + (b[2] - a[2]) * t, 1);
+	}
+}
+
+// The colour picker: the colour large on the left with its hex value, the red, green, blue and
+// alpha sliders on the right with ramps showing where each would take the colour, and the other
+// theme colours below as rows to copy from. NextUI's ColorPickerMenu still holds the colour and
+// handles the buttons.
+void draw_color_picker(ColorPickerMenu *cp)
+{
+	BramleyView::Picker p = BramleyView::picker(cp);
+	lgfx_draw_fill(0, 0, W, H, 0, 0, 0, 0, 0.25f);
+	draw_top_bar();
+	LTex *t = text_tex(LFONT_TITLE, *p.label);
+	if (t)
+		lgfx_draw_tex(t, (W - t->w) * 0.5f, 64, t->w, t->h, 0, 1);
+
+	// the colour, over a checkerboard so its transparency shows
+	float sx = 72, sy = 140, ss = 240;
+	lgfx_draw_shadow(sx, sy, ss, ss, 10, 0.45f);
+	for (int i = 0; i < 6; i++)
+		for (int j = 0; j < 6; j++)
+		{
+			float c = (i + j) % 2 ? 0.75f : 0.95f;
+			lgfx_draw_fill(sx + i * 40, sy + j * 40, 40, 40, 0, c, c, c, 1);
+		}
+	lgfx_draw_fill(sx, sy, ss, ss, 0, p.r / 255.0f, p.g / 255.0f, p.b / 255.0f, p.a / 255.0f);
+	lgfx_draw_ring(sx, sy, ss, ss, 0, 2, 1, 1, 1, 0.35f);
+	char hex[16];
+	snprintf(hex, sizeof(hex), "#%02X%02X%02X%02X", p.r, p.g, p.b, p.a);
+	t = text_tex(LFONT_LABEL, hex);
+	if (t)
+		lgfx_draw_tex(t, sx + (ss - t->w) * 0.5f, sy + ss + 20, t->w, t->h, 0, 0.8f);
+
+	// the sliders
+	float px = 360, pw = W - px - 48, rh = 56, gap = 8, y = 136;
+	const char *names[4] = {"R", "G", "B", "A"};
+	int vals[4] = {p.r, p.g, p.b, p.a};
+	for (int i = 0; i < 4; i++, y += rh + gap)
+	{
+		bool f = i == p.selected;
+		float x = px, w = pw, yy = y, hh = rh;
+		if (f)
+		{
+			x -= 6, w += 12, yy -= 3, hh += 6;
+			lgfx_draw_shadow(x, yy, w, hh, 6, 0.32f);
+			lgfx_draw_fill(x, yy, w, hh, 14, 1, 1, 1, 0.96f);
+		}
+		else
+			lgfx_draw_fill(x, yy, w, hh, 14, 1, 1, 1, 0.07f);
+		float ty = yy + (hh - 30) * 0.5f;
+		if (f)
+			lgfx_set_dim(0.1f);
+		text(LFONT_LABEL, names[i], x + 22, ty + 2, 1);
+		char v[8];
+		snprintf(v, sizeof(v), "%02X", vals[i]);
+		text(LFONT_LABEL, v, x + w - 22, ty + 2, f ? 1 : 0.6f, 1);
+		lgfx_set_dim(1);
+		// the ramp runs this channel from 0 to 255 with the others as they are
+		float lo[3] = {p.r / 255.0f, p.g / 255.0f, p.b / 255.0f}, hi[3] = {lo[0], lo[1], lo[2]};
+		if (i < 3)
+			lo[i] = 0, hi[i] = 1;
+		else
+			lo[0] = lo[1] = lo[2] = 0.15f, hi[0] = hi[1] = hi[2] = 0.9f;
+		float tx = x + 60, tw = w - 140, cy = yy + hh * 0.5f;
+		draw_ramp(tx, cy - 7, tw, 14, lo, hi);
+		float kx = tx + tw * vals[i] / 255.0f;
+		lgfx_draw_fill(kx - 13, cy - 13, 26, 26, 13, 1, 1, 1, 1);
+		lgfx_draw_ring(kx - 13, cy - 13, 26, 26, 13, 1.5f, 0, 0, 0, 0.3f);
+	}
+
+	// the other theme colors, to copy from with X
+	const auto &presets = *p.presets;
+	if (!presets.empty())
+	{
+		text(LFONT_SMALL, "Other colors", px + 4, y + 6, 0.5f);
+		y += 40;
+		const float prh = 46, pgap = 6;
+		int visible = (int)((H - 80 - y) / (prh + pgap));
+		if (visible < 1)
+			visible = 1;
+		int sel = p.selected - 4, top = 0;
+		if (sel >= visible)
+			top = sel - visible + 1;
+		for (int k = top; k < (int)presets.size() && k < top + visible; k++, y += prh + pgap)
+		{
+			bool f = k == sel;
+			float x = px, w = pw, yy = y, hh = prh;
+			if (f)
+			{
+				x -= 6, w += 12, yy -= 3, hh += 6;
+				lgfx_draw_shadow(x, yy, w, hh, 6, 0.32f);
+				lgfx_draw_fill(x, yy, w, hh, 12, 1, 1, 1, 0.96f);
+			}
+			else
+				lgfx_draw_fill(x, yy, w, hh, 12, 1, 1, 1, 0.06f);
+			uint32_t c = presets[k].color;
+			float cr = (c >> 24 & 0xFF) / 255.0f, cg = (c >> 16 & 0xFF) / 255.0f, cb = (c >> 8 & 0xFF) / 255.0f;
+			lgfx_draw_fill(x + 18, yy + (hh - 26) * 0.5f, 26, 26, 13, cr, cg, cb, 1);
+			lgfx_draw_ring(x + 18, yy + (hh - 26) * 0.5f, 26, 26, 13, 1.5f, f ? 0 : 1, f ? 0 : 1, f ? 0 : 1, 0.3f);
+			float ty = yy + (hh - 30) * 0.5f;
+			if (f)
+				lgfx_set_dim(0.1f);
+			text(LFONT_BODY, presets[k].label, x + 60, ty, 1);
+			lgfx_set_dim(f ? 0.45f : 1);
+			text(LFONT_BODY, f ? "X  Use" : "", x + w - 20, ty, f ? 1 : 0.5f, 1);
+			lgfx_set_dim(1);
+		}
+	}
+	text(LFONT_SMALL, "\xE2\x80\xB9 \xE2\x80\xBA  Adjust        L1 R1  Faster        X  Use color        A  Done        B  Cancel",
+	     W * 0.5f - 340, H - 44, 0.6f);
+}
+
 // A page NextUI draws itself (the keyboard, the colour picker): its own code draws it in software
 // into NextUI's screen surface, and that surface is shown here. NextUI's GPU path (GFX_flip)
 // is never used, because its renderer does not expect the GL state these frames leave.
@@ -864,6 +1033,11 @@ void draw_frame(const Frame &f, bool begin = true)
 	{
 		draw_backdrop();
 		draw_keyboard(kp);
+	}
+	else if (auto *cp = dynamic_cast<ColorPickerMenu *>(chain.back()))
+	{
+		draw_backdrop();
+		draw_color_picker(cp);
 	}
 	else if (BramleyView::type(chain.back()) == MenuItemType::Custom)
 		draw_classic(f.root, f.screen, f.list, f.title);

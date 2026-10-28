@@ -1,6 +1,8 @@
 #pragma once
 
 #include "menu.hpp"
+
+struct BramleyView; // Bramley
 #include <thread>
 
 namespace Wifi
@@ -38,6 +40,7 @@ namespace Wifi
 
     class NetworkItem : public MenuItem
     {
+        friend struct ::BramleyView; // Bramley: bramley_settings.cpp draws the signal and lock
         WIFI_network net;
         bool connected;
 

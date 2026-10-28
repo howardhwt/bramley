@@ -9,6 +9,7 @@ struct ColorPreset {
 
 class ColorPickerMenu : public MenuList
 {
+    friend struct BramleyView; // Bramley: bramley_settings.cpp draws the picker
     int r, g, b, a;
     int selected;
     ValueSetCallback on_set;

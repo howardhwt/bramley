@@ -844,7 +844,10 @@ void lgfx_draw_shadow(float x, float y, float w, float h, float lift, float alph
 	float sw = (w + 2 * pad) * grow, sh = (h + 2 * pad) * grow;
 	float sx = x + w * 0.5f - sw * 0.5f, sy = y + h * 0.5f - sh * 0.5f + 8 + lift;
 	float c = fminf(sw, sh) * 0.5f;
-	float xs[4] = { sx, sx + c, sx + sw - c, sx + sw }, ys[4] = { sy, sy + c, sy + sh - c, sy + sh };
+	// Tile edges on whole pixels: on the Brick's GPU, tiles meeting between pixels left a
+	// hairline crack where the shadow showed lighter.
+	float xs[4] = { roundf(sx), roundf(sx + c), roundf(sx + sw - c), roundf(sx + sw) };
+	float ys[4] = { roundf(sy), roundf(sy + c), roundf(sy + sh - c), roundf(sy + sh) };
 	static const float t[4] = { 0.0f, 0.499f, 0.501f, 1.0f };
 	for (int j = 0; j < 3; j++)
 		for (int i = 0; i < 3; i++) {
