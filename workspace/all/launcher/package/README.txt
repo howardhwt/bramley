@@ -34,6 +34,13 @@ Lock screen: while music plays, a short power press turns the screen off and the
              going. Power again shows the lock screen, and power once more unlocks. Holding L3
              and R3 for a second also locks and unlocks. Holding power turns the device off.
 
+Settings and apps
+-----------------
+Settings has Battery (level over time and time left), Lights, Date & Time (a list of cities for
+the time zone) and Buttons, Test Buttons, in place of NextUI's Battery, LedControl, Clock and
+Input apps, which Bramley hides from Apps. Game Tracker opens Activity: time played per day and
+per game. Nothing is deleted: removing Bramley brings the old apps back.
+
 Music and audiobooks
 --------------------
 Music/<Artist>/<Album>/<tracks>     or   Music/<Album>/<tracks>
