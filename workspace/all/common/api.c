@@ -4443,8 +4443,13 @@ static void PWR_exitSleep(void)
 		SetVolume(GetVolume());
 	}
 	// reinitialize audio after sleep otherwise it doesnt come back on sometimes
-	LOG_info("Reinitialize audio after sleep\n");
-	SND_resetAudio(snd.sample_rate_in, snd.frame_rate);
+	// Bramley: only where audio was open. The launcher plays no sound itself, and opening an empty
+	// stream there underran (a short glitch on wake) and then held the device open.
+	if (snd.initialized)
+	{
+		LOG_info("Reinitialize audio after sleep\n");
+		SND_resetAudio(snd.sample_rate_in, snd.frame_rate);
+	}
 
 	sync();
 }
