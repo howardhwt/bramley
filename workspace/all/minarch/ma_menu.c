@@ -1072,6 +1072,7 @@ int Menu_options(MenuList* list) {
 	OptionAchievements_updateDesc();
 	
 	int defer_menu = false;
+	bramley_options_push(list); // Bramley
 	while (show_options) {
 		if (await_input) {
 			defer_menu = true;
@@ -1212,6 +1213,13 @@ int Menu_options(MenuList* list) {
 		
 		if (defer_menu && PAD_justReleased(BTN_MENU)) defer_menu = false;
 		
+		if (bramley_menu_active()) { // Bramley: drawn as a split view, and only when something changed
+			if (dirty) bramley_options_draw(list, selected, await_input);
+			else SDL_Delay(16);
+			dirty = 0;
+			hdmimon();
+			continue;
+		}
 		GFX_clear(screen);
 		GFX_blitHardwareGroup(screen, show_settings);
 		
@@ -1457,6 +1465,7 @@ int Menu_options(MenuList* list) {
 	// GFX_clearAll();
 	// GFX_flip(screen);
 	
+	bramley_options_pop(); // Bramley
 	return 0;
 }
 
