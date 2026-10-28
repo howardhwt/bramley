@@ -19,6 +19,7 @@
 #include "config.h"
 #include "lgfx.h"
 #include "ldata.h"
+#include "lactivity.h"
 #include "lradio.h"
 #include "lmusic.h"
 #include "bramley.h"
@@ -91,6 +92,9 @@ static struct {
 // l = L1, r = R1, m = MENU, s = SELECT. Upper case P presses POWER.
 // Upper case S saves a
 // screenshot to $LAUNCHER_DEBUG_SHOT-<n>.bmp. One step every 0.6 s. Unused on the device.
+static int debug_shot_wanted; // a screenshot step waits for the next frame to be drawn
+static int debug_drawing;     // set while draw_frame runs
+
 static void debug_step(void) {
 	static const char* keys;
 	static Uint32 next;
@@ -105,10 +109,16 @@ static void debug_step(void) {
 		SDL_PushEvent(&up);
 		held = 0;
 	}
-	if (!keys || !*keys || SDL_GetTicks() < next) return;
+	if (debug_shot_wanted && !debug_drawing) return;
+	if (!debug_shot_wanted && (!keys || !*keys || SDL_GetTicks() < next)) return;
 	next = SDL_GetTicks() + 600;
 	while (*keys == ' ') keys++;
-	char k = *keys ? *keys++ : 0;
+	char k = debug_shot_wanted ? 'S' : *keys ? *keys++ : 0;
+	if (k == 'S' && !debug_drawing) {
+		debug_shot_wanted = 1;
+		return;
+	}
+	debug_shot_wanted = 0;
 	SDL_Keycode code = k == 'R' ? SDLK_RIGHT : k == 'L' ? SDLK_LEFT : k == 'U' ? SDLK_UP : k == 'D' ? SDLK_DOWN
 	                 : k == 'a' ? SDLK_s : k == 'b' ? SDLK_a : k == 'x' ? SDLK_w : k == 'l' ? SDLK_TAB : k == 'r' ? SDLK_b : k == 'm' ? SDLK_SPACE
 	                 : k == 's' ? SDLK_BACKQUOTE : k == 'y' ? SDLK_q : k == 'P' ? SDLK_BACKSPACE : 0;
@@ -218,6 +228,11 @@ static int np_over_settings;
 
 static int is_settings(const Card* card) {
 	return card->kind == CARD_TOOL && suffixMatch("/Settings.pak", (char*)card->path);
+}
+
+// Game Tracker's card opens Activity, drawn here, instead of the old app.
+static int is_activity(const Card* card) {
+	return card->kind == CARD_TOOL && suffixMatch("/Game Tracker.pak", (char*)card->path);
 }
 
 static void open_settings(void);
@@ -455,7 +470,7 @@ static int update_shelf(void) {
 		else snprintf(detail, sizeof(detail), "%d %s", albums, albums == 1 ? "album" : "albums");
 	} else {
 		snprintf(kicker, sizeof(kicker), "App");
-		snprintf(detail, sizeof(detail), "Tools Pak");
+		snprintf(detail, sizeof(detail), "%s", is_activity(card) ? "Time played, day by day" : is_settings(card) ? "Network, display, sound and more" : "Tools Pak");
 	}
 	for (char* p = kicker; *p; p++) *p = (*p >= 'a' && *p <= 'z') ? *p - 32 : *p;
 
@@ -1263,6 +1278,11 @@ static void draw_eq_bars(float x, float y, float h, float alpha) {
 
 // Everything except the quick menu and overlays: the home screen or the library.
 static void draw_scene(void) {
+	if (lactivity_is_open()) {
+		lactivity_draw();
+		draw_status();
+		return;
+	}
 	lgfx_draw_wallpaper(wallpaper, parallax_x.x * 12, parallax_y.x * 8);
 
 	// Darken the lower half so the rows read clearly over any wallpaper.
@@ -1748,7 +1768,9 @@ static void draw_frame(int show_setting) {
 		lgfx_draw_fill(x, y, w, h, h * 0.5f, 0.1f, 0.1f, 0.12f, 0.85f);
 		lgfx_draw_tex(toast, x + 24, y + 12, toast->w, toast->h, 0, 1);
 	}
+	debug_drawing = 1;
 	debug_step();
+	debug_drawing = 0;
 	lgfx_end_frame();
 }
 
@@ -1919,6 +1941,16 @@ int main(int argc, char* argv[]) {
 			open_now_playing();
 		} else if (!quit && !show_setting && PAD_tappedMenu(SDL_GetTicks())) {
 			open_quick_menu();
+		} else if (lactivity_is_open() && !quit) {
+			Card play;
+			int r = lactivity_input(&play);
+			if (r == ACT_CLOSE) lactivity_close();
+			else if (r == ACT_PLAY) {
+				lactivity_close();
+				ldata_launch(&play, 0);
+				quit = 1;
+			}
+			if (r != ACT_NONE) dirty = 1;
 		} else if (alb.open && !quit) {
 			if (PAD_justRepeated(BTN_DOWN) && alb.focus < alb.count - 1) alb.focus++, shine_t = 0;
 			else if (PAD_justRepeated(BTN_UP) && alb.focus > 0) alb.focus--, shine_t = 0;
@@ -1977,6 +2009,9 @@ int main(int argc, char* argv[]) {
 				else if (is_settings(card)) {
 					open_settings();
 					dirty = 1;
+				} else if (is_activity(card)) {
+					lactivity_open();
+					dirty = 1;
 				} else {
 					remember_launch(card);
 					ldata_launch(card, 0);
@@ -2003,6 +2038,8 @@ int main(int argc, char* argv[]) {
 					open_settings();
 				}
 			}
+		} else if (lactivity_is_open()) {
+			animating |= lactivity_update();
 		} else if (alb.open) {
 			animating |= spring_step(&alb.scroll, alb_scroll_target(), dt);
 			animating |= spring_step(&alb.fade, 1.0f, dt);
@@ -2062,7 +2099,7 @@ int main(int argc, char* argv[]) {
 		if (!animating && lmusic_playing() && !np.open && SDL_GetTicks() - last_draw >= 100) animating = 1;
 
 		// Draw only while something moves, so the GPU and battery rest on a still screen.
-		if (animating || dirty || show_setting) {
+		if (animating || dirty || show_setting || debug_shot_wanted) {
 			last_draw = SDL_GetTicks();
 			draw_frame(show_setting);
 			static int first_frame = 1;
@@ -2083,6 +2120,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	if (lib.open) close_library();
+	lactivity_close();
 	free_quick_menu();
 	if (alb.open) close_album();
 	np_free_texts();

@@ -252,6 +252,7 @@ static int load_tools(Card* cards) {
 		snprintf(card->path, sizeof(card->path), "%s/%s", TOOLS_PATH, dp->d_name);
 		snprintf(card->name, sizeof(card->name), "%s", dp->d_name);
 		card->name[strlen(card->name) - 4] = '\0';
+		if (!strcmp(card->name, "Game Tracker")) snprintf(card->name, sizeof(card->name), "Activity"); // see lactivity.h
 		card->hue = hue_for(card->name);
 		count++;
 	}
