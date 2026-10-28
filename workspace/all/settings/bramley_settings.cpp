@@ -21,6 +21,7 @@
 #include "keyboardprompt.hpp"
 #include "wifimenu.hpp"
 #include "colorpickermenu.hpp"
+#include "bramley_battery.h"
 
 extern "C"
 {
@@ -145,8 +146,8 @@ const Section sections[] = {
 	{"Network", "network", "Network", 0},       {"Bluetooth", "bluetooth", "Bluetooth", 0},
 	{"Display", "display", "Display", 1},       {"Appearance", "appearance", "Appearance", 1},
 	{"In-Game", "in-game", "In-Game", 2},       {"Assignments", "buttons", "Buttons", 2},
-	{"FN switch", "fn-switch", "FN Switch", 2}, {"System", "system", "System", 3},
-	{"About", "about", "About", 3},
+	{"FN switch", "fn-switch", "FN Switch", 2}, {"Battery", "battery", "Battery", 3},
+	{"System", "system", "System", 3},          {"About", "about", "About", 3},
 };
 
 const Section *section_of(const std::string &name)
@@ -523,6 +524,96 @@ void draw_summary(const Section *s, float x, float y, float w, float h)
 	}
 }
 
+// Battery: the level now with the time left, the level over the last hours of use as bars (green
+// while charging, red at 20% or less), what the log knows about charges, then the Show row.
+int battery_range = 24 * 3600;
+BatteryHistory battery;
+Uint32 battery_at;
+int battery_loaded_range;
+
+std::string hours_minutes(int seconds)
+{
+	int m = seconds / 60;
+	char s[32];
+	if (m >= 60)
+		snprintf(s, sizeof(s), "%d h %d min", m / 60, m % 60);
+	else
+		snprintf(s, sizeof(s), "%d min", m);
+	return s;
+}
+
+void draw_battery(MenuList *menu, float px, float py, float pw, float pb, bool active)
+{
+	int level = PWR_getBattery();
+	bool charging = PWR_isCharging();
+	if (!battery_at || SDL_GetTicks() - battery_at > 30000 || battery_loaded_range != battery_range)
+	{
+		battery_history(&battery, battery_range, level);
+		battery_at = SDL_GetTicks() | 1;
+		battery_loaded_range = battery_range;
+	}
+	float x = px + 28;
+	text(LFONT_TITLE, "Battery", x, py + 20, 1);
+	std::string pct = std::to_string(level) + "%";
+	float hw = text_w(LFONT_HERO, pct);
+	text(LFONT_HERO, pct, x, py + 70, 1);
+	std::string line = charging ? "Charging" : battery.remaining >= 0 ? "About " + hours_minutes(battery.remaining) + " left" : "Time left shows after 20 min";
+	text(LFONT_BODY, line, x + hw + 20, py + 78, 0.9f);
+	text(LFONT_SMALL, charging ? "Connected to power" : "Not charging", x + hw + 20, py + 110, 0.55f);
+
+	// the chart
+	float cx = px + 20, cw = pw - 40, cy = py + 160, ch = 250;
+	lgfx_draw_fill(cx, cy, cw, ch, 16, 1, 1, 1, 0.06f);
+	text(LFONT_LABEL, "BATTERY LEVEL", cx + 18, cy + 14, 0.55f);
+	float gx = cx + 18, gw = cw - 18 - 58, gy = cy + 50, gh = ch - 50 - 40;
+	for (int p = 0; p <= 100; p += 50)
+	{
+		float ly = gy + gh * (1 - p / 100.0f);
+		lgfx_draw_fill(gx, ly, gw, 1, 0, 1, 1, 1, 0.12f);
+		text(LFONT_SMALL, std::to_string(p) + "%", cx + cw - 16, ly - 11, 0.45f, 1);
+	}
+	float slot = gw / BATTERY_SLOTS;
+	bool any = false;
+	for (int i = 0; i < BATTERY_SLOTS; i++)
+	{
+		const BatterySlot &b = battery.slot[i];
+		if (b.level < 0)
+			continue;
+		any = true;
+		float bh = std::max(2.0f, gh * b.level / 100.0f), bx = gx + i * slot + 1.5f;
+		if (b.charging)
+			lgfx_draw_fill(bx, gy + gh - bh, slot - 3, bh, 2, 0.20f, 0.78f, 0.35f, 1);
+		else if (b.level <= 20)
+			lgfx_draw_fill(bx, gy + gh - bh, slot - 3, bh, 2, 1, 0.27f, 0.23f, 0.9f);
+		else
+			lgfx_draw_fill(bx, gy + gh - bh, slot - 3, bh, 2, 1, 1, 1, 0.85f);
+	}
+	if (!any)
+	{
+		const std::string none = "No battery history yet";
+		text(LFONT_BODY, none, gx + (gw - text_w(LFONT_BODY, none)) * 0.5f, gy + gh * 0.5f - 15, 0.5f);
+	}
+	int hours = battery_range / 3600;
+	for (int i = 0; i <= 4; i++)
+	{
+		std::string t = i == 4 ? "Now" : std::to_string(hours * (4 - i) / 4) + (i == 0 ? " h ago" : " h");
+		float tx = gx + gw * i / 4.0f, tw = text_w(LFONT_SMALL, t);
+		text(LFONT_SMALL, t, i == 0 ? tx : i == 4 ? tx - tw : tx - tw * 0.5f, gy + gh + 10, 0.45f);
+	}
+
+	// what the log knows about charges
+	float sy = cy + ch + 22, sw = (pw - 56) / 3;
+	auto stat = [&](float sx, const char *label, const std::string &value) {
+		text(LFONT_LABEL, label, sx, sy, 0.55f);
+		text(LFONT_BODY, value, sx, sy + 24, 0.95f);
+	};
+	const std::string dash = "\xE2\x80\x94";
+	stat(x, "SINCE CHARGE", battery.since_charge >= 0 ? hours_minutes(battery.since_charge) : dash);
+	stat(x + sw, "LAST CHARGED", battery.charged_to >= 0 ? "To " + std::to_string(battery.charged_to) + "%" : dash);
+	stat(x + 2 * sw, "LONGEST", battery.longest > 0 ? hours_minutes(battery.longest) : dash);
+	draw_list(menu, px, sy + 74, pw, pb, active);
+}
+
 void draw_top_bar()
 {
 	text(LFONT_LABEL, "Settings", 48, 30, 0.55f);
@@ -664,14 +755,14 @@ void draw_scene(MenuList *root, const std::vector<MenuList *> &chain, const std:
 		std::shared_lock<std::shared_mutex> lock(BramleyView::lock(root));
 		auto &items = BramleyView::items(root);
 		int sel = BramleyView::selected(root);
-		float x = 40, w = 330, rh = 52, gap = 6, y = 84;
+		float x = 40, w = 330, rh = 46, gap = 5, y = 84;
 		int last_group = -1;
 		for (int i = 0; i < (int)items.size(); i++)
 		{
 			const Section *s = section_of(items[i]->getName());
 			int group = s ? s->group : 9;
 			if (last_group >= 0 && group != last_group)
-				y += 14;
+				y += 12;
 			last_group = group;
 			bool focused = i == sel, open = depth > 0;
 			float fx = x, fw = w, fy = y, fh = rh;
@@ -685,11 +776,11 @@ void draw_scene(MenuList *root, const std::vector<MenuList *> &chain, const std:
 				lgfx_draw_fill(fx, fy, fw, fh, 14, 1, 1, 1, focused ? 0.22f : 0.07f);
 			if (s)
 				if (LTex *ic = icon(s->slug, 36))
-					lgfx_draw_tex(ic, fx + 14, fy + (fh - 36) * 0.5f, 36, 36, 0, open && !focused ? 0.5f : 1);
+					lgfx_draw_tex(ic, fx + 14, fy + (fh - 32) * 0.5f, 32, 32, 0, open && !focused ? 0.5f : 1);
 			float ty = fy + (fh - 30) * 0.5f;
 			if (focused && !open)
 				lgfx_set_dim(0.1f);
-			text(LFONT_BODY, shown_name(items[i]->getName()), fx + (s ? 64 : 20), ty, open ? (focused ? 0.95f : 0.45f) : (focused ? 1 : 0.92f));
+			text(LFONT_BODY, shown_name(items[i]->getName()), fx + (s ? 60 : 20), ty, open ? (focused ? 0.95f : 0.45f) : (focused ? 1 : 0.92f));
 			lgfx_set_dim(1);
 			if (focused)
 				focused_section = items[i];
@@ -706,6 +797,8 @@ void draw_scene(MenuList *root, const std::vector<MenuList *> &chain, const std:
 		MenuList *sub = focused_section ? focused_section->getSubMenu() : nullptr;
 		if (s && (!strcmp(s->slug, "network") || !strcmp(s->slug, "bluetooth")))
 			draw_summary(s, px, py, pw, pb - py);
+		else if (s && !strcmp(s->slug, "battery") && sub)
+			draw_battery(sub, px, py, pw, pb, false);
 		else if (focused_section)
 		{
 			text(LFONT_TITLE, shown_name(focused_section->getName()), px + 28, py + 20, 1);
@@ -739,7 +832,10 @@ void draw_scene(MenuList *root, const std::vector<MenuList *> &chain, const std:
 			rows = ty + 84;
 		}
 		marking_wifi = network;
-		draw_list(chain.back(), px, rows, pw, pb, true);
+		if (depth == 1 && titles[0] == "Battery")
+			draw_battery(chain.back(), px, py, pw, pb, true);
+		else
+			draw_list(chain.back(), px, rows, pw, pb, true);
 		marking_wifi = false;
 		if (network && radio.wifi_seen == 1 && wifi_networks == 0)
 		{
@@ -1158,6 +1254,16 @@ void bramley_switch_radio(std::atomic<int> &flag, bool on, std::function<void()>
 		flag = 0;
 		radio.at = 0;
 	}).detach();
+}
+
+MenuList *bramley_battery_menu()
+{
+	std::vector<AbstractMenuItem *> items = {new MenuItem{ListItemType::Generic, "Show",
+		"Counts only the time the Brick was on.",
+		{6 * 3600, 12 * 3600, 24 * 3600, 48 * 3600}, {"Last 6 hours", "Last 12 hours", "Last 24 hours", "Last 2 days"},
+		[]() -> std::any { return battery_range; },
+		[](const std::any &v) { battery_range = std::any_cast<int>(v); }}};
+	return new MenuList(MenuItemType::Fixed, "Battery", items);
 }
 
 MenuList *bramley_settings_root()

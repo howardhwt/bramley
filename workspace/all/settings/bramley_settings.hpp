@@ -38,6 +38,9 @@ extern std::atomic<int> bramley_wifi_switching, bramley_bt_switching;
 // still running is ignored.
 void bramley_switch_radio(std::atomic<int> &flag, bool on, std::function<void()> work);
 
+// The Battery section's page: the battery chart and its Show row. Called once from settings.cpp.
+MenuList *bramley_battery_menu();
+
 // The sections list, once Settings has drawn a frame; Left does not leave it.
 MenuList *bramley_settings_root();
 

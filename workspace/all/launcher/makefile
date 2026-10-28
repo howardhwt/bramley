@@ -26,7 +26,7 @@ S = ../settings
 INCDIR = -I. -Itortos -I$(S) -I../common/ -I../../$(PLATFORM)/platform/
 SOURCE = $(TARGET).c lgfx.c lwallpaper.c ldata.c lradio.c lmuse.c lmusic.c tortos/muselib.c tortos/musequeue.c \
 	../common/scaler.c ../common/utils.c ../common/config.c ../common/api.c ../../$(PLATFORM)/platform/platform.c \
-	../common/palette.c ../common/http.c ../common/ra_auth.c ../common/ra_offline.c ../common/ra_sync.c ../common/ra_event_queue.c
+	../common/palette.c ../common/http.c ../common/ra_auth.c ../common/ra_offline.c ../common/ra_sync.c ../common/ra_event_queue.c $(S)/bramley_battery.c
 CXXSOURCE = $(S)/settings.cpp $(S)/menu.cpp $(S)/colorpickermenu.cpp $(S)/palettemenu.cpp $(S)/fnbuttonmenu.cpp \
 	$(S)/wifimenu.cpp $(S)/btmenu.cpp $(S)/keyboardprompt.cpp $(S)/bramley_settings.cpp
 
@@ -36,7 +36,7 @@ CXX = $(CROSS_COMPILE)g++
 FLAGS := $(CFLAGS) $(OPT) $(INCDIR) -DPLATFORM=\"$(PLATFORM)\" -DLAUNCHER_VERSION=\"$(shell cat VERSION)\" -DBRAMLEY_HOSTED
 CFLAGS := $(FLAGS) -std=gnu99
 CXXFLAGS := $(FLAGS) -std=c++17
-LDFLAGS += -lmsettings -lcrypto
+LDFLAGS += -lmsettings -lcrypto -lsqlite3
 ifneq (,$(filter $(PLATFORM),tg5040 tg5050 h700))
 CXXFLAGS += -DHAS_BTAGENT $$(pkg-config --cflags gio-2.0 glib-2.0)
 CXXSOURCE += $(S)/btagent.cpp

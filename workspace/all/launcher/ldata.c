@@ -244,6 +244,8 @@ static int load_tools(Card* cards) {
 		// NextUI's over-the-air updater would put stock NextUI over Bramley's files, so it is not
 		// listed. Nothing is deleted: removing Bramley brings it back.
 		if (!strcmp(dp->d_name, "Updater.pak")) continue;
+		// Battery lives in Settings now, so its old app is not listed either.
+		if (!strcmp(dp->d_name, "Battery.pak")) continue;
 		Card* card = &cards[count];
 		memset(card, 0, sizeof(*card));
 		card->kind = CARD_TOOL;

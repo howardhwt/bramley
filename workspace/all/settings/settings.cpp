@@ -1161,6 +1161,8 @@ int settings_run(SDL_Surface *host_screen)
         if(deviceInfo.hasBluetooth())
             mainItems.push_back(new MenuItem{ListItemType::Generic, "Bluetooth", "", {}, {}, nullptr, nullptr, DeferToSubmenu, new Bluetooth::Menu(appQuit, ctx.dirty)});
 
+        // Bramley: Battery, in place of NextUI's Battery app
+        mainItems.push_back(new MenuItem{ListItemType::Generic, "Battery", "", {}, {}, nullptr, nullptr, DeferToSubmenu, bramley_battery_menu()});
         mainItems.push_back(new MenuItem{ListItemType::Generic, "About", "", {}, {}, nullptr, nullptr, DeferToSubmenu, aboutMenu});
 
         bramley_order_sections(mainItems); // Bramley: our section order
