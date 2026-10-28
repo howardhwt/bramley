@@ -4439,7 +4439,11 @@ static void PWR_exitSleep(void)
 			VIB_singlePulse(VIB_sleepStrength, VIB_sleepDuration_ms);
 		}
 		PLAT_enableBacklight(1);
-		SND_overrideMute(1);
+		// Bramley: switch the speaker amplifier on while the volume is still at zero (sleep set it
+		// there), let it settle, then raise the volume. Raising it first made the amplifier click
+		// as it powered up.
+		SND_overrideMute(0);
+		SDL_Delay(60);
 		SetVolume(GetVolume());
 	}
 	// reinitialize audio after sleep otherwise it doesnt come back on sometimes
