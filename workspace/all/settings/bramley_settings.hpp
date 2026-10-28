@@ -55,3 +55,10 @@ void bramley_delete_menu_tree(MenuList *root, const std::vector<MenuList *> &kee
 // For the launcher (C): opens Settings inside the launcher and returns when it closes. tick runs
 // once per Settings frame.
 extern "C" int bramley_open_settings(SDL_Surface *screen, void (*tick)(void));
+// Selects the section Settings showed when bramley_close_settings(1) closed it.
+void bramley_restore_section(MenuList *root);
+// For the launcher: closes Settings at the end of this frame. With keep_place, the next
+// bramley_open_settings() shows the same section again.
+extern "C" void bramley_close_settings(int keep_place);
+// For the launcher: true while a page that uses SELECT itself (the keyboard) is open.
+extern "C" int bramley_settings_typing(void);

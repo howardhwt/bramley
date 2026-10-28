@@ -18,6 +18,12 @@ start=$(date +%s)
 code=$?
 elapsed=$(( $(date +%s) - start ))
 
+# Every abnormal exit is kept in a log that survives the next start (nextui.txt is rewritten each
+# time), so a crash after long use can still be traced. 139 is a segmentation fault.
+if [ "$code" -ne 0 ]; then
+	echo "$(date '+%F %T') launcher.elf exited with code $code after ${elapsed}s" >> "${LOGS_PATH:-/mnt/SDCARD/.userdata/tg5040/logs}/bramley-crashes.txt"
+fi
+
 if [ "$code" -ne 0 ] && [ "$elapsed" -lt 5 ]; then
 	count=$((count + 1))
 	echo "$count" > "$COUNT_FILE"

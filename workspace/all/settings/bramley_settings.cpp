@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "menu.hpp"
+#include "keyboardprompt.hpp"
 
 extern "C"
 {
@@ -37,6 +38,8 @@ struct BramleyView
 	static std::shared_mutex &lock(MenuList *l) { return l->itemLock; }
 	static std::vector<AbstractMenuItem *> &items(MenuList *l) { return l->items; }
 	static std::any live(AbstractMenuItem *i) { return i->on_get ? i->on_get() : i->getValue(); }
+	static const KeyboardState &keyboard(KeyboardPrompt *k) { return k->state.keyboard; }
+	static const KeyboardLayout &layout(KeyboardPrompt *k) { return k->getCurrentLayout(k->state); }
 };
 
 namespace
@@ -516,7 +519,7 @@ void make_backdrop()
 }
 
 // Development aid, as in the launcher: BRAMLEY_DEBUG_KEYS="D D a S" presses Down, Down, A, then saves a
-// screenshot to $BRAMLEY_DEBUG_SHOT-<n>.bmp. One step every 0.6 s, from an SDL timer so the script
+// screenshot to $BRAMLEY_DEBUG_SHOT-<n>.bmp. One step every 0.6 s (a press is held 150 ms), from an SDL timer so the script
 // keeps going while NextUI's own code draws a page. Unused on the device.
 std::atomic<int> shots_wanted;
 
@@ -532,7 +535,7 @@ Uint32 debug_tick(Uint32 interval, void *)
 		up.key.keysym.scancode = SDL_GetScancodeFromKey(held);
 		SDL_PushEvent(&up);
 		held = 0;
-		return interval;
+		return 450; // then a pause before the next step
 	}
 	while (*keys == ' ')
 		keys++;
@@ -552,7 +555,7 @@ Uint32 debug_tick(Uint32 interval, void *)
 	}
 	else if (k == 'S')
 		shots_wanted++;
-	return interval;
+	return 150; // a press is held below the repeat delay
 }
 
 void save_shot()
@@ -722,6 +725,99 @@ void draw_overlay()
 	}
 }
 
+// The on-screen keyboard, in the style of tvOS: the text in a wide field, keys as rounded tiles
+// with the focused key lifted on white, and Done on its own blue key. NextUI's KeyboardPrompt
+// still holds the text and handles the buttons.
+void draw_keyboard(KeyboardPrompt *kp)
+{
+	const KeyboardState &k = BramleyView::keyboard(kp);
+	const KeyboardLayout &layout = BramleyView::layout(kp);
+	lgfx_draw_fill(0, 0, W, H, 0, 0, 0, 0, 0.25f);
+	draw_top_bar();
+
+	if (!k.title.empty())
+	{
+		LTex *t = text_tex(LFONT_TITLE, k.title);
+		if (t)
+			lgfx_draw_tex(t, (W - t->w) * 0.5f, 72, t->w, t->h, 0, 1);
+	}
+
+	// the text field, with a caret after the text
+	float fx = 112, fw = W - 224, fy = 130, fh = 64;
+	lgfx_draw_fill(fx, fy, fw, fh, fh * 0.5f, 1, 1, 1, 0.12f);
+	lgfx_draw_ring(fx, fy, fw, fh, fh * 0.5f, 1.5f, 1, 1, 1, 0.25f);
+	float tx = fx + 28, ty = fy + (fh - 30) * 0.5f;
+	if (!k.current_text.empty())
+	{
+		LTex *t = ltex_text(LFONT_BODY, k.current_text.c_str(), 0);
+		if (t)
+		{
+			// keep the end of long text in view
+			float avail = fw - 70, shift = t->w > avail ? t->w - avail : 0;
+			lgfx_draw_tex(t, tx - shift, ty, t->w, t->h, 0, 1);
+			tx += t->w - shift;
+			ltex_free(t);
+		}
+	}
+	else
+		text(LFONT_BODY, "Type with the keys below", tx, ty, 0.35f);
+	if ((SDL_GetTicks() / 530) % 2 == 0)
+		lgfx_draw_fill(tx + 2, fy + 16, 2.5f, fh - 32, 1, 0.04f, 0.52f, 1, 1);
+	spinning = true; // keeps the caret blinking
+
+	// the keys, each row centred
+	const float ks = 60, gap = 8, top = 248;
+	int rows = (int)layout.size();
+	for (int r = 0; r < rows; r++)
+	{
+		const auto &row = layout[r];
+		std::vector<std::pair<int, float>> keys; // column and width
+		for (int c = 0; c < (int)row.size(); c++)
+		{
+			const std::string &key = row[c];
+			if (key.empty() || key[0] == 0)
+				continue;
+			float w = key == "space" ? 380 : (key == "shift" || key == "enter") ? 132 : ks;
+			keys.push_back({c, w});
+		}
+		float total = -gap;
+		for (auto &kw : keys)
+			total += kw.second + gap;
+		float x = (W - total) * 0.5f, y = top + r * (ks + gap);
+		for (auto &kw : keys)
+		{
+			const std::string &key = row[kw.first];
+			float w = kw.second, kx = x, ky = y, kh = ks;
+			bool focused = r == k.row && kw.first == k.col;
+			bool done = key == "enter";
+			if (focused)
+			{
+				kx -= 4, ky -= 4, w += 8, kh += 8;
+				lgfx_draw_shadow(kx, ky, w, kh, 8, 0.4f);
+				lgfx_draw_fill(kx, ky, w, kh, 14, 1, 1, 1, 1);
+				lgfx_set_dim(0.1f);
+			}
+			else if (done)
+				lgfx_draw_fill(kx, ky, w, kh, 12, 0.04f, 0.52f, 1, 1);
+			else
+				lgfx_draw_fill(kx, ky, w, kh, 12, 1, 1, 1, key == "shift" || key == "space" ? 0.10f : 0.14f);
+			std::string label = key;
+			if (key == "shift")
+				label = k.layout == 0 ? "ABC" : k.layout == 1 ? "#+=" : "abc";
+			else if (key == "space")
+				label = "space";
+			else if (key == "enter")
+				label = "Done";
+			LTex *t = text_tex(key.size() > 1 ? LFONT_LABEL : LFONT_BODY, label);
+			if (t)
+				lgfx_draw_tex(t, kx + (w - t->w) * 0.5f, ky + (kh - t->h) * 0.5f, t->w, t->h, 0, focused ? 1 : 0.95f);
+			lgfx_set_dim(1);
+			x += kw.second + gap;
+		}
+	}
+	text(LFONT_SMALL, "A  Type        B  Delete        SELECT  Shift        X  Done        Y  Cancel", W * 0.5f - 300, H - 44, 0.6f);
+}
+
 // A page NextUI draws itself (the keyboard, the colour picker): its own code draws it in software
 // into NextUI's screen surface, and that surface is shown here. NextUI's GPU path (GFX_flip)
 // is never used, because its renderer does not expect the GL state these frames leave.
@@ -751,7 +847,16 @@ void draw_frame(const Frame &f)
 	std::vector<std::string> titles;
 	open_chain(f.root, chain, titles);
 	lgfx_begin_frame();
-	if (BramleyView::type(chain.back()) == MenuItemType::Custom)
+	KeyboardPrompt *kp = dynamic_cast<KeyboardPrompt *>(chain.back());
+	if (kp)
+	{
+		if (backdrop)
+			lgfx_draw_tex(backdrop, 0, 0, W, H, 0, 1);
+		else
+			lgfx_draw_snapshot(1);
+		draw_keyboard(kp);
+	}
+	else if (BramleyView::type(chain.back()) == MenuItemType::Custom)
 		draw_classic(f.root, f.screen, f.list, f.title);
 	else
 		draw_scene(f.root, chain, titles);
@@ -780,7 +885,7 @@ int bramley_settings_frame(MenuList *root, SDL_Surface *screen, const SDL_Rect &
 	{
 		debugging = true;
 		SDL_InitSubSystem(SDL_INIT_TIMER);
-		SDL_AddTimer(300, debug_tick, nullptr);
+		SDL_AddTimer(150, debug_tick, nullptr); // a press is held 150 ms, below the repeat delay
 	}
 	if (!root || !screen)
 		return -1;
@@ -911,6 +1016,24 @@ void bramley_delete_menu_tree(MenuList *root, const std::vector<MenuList *> &kee
 
 int settings_run(SDL_Surface *host_screen);
 
+std::string reopen_section; // the section to show when Settings reopens after Now Playing
+
+void bramley_restore_section(MenuList *root)
+{
+	if (!reopen_section.empty())
+		root->selectByName(reopen_section);
+	reopen_section.clear();
+}
+
+void settings_request_quit();
+
+extern "C" void bramley_close_settings(int keep_place)
+{
+	if (keep_place && last.root)
+		reopen_section = last.root->getSelectedItemName();
+	settings_request_quit();
+}
+
 extern "C" int bramley_open_settings(SDL_Surface *screen, void (*tick)(void))
 {
 	hosted = true;
@@ -923,4 +1046,14 @@ extern "C" int bramley_open_settings(SDL_Surface *screen, void (*tick)(void))
 	radio.at = 0;
 	bramley_host_tick_fn = nullptr;
 	return code;
+}
+
+extern "C" int bramley_settings_typing(void)
+{
+	if (!last.root)
+		return 0;
+	std::vector<MenuList *> chain;
+	std::vector<std::string> titles;
+	open_chain(last.root, chain, titles);
+	return BramleyView::type(chain.back()) == MenuItemType::Custom; // SELECT belongs to the page
 }

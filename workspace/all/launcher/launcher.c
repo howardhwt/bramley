@@ -161,25 +161,17 @@ static void hsv_to_rgb(float h, float s, float v, float* r, float* g, float* b) 
 // Settings lives in the launcher (../settings): it opens as a screen of its own and returns here
 // when closed, instead of starting a separate program, which took most of a second each way.
 int bramley_open_settings(SDL_Surface* screen, void (*tick)(void));
+void bramley_close_settings(int keep_place);
+int bramley_settings_typing(void);
 static SDL_Surface* screen;
+// SELECT in Settings closes it and shows Now Playing; closing Now Playing then goes back to it.
+static int settings_wants_music, back_to_settings;
 
 static int is_settings(const Card* card) {
 	return card->kind == CARD_TOOL && suffixMatch("/Settings.pak", (char*)card->path);
 }
 
-// Runs while Settings is open, so a track that ends still moves the music queue on.
-static void settings_tick(void) {
-	lmusic_update();
-}
-
-static LTex* load_wallpaper(void);
-static void open_settings(void) {
-	bramley_open_settings(screen, settings_tick);
-	// the wallpaper may have been changed, and the clock has moved on
-	ltex_free(wallpaper);
-	wallpaper = load_wallpaper();
-	status.minute = -1;
-}
+static void open_settings(void);
 
 // The wallpaper chosen in Settings (lwallpaper.c), otherwise a dark gradient made once.
 static LTex* load_wallpaper(void) {
@@ -1006,6 +998,30 @@ static void open_now_playing(void) {
 	np.slide.v = 0;
 	toast_until = 0; // a "Music paused" banner has done its job once Now Playing is open
 }
+
+// Runs while Settings is open, so a track that ends still moves the music queue on.
+static void settings_tick(void) {
+	lmusic_update();
+	if (PAD_justPressed(BTN_SELECT) && !bramley_settings_typing()) {
+		settings_wants_music = 1;
+		bramley_close_settings(1);
+	}
+}
+
+static void open_settings(void) {
+	settings_wants_music = 0;
+	bramley_open_settings(screen, settings_tick);
+	// the wallpaper may have been changed, and the clock has moved on
+	ltex_free(wallpaper);
+	wallpaper = load_wallpaper();
+	status.minute = -1;
+	if (settings_wants_music) {
+		settings_wants_music = 0;
+		open_now_playing();
+		back_to_settings = np.open; // nothing playing: a toast shows instead, and home stays
+	}
+}
+
 
 static void fmt_time(float t, char* out, size_t size) {
 	int s = t < 0 ? 0 : (int)t;
@@ -1886,6 +1902,10 @@ int main(int argc, char* argv[]) {
 			if (np.closing && np.slide.x < 0.02f) {
 				np.open = 0;
 				dirty = 1;
+				if (back_to_settings) {
+					back_to_settings = 0;
+					open_settings();
+				}
 			}
 		} else if (alb.open) {
 			animating |= spring_step(&alb.scroll, alb_scroll_target(), dt);

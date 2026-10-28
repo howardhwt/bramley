@@ -63,6 +63,7 @@ using KeyboardLayout = std::vector<std::vector<std::string>>;
 
 class KeyboardPrompt : public MenuList
 {
+    friend struct BramleyView; // Bramley: bramley_settings.cpp draws the keyboard
     AppState state{};
 
 public:

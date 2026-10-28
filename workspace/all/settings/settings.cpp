@@ -34,6 +34,12 @@ extern "C"
 static int appQuit = false;
 static bool appSuspend = false;
 
+// Bramley: lets the launcher close Settings, for example to show Now Playing.
+void settings_request_quit()
+{
+    appQuit = true;
+}
+
 static void sigHandler(int sig)
 {
     switch (sig)
@@ -1177,6 +1183,8 @@ int settings_run(SDL_Surface *host_screen)
 
         bramley_order_sections(mainItems); // Bramley: our section order
         ctx.menu = new MenuList(MenuItemType::List, "Main", mainItems);
+        if (hosted)
+            bramley_restore_section(ctx.menu); // Bramley: back where it was before Now Playing
 
         SDL_Surface* bgbmp = IMG_Load(SDCARD_PATH "/bg.png");
         SDL_Surface* convertedbg = SDL_ConvertSurfaceFormat(bgbmp, SDL_PIXELFORMAT_RGB565, 0);
