@@ -58,7 +58,8 @@ extern "C" int bramley_open_settings(SDL_Surface *screen, void (*tick)(void));
 // Selects the section Settings showed when bramley_close_settings(1) closed it.
 void bramley_restore_section(MenuList *root);
 // For the launcher: closes Settings at the end of this frame. With keep_place, the next
-// bramley_open_settings() shows the same section again.
+// bramley_open_settings() shows the same section again, and the current Settings frame is left
+// blurred in the snapshot, for Now Playing to open over.
 extern "C" void bramley_close_settings(int keep_place);
 // For the launcher: true while a page that uses SELECT itself (the keyboard) is open.
 extern "C" int bramley_settings_typing(void);

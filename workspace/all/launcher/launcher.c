@@ -187,6 +187,8 @@ int bramley_settings_typing(void);
 static SDL_Surface* screen;
 // SELECT in Settings closes it and shows Now Playing; closing Now Playing then goes back to it.
 static int settings_wants_music, back_to_settings;
+// Set when Settings has left its own frame in the blur snapshot for Now Playing to use.
+static int np_over_settings;
 
 static int is_settings(const Card* card) {
 	return card->kind == CARD_TOOL && suffixMatch("/Settings.pak", (char*)card->path);
@@ -1007,12 +1009,16 @@ static void draw_scene(void);
 
 static void open_now_playing(void) {
 	if (!lmusic_active()) {
+		np_over_settings = 0;
 		show_toast("Nothing playing. Open Music in Apps.");
 		return;
 	}
-	lgfx_begin_snapshot();
-	draw_scene();
-	lgfx_end_snapshot();
+	if (!np_over_settings) {
+		lgfx_begin_snapshot();
+		draw_scene();
+		lgfx_end_snapshot();
+	}
+	np_over_settings = 0;
 	np.open = 1;
 	np.closing = 0;
 	np.slide.x = 0;
@@ -1038,6 +1044,7 @@ static void open_settings(void) {
 	status.minute = -1;
 	if (settings_wants_music) {
 		settings_wants_music = 0;
+		np_over_settings = 1;
 		open_now_playing();
 		back_to_settings = np.open; // nothing playing: a toast shows instead, and home stays
 	}

@@ -518,6 +518,20 @@ void make_backdrop()
 	ltex_free(wall);
 }
 
+// True while a Settings frame is drawn into the blur snapshot for Now Playing; the snapshot
+// texture cannot be read while it is being drawn.
+bool capturing;
+
+void draw_backdrop()
+{
+	if (backdrop)
+		lgfx_draw_tex(backdrop, 0, 0, W, H, 0, 1);
+	else if (!capturing)
+		lgfx_draw_snapshot(1);
+	else
+		lgfx_draw_fill(0, 0, W, H, 0, 0.08f, 0.08f, 0.12f, 1);
+}
+
 // Development aid, as in the launcher: BRAMLEY_DEBUG_KEYS="D D a S" presses Down, Down, A, then saves a
 // screenshot to $BRAMLEY_DEBUG_SHOT-<n>.bmp. One step every 0.6 s (a press is held 150 ms), from an SDL timer so the script
 // keeps going while NextUI's own code draws a page. Unused on the device.
@@ -595,10 +609,7 @@ void open_chain(MenuList *root, std::vector<MenuList *> &chain, std::vector<std:
 
 void draw_scene(MenuList *root, const std::vector<MenuList *> &chain, const std::vector<std::string> &titles)
 {
-	if (backdrop)
-		lgfx_draw_tex(backdrop, 0, 0, W, H, 0, 1);
-	else
-		lgfx_draw_snapshot(1);
+	draw_backdrop();
 	lgfx_draw_fill(0, 0, W, H, 0, 0, 0, 0, 0.30f);
 	draw_top_bar();
 
@@ -841,19 +852,17 @@ struct Frame
 SDL_threadID main_thread;
 
 // Draws one whole frame, without presenting it.
-void draw_frame(const Frame &f)
+void draw_frame(const Frame &f, bool begin = true)
 {
 	std::vector<MenuList *> chain;
 	std::vector<std::string> titles;
 	open_chain(f.root, chain, titles);
-	lgfx_begin_frame();
+	if (begin)
+		lgfx_begin_frame();
 	KeyboardPrompt *kp = dynamic_cast<KeyboardPrompt *>(chain.back());
 	if (kp)
 	{
-		if (backdrop)
-			lgfx_draw_tex(backdrop, 0, 0, W, H, 0, 1);
-		else
-			lgfx_draw_snapshot(1);
+		draw_backdrop();
 		draw_keyboard(kp);
 	}
 	else if (BramleyView::type(chain.back()) == MenuItemType::Custom)
@@ -1030,7 +1039,15 @@ void settings_request_quit();
 extern "C" void bramley_close_settings(int keep_place)
 {
 	if (keep_place && last.root)
+	{
 		reopen_section = last.root->getSelectedItemName();
+		// leave this Settings frame in the blur snapshot, so Now Playing opens over Settings
+		lgfx_begin_snapshot();
+		capturing = true;
+		draw_frame(last, false);
+		capturing = false;
+		lgfx_end_snapshot();
+	}
 	settings_request_quit();
 }
 
