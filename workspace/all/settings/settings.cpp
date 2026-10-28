@@ -155,10 +155,6 @@ static const std::vector<std::string> notify_duration_labels = {"1s", "2s", "3s"
 static const std::vector<std::any> progress_duration_values = {0, 1, 2, 3, 4, 5};
 static const std::vector<std::string> progress_duration_labels = {"Off", "1s", "2s", "3s", "4s", "5s"};
 
-// Menu transition mode options
-static const std::vector<std::any>    transition_mode_values = {(int)TRANSITION_OFF, (int)TRANSITION_SNAPPY, (int)TRANSITION_COMFY};
-static const std::vector<std::string> transition_mode_labels = {"Off", "Snappy", "Comfy"};
-
 // Game switcher curtain opacity options (0-100)
 static const std::vector<std::any>    curtain_opacity_values = {0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100};
 static const std::vector<std::string> curtain_opacity_labels = {"Off", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%", "100%"};
@@ -517,29 +513,10 @@ int settings_run(SDL_Surface *host_screen)
         // Bramley: the color palette and the seven theme colors are gone. They only colored NextUI's
         // own interface, which Bramley draws itself; the launcher keeps them at Bramley's palette
         // for Paks that still draw with NextUI's code.
+        // The rows for battery percent, menu animations and transitions, and the game art radius and
+        // width are gone too, for the same reason.
         for (auto *item : colorMenuItems)
             delete item;
-        appearanceItems.push_back(new MenuItem{ListItemType::Generic, "Show battery percentage", "Show battery level as percent in the status pill", {false, true}, on_off,
-            []() -> std::any { return CFG_getShowBatteryPercent(); },
-            [](const std::any &value) { CFG_setShowBatteryPercent(std::any_cast<bool>(value)); },
-            []() { CFG_setShowBatteryPercent(CFG_DEFAULT_SHOWBATTERYPERCENT);}});
-        appearanceItems.push_back(new MenuItem{ListItemType::Generic, "Show menu animations", "Enable or disable menu animations", {false, true}, on_off,
-            []() -> std::any{ return CFG_getMenuAnimations(); },
-            [](const std::any &value) { CFG_setMenuAnimations(std::any_cast<bool>(value)); },
-            []() { CFG_setMenuAnimations(CFG_DEFAULT_SHOWMENUANIMATIONS);}});
-        appearanceItems.push_back(new MenuItem{ListItemType::Generic, "Menu transitions", "Style of animated transition when navigating menus", transition_mode_values, transition_mode_labels,
-            []() -> std::any { return CFG_getMenuTransitions(); },
-            [](const std::any &value) { CFG_setMenuTransitions(std::any_cast<int>(value)); },
-            []() { CFG_setMenuTransitions(CFG_DEFAULT_SHOWMENUTRANSITIONS); }});
-        appearanceItems.push_back(new MenuItem{ListItemType::Generic, "Game art corner radius", "Set the radius for the rounded corners of game art", 0, 24, "px",
-            []() -> std::any{ return CFG_getThumbnailRadius(); },
-            [](const std::any &value) { CFG_setThumbnailRadius(std::any_cast<int>(value)); },
-            []() { CFG_setThumbnailRadius(CFG_DEFAULT_THUMBRADIUS);}});
-        appearanceItems.push_back(new MenuItem{ListItemType::Generic, "Game art width", "Set the percentage of screen width used for game art.\nUI elements might overrule this to avoid clipping.",
-            5, 100, "%",
-            []() -> std::any{ return (int)(CFG_getGameArtWidth() * 100); },
-            [](const std::any &value) { CFG_setGameArtWidth((double)std::any_cast<int>(value) / 100.0); },
-            []() { CFG_setGameArtWidth(CFG_DEFAULT_GAMEARTWIDTH);}});
         appearanceItems.push_back(new MenuItem{ListItemType::Generic, "Show folder names at root", "Show folder names at root directory", {false, true}, on_off,
             []() -> std::any { return CFG_getShowFolderNamesAtRoot(); },
             [](const std::any &value) { CFG_setShowFolderNamesAtRoot(std::any_cast<bool>(value)); },
