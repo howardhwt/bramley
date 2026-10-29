@@ -107,6 +107,10 @@ cp "$ROOT/docs/brand/bramley-install-logo.png" "$SYS/.tmp_update/tg5040/logo.png
 
 echo "== names users see"
 sed -i '' 's/TEXT:Updating NextUI/TEXT:Updating Bramley/; s/TEXT:Installing NextUI/TEXT:Setting up Bramley/' "$SYS/.tmp_update/tg5040.sh"
+# a fresh install (no .system yet) asks the launcher for first-boot setup (lsetup.h); before the next line, which gives the add-on packages the same words
+sed -i '' '/TEXT:Setting up Bramley" > \/tmp\/show2.fifo/a\
+		mkdir -p "$SDCARD_PATH/.userdata/shared/.bramley" \&\& touch "$SDCARD_PATH/.userdata/shared/.bramley/setup-pending"
+' "$SYS/.tmp_update/tg5040.sh"
 # the add-on packages (the Bluetooth update) showed their full path; plain words instead
 sed -i '' 's/TEXT:Extracting \$pakz/TEXT:Setting up Bramley/; s/TEXT:Installing \$pakz/TEXT:Setting up Bramley/' "$SYS/.tmp_update/tg5040.sh"
 sed -i '' 's/(NextUI)/(Bramley)/' "$SYS/.system/tg5040/etc/bluetooth/bt_init.sh"

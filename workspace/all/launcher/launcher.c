@@ -25,6 +25,7 @@
 #include "lmusic.h"
 #include "bramley.h"
 #include "bramley_update.h"
+#include "lsetup.h"
 #include "lwallpaper.h"
 
 #define SCREEN_W 1024
@@ -1850,11 +1851,22 @@ static void draw_splash(void) {
 	lgfx_draw_fill(bx, by, fmaxf(6, bw * splash.progress), 6, 3, 0.92f, 0.92f, 0.92f, a);
 }
 
+// How much of the boot splash still shows, 1 to 0.
+static float splash_alpha(void) {
+	if (!splash.on) return 0;
+	if (splash.fade_at && SDL_GetTicks() > splash.fade_at) return fmaxf(0, 1 - (SDL_GetTicks() - splash.fade_at) / 400.0f);
+	return 1;
+}
+
 static void draw_frame(int show_setting) {
 	lgfx_begin_frame();
-	if (np.open) draw_now_playing();
+	if (lsetup_covers()) lsetup_draw(splash_alpha());
+	else if (np.open) draw_now_playing();
 	else if (qm.open) draw_quick_menu();
-	else draw_scene();
+	else {
+		draw_scene();
+		if (lsetup_is_open()) lsetup_draw(0); // the Home card
+	}
 	draw_setting_overlay(show_setting);
 	if (splash.on) draw_splash();
 
@@ -1923,6 +1935,7 @@ int main(int argc, char* argv[]) {
 	lgfx_init(SCREEN_W, SCREEN_H);
 	PWR_drawPowerOffScreen = power_screen; // shutting down from the launcher draws with the kit
 	splash_begin();
+	lsetup_begin(); // first start of a new card
 	t[nt++] = now_ms();
 	lradio_start();
 	lmusic_init();
@@ -2053,6 +2066,8 @@ int main(int argc, char* argv[]) {
 			}
 		} else if (qm.open) {
 			// Closing: ignore input until the panel has slid away.
+		} else if (lsetup_is_open() && !quit) {
+			if (lsetup_input()) dirty = 1;
 		} else if (!quit && !show_setting && PAD_justPressed(BTN_SELECT)) {
 			open_now_playing();
 		} else if (!quit && !show_setting && PAD_tappedMenu(SDL_GetTicks())) {
@@ -2224,6 +2239,7 @@ int main(int argc, char* argv[]) {
 		}
 		animating |= update_status();
 		animating |= splash_update();
+		animating |= lsetup_update();
 		if (toast && SDL_GetTicks() / 1000.0 < toast_until + 0.1) animating = 1;
 
 		// The playing indicator moves too, but 10 times a second is enough for three bars.
