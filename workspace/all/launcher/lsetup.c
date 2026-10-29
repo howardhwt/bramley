@@ -456,10 +456,10 @@ static void draw_card(void) {
 	const char* what[] = { "Quick settings, from anywhere", "Now Playing, for music and books" };
 	for (int i = 0; i < 2; i++) {
 		float ry = cy + 84 + i * 46;
-		float kw = text_w(LFONT_LABEL, keys[i]) + 20;
+		float kw = text_w(LFONT_LABEL, keys[i]) + 20, col = text_w(LFONT_LABEL, "SELECT") + 20; // one column for both lines
 		lgfx_draw_fill(cx + 48, ry, kw, 30, 8, 1, 1, 1, 0.14f * fminf(1, c));
 		text(LFONT_LABEL, keys[i], cx + 58, ry + 5, 0.9f * fminf(1, c), 0);
-		text(LFONT_BODY, what[i], cx + 48 + kw + 16, ry, 0.85f * fminf(1, c), 0);
+		text(LFONT_BODY, what[i], cx + 48 + col + 16, ry, 0.85f * fminf(1, c), 0);
 	}
 	float bw = 200, bh = 46;
 	lgfx_draw_fill(W * 0.5f - bw * 0.5f, cy + ch - 66, bw, bh, bh * 0.5f, GREEN, fminf(1, c));
