@@ -675,12 +675,8 @@ int settings_run(SDL_Surface *host_screen)
             { return CFG_getHaptics(); }, [](const std::any &value)
             { CFG_setHaptics(std::any_cast<bool>(value)); },
             []() { CFG_setHaptics(CFG_DEFAULT_HAPTICS);}},
-            new MenuItem{ListItemType::Generic, "Default view", "The initial view to show on boot",
-            {(int)SCREEN_GAMELIST, (int)SCREEN_GAMESWITCHER, (int)SCREEN_QUICKMENU},
-            {"Content List","Game Switcher","Quick Menu"},
-            []() -> std::any { return CFG_getDefaultView(); },
-            [](const std::any &value){ CFG_setDefaultView(std::any_cast<int>(value)); },
-            []() { CFG_setDefaultView(CFG_DEFAULT_VIEW);}},
+            // Bramley: NextUI's "Default view" is gone; Bramley's launcher always starts on Home.
+            // A Home style row (tvOS-like or iOS-like) may take its place once there is a second style.
             new MenuItem{ListItemType::Generic, "Date & Time", "", {}, {}, nullptr, nullptr, DeferToSubmenu, dateTimeMenu},
 
             // Bramley: "Show clock" is gone; Bramley's status bar always shows the time

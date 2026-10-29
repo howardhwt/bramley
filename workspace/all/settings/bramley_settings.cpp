@@ -146,11 +146,11 @@ struct Section
 };
 const Section sections[] = {
 	{"Network", "network", "Network", 0},       {"Bluetooth", "bluetooth", "Bluetooth", 0},
-	{"Display", "display", "Display", 1},       {"Appearance", "appearance", "Appearance", 1},
-	{"Lights", "lights", "Lights", 1},
+	{"System", "system", "System", 1},          {"Display", "display", "Display", 1},
+	{"Appearance", "appearance", "Appearance", 1}, {"Lights", "lights", "Lights", 1},
 	{"In-Game", "in-game", "In-Game", 2},       {"Assignments", "buttons", "Buttons", 2},
 	{"FN switch", "fn-switch", "FN Switch", 2}, {"Battery", "battery", "Battery", 3},
-	{"System", "system", "System", 3},          {"About", "about", "About", 3},
+	{"About", "about", "About", 3},
 };
 
 const Section *section_of(const std::string &name)
