@@ -20,6 +20,15 @@ Put the new MinUI.zip (released as Bramley-<version>-update.zip, renamed to MinU
 top of the card and restart the device. "Updating Bramley" shows, and saves, games, music and
 settings stay as they are.
 
+From NextUI, or from Bramley 0.x (the Pak)
+------------------------------------------
+Extract everything in this zip to the top of the card, replacing files when asked, and restart.
+The install screen updates the system; saves, games, music and settings stay. On its first start
+Bramley tidies the card once: it removes NextUI's files for other devices, NextUI's apps that
+Bramley replaces (Battery, Clock, Input, LedControl, Bootlogo, Remove Loading, the Updater and the
+Pak Store) and the old Bramley Pak. Apps you added stay. What was removed is listed in
+.userdata/shared/.bramley/migrate.log.
+
 Back to TrimUI's own system
 ---------------------------
 Delete the .tmp_update folder from the top of the card. The device then starts TrimUI's own

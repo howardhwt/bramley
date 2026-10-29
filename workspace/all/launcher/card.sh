@@ -61,10 +61,11 @@ rm -rf "$SYS/Tools/h700" "$SYS/Tools/tg5050" "$SYS/Tools/desktop"
 echo "== Bramley's programs"
 mv "$BIN/nextui.elf" "$BIN/nextui-stock.elf"         # the safety net's fallback
 cp "$PAK/nextui-wrapper.sh" "$BIN/nextui.elf"         # starts launcher.elf
+cp "$HERE/bramley-migrate.sh" "$BIN/"                # tidies a card upgraded from NextUI or 0.x
 cp "$PAK/launcher.elf" "$PAK/muse" "$PAK/minarch.elf" "$BIN/"
 cp "$PAK/libmsettings.so" "$SYS/.system/tg5040/lib/"
 cp "$PAK/wifi_init.sh" "$SYS/.system/tg5040/etc/wifi/"
-chmod +x "$BIN/nextui.elf" "$BIN/launcher.elf" "$BIN/muse" "$BIN/minarch.elf"
+chmod +x "$BIN/nextui.elf" "$BIN/bramley-migrate.sh" "$BIN/launcher.elf" "$BIN/muse" "$BIN/minarch.elf"
 echo "$VERSION" > "$BIN/.bramley-version"
 
 echo "== Bramley's apps: Settings replaced; NextUI's tools that Bramley does in Settings, removed"

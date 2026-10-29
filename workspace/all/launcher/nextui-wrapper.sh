@@ -13,6 +13,9 @@ if [ "$count" -ge 2 ] && [ -x "$BIN/nextui-stock.elf" ]; then
 	exec "$BIN/nextui-stock.elf" "$@"
 fi
 
+# a card that came from NextUI or Bramley 0.x is tidied once (bramley-migrate.sh; the card only)
+[ -x "$BIN/bramley-migrate.sh" ] && "$BIN/bramley-migrate.sh"
+
 start=$(date +%s)
 "$BIN/launcher.elf" "$@"
 code=$?
