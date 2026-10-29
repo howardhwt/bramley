@@ -20,6 +20,7 @@
 #include "lgfx.h"
 #include "ldata.h"
 #include "lactivity.h"
+#include "lfiles.h"
 #include "lradio.h"
 #include "lmusic.h"
 #include "bramley.h"
@@ -253,6 +254,11 @@ static int np_over_settings;
 
 static int is_settings(const Card* card) {
 	return card->kind == CARD_TOOL && suffixMatch("/Settings.pak", (char*)card->path);
+}
+
+// Files' card opens Bramley's Files, drawn here, instead of NextCommander.
+static int is_files(const Card* card) {
+	return card->kind == CARD_TOOL && suffixMatch("/Files.pak", (char*)card->path);
 }
 
 // Game Tracker's card opens Activity, drawn here, instead of the old app.
@@ -495,7 +501,7 @@ static int update_shelf(void) {
 		else snprintf(detail, sizeof(detail), "%d %s", albums, albums == 1 ? "album" : "albums");
 	} else {
 		snprintf(kicker, sizeof(kicker), "App");
-		snprintf(detail, sizeof(detail), "%s", is_activity(card) ? "Time played, day by day" : is_settings(card) ? "Network, display, sound and more" : "Tools Pak");
+		snprintf(detail, sizeof(detail), "%s", is_activity(card) ? "Time played, day by day" : is_files(card) ? "Browse the card" : is_settings(card) ? "Network, display, sound and more" : "Tools Pak");
 	}
 	for (char* p = kicker; *p; p++) *p = (*p >= 'a' && *p <= 'z') ? *p - 32 : *p;
 
@@ -1308,6 +1314,11 @@ static void draw_scene(void) {
 		draw_status();
 		return;
 	}
+	if (lfiles_is_open()) {
+		lfiles_draw();
+		draw_status();
+		return;
+	}
 	lgfx_draw_wallpaper(wallpaper, parallax_x.x * 12, parallax_y.x * 8);
 
 	// Darken the lower half so the rows read clearly over any wallpaper.
@@ -2018,6 +2029,16 @@ int main(int argc, char* argv[]) {
 			open_now_playing();
 		} else if (!quit && !show_setting && PAD_tappedMenu(SDL_GetTicks())) {
 			open_quick_menu();
+		} else if (lfiles_is_open() && !quit) {
+			Card play;
+			int r = lfiles_input(&play);
+			if (r == FILES_CLOSE) lfiles_close();
+			else if (r == FILES_PLAY) {
+				lfiles_close();
+				ldata_launch(&play, 0);
+				quit = 1;
+			}
+			if (r != FILES_NONE) dirty = 1;
 		} else if (lactivity_is_open() && !quit) {
 			Card play;
 			int r = lactivity_input(&play);
@@ -2089,6 +2110,9 @@ int main(int argc, char* argv[]) {
 				} else if (is_activity(card)) {
 					lactivity_open();
 					dirty = 1;
+				} else if (is_files(card)) {
+					lfiles_open();
+					dirty = 1;
 				} else {
 					remember_launch(card);
 					ldata_launch(card, 0);
@@ -2117,6 +2141,8 @@ int main(int argc, char* argv[]) {
 			}
 		} else if (lactivity_is_open()) {
 			animating |= lactivity_update();
+		} else if (lfiles_is_open()) {
+			animating |= lfiles_update();
 		} else if (alb.open) {
 			animating |= spring_step(&alb.scroll, alb_scroll_target(), dt);
 			animating |= spring_step(&alb.fade, 1.0f, dt);
@@ -2199,6 +2225,7 @@ int main(int argc, char* argv[]) {
 
 	if (lib.open) close_library();
 	lactivity_close();
+	lfiles_close();
 	free_quick_menu();
 	if (alb.open) close_album();
 	np_free_texts();

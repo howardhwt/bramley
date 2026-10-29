@@ -24,7 +24,7 @@ SDL?=SDL
 TARGET = launcher
 S = ../settings
 INCDIR = -I. -Itortos -I$(S) -I../common/ -I../../$(PLATFORM)/platform/
-SOURCE = $(TARGET).c lgfx.c lwallpaper.c ldata.c lactivity.c lradio.c lmuse.c lmusic.c tortos/muselib.c tortos/musequeue.c \
+SOURCE = $(TARGET).c lgfx.c lwallpaper.c ldata.c lactivity.c lfiles.c lradio.c lmuse.c lmusic.c tortos/muselib.c tortos/musequeue.c \
 	../common/scaler.c ../common/utils.c ../common/config.c ../common/api.c ../../$(PLATFORM)/platform/platform.c \
 	../common/palette.c ../common/http.c ../common/ra_auth.c ../common/ra_offline.c ../common/ra_sync.c ../common/ra_event_queue.c $(S)/bramley_battery.c
 CXXSOURCE = $(S)/settings.cpp $(S)/menu.cpp $(S)/colorpickermenu.cpp $(S)/palettemenu.cpp $(S)/fnbuttonmenu.cpp \
