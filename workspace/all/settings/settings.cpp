@@ -503,14 +503,10 @@ int settings_run(SDL_Surface *host_screen)
             font_labels.push_back(f.label);
         }
         bramley_add_appearance_items(appearanceItems); // Bramley: Wallpaper
-        appearanceItems.push_back(new MenuItem{ListItemType::Generic, "Font", "The font to render all UI text.", font_values, font_labels,
-            []() -> std::any { return std::string(CFG_getFontFile()); },
-            [](const std::any &value) { CFG_setFontFile(std::any_cast<std::string>(value).c_str()); },
-            []() { CFG_setFontFile(CFG_DEFAULT_FONT_FILE); }});
-        appearanceItems.push_back(new MenuItem{ListItemType::Generic, "Font style", "The style to render the UI font (e.g. bold)", std::vector<std::any>{0, 1}, std::vector<std::string>{"Normal", "Bold"},
-            []() -> std::any { return CFG_getFontStyle(); },
-            [](const std::any &value) { CFG_setFontStyle(std::any_cast<int>(value)); },
-            []() { CFG_setFontStyle(CFG_DEFAULT_FONT_STYLE); }});
+        // Bramley: Appearance is the wallpaper only. Font, font style and input prompt style only
+        // changed the few screens NextUI still draws, and the rows for folder names, Recents, Tools,
+        // game art, folder backgrounds and the game switcher only did something in NextUI's own
+        // launcher, which Bramley replaces.
         // Bramley: the color palette and the seven theme colors are gone. They only colored NextUI's
         // own interface, which Bramley draws itself; the launcher keeps them at Bramley's palette
         // for Paks that still draw with NextUI's code.
@@ -518,45 +514,9 @@ int settings_run(SDL_Surface *host_screen)
         // width are gone too, for the same reason.
         for (auto *item : colorMenuItems)
             delete item;
-        appearanceItems.push_back(new MenuItem{ListItemType::Generic, "Show folder names at root", "Show folder names at root directory", {false, true}, on_off,
-            []() -> std::any { return CFG_getShowFolderNamesAtRoot(); },
-            [](const std::any &value) { CFG_setShowFolderNamesAtRoot(std::any_cast<bool>(value)); },
-            []() { CFG_setShowFolderNamesAtRoot(CFG_DEFAULT_SHOWFOLDERNAMESATROOT);}});
-        appearanceItems.push_back(new MenuItem{ListItemType::Generic, "Show Recents", "Show \"Recently Played\" menu entry in game list.", {false, true}, on_off,
-            []() -> std::any { return CFG_getShowRecents(); },
-            [](const std::any &value) { CFG_setShowRecents(std::any_cast<bool>(value)); },
-            []() { CFG_setShowRecents(CFG_DEFAULT_SHOWRECENTS);}});
-        appearanceItems.push_back(new MenuItem{ListItemType::Generic, "Show Tools", "Show \"Tools\" menu entry in game list.", {false, true}, on_off,
-            []() -> std::any { return CFG_getShowTools(); },
-            [](const std::any &value) { CFG_setShowTools(std::any_cast<bool>(value)); },
-            []() { CFG_setShowTools(CFG_DEFAULT_SHOWTOOLS);}});
-        appearanceItems.push_back(new MenuItem{ListItemType::Generic, "Show game art", "Show game artwork in the main menu", {false, true}, on_off,
-            []() -> std::any { return CFG_getShowGameArt(); },
-            [](const std::any &value) { CFG_setShowGameArt(std::any_cast<bool>(value)); },
-            []() { CFG_setShowGameArt(CFG_DEFAULT_SHOWGAMEART);}});
-        appearanceItems.push_back(new MenuItem{ListItemType::Generic, "Use folder background for ROMs", "If enabled, used the emulator background image. Otherwise uses the default.", {false, true}, on_off,
-            []() -> std::any { return CFG_getRomsUseFolderBackground(); },
-            [](const std::any &value) { CFG_setRomsUseFolderBackground(std::any_cast<bool>(value)); },
-            []() { CFG_setRomsUseFolderBackground(CFG_DEFAULT_ROMSUSEFOLDERBACKGROUND);}});
-        appearanceItems.push_back(new MenuItem{ListItemType::Generic, "Show Quickswitcher UI", "Show/hide Quickswitcher UI elements.\nWhen hidden, will only draw background images.", {false, true}, on_off,
-            []() -> std::any{ return CFG_getShowQuickswitcherUI(); },
-            [](const std::any &value){ CFG_setShowQuickswitcherUI(std::any_cast<bool>(value)); },
-            []() { CFG_setShowQuickswitcherUI(CFG_DEFAULT_SHOWQUICKWITCHERUI);}});
-        appearanceItems.push_back(new MenuItem{ListItemType::Generic, "Game switcher curtain opacity", "Show/hide curtain overlay. Helps UI elements to \nstand out when using transparent backgrounds.", curtain_opacity_values, curtain_opacity_labels, 
-            []() -> std::any{ return CFG_getGameSwitcherCurtain(); },
-            [](const std::any &value){ CFG_setGameSwitcherCurtain(std::any_cast<int>(value)); },
-            []() { CFG_setGameSwitcherCurtain(CFG_DEFAULT_GAMESWITCHER_CURTAIN);}});
-        appearanceItems.push_back(new MenuItem{ListItemType::Generic, "Input prompt style", "Select the style of input prompts.", input_prompt_style_values, input_prompt_style_labels,
-            []() -> std::any{ return CFG_getInputPromptStyle(); },
-            [](const std::any &value){ CFG_setInputPromptStyle(std::any_cast<int>(value)); },
-            []() { CFG_setInputPromptStyle(CFG_DEFAULT_INPUT_PROMPT_STYLE);}});
-        // not needed anymore
-        // new MenuItem{ListItemType::Generic, "Game switcher scaling", "The scaling algorithm used to display the savegame image.", scaling, scaling_strings, []() -> std::any
-        // { return CFG_getGameSwitcherScaling(); },
-        // [](const std::any &value)
-        // { CFG_setGameSwitcherScaling(std::any_cast<int>(value)); },
-        // []() { CFG_setGameSwitcherScaling(CFG_DEFAULT_GAMESWITCHERSCALING);}},
-        appearanceItems.push_back(new MenuItem{ListItemType::Button, "Reset to defaults", "Resets all options in this menu to their default values.", ResetCurrentMenu});
+        if (appearanceItems.empty()) // no wallpapers on the card; a list is never left empty
+            appearanceItems.push_back(new StaticMenuItem{ListItemType::Generic, "Wallpaper", "Put pictures in the Wallpapers folder on the card to choose one here.",
+                []() -> std::any { return std::string("None"); }});
         auto *appearanceMenu = new MenuList(MenuItemType::Fixed, "Appearance", std::move(appearanceItems));
 
         std::vector<AbstractMenuItem*> displayItems = {
@@ -680,22 +640,24 @@ int settings_run(SDL_Surface *host_screen)
             new MenuItem{ListItemType::Generic, "Date & Time", "", {}, {}, nullptr, nullptr, DeferToSubmenu, dateTimeMenu},
 
             // Bramley: "Show clock" is gone; Bramley's status bar always shows the time
-            new MenuItem{ListItemType::Generic, "Save format", "The save format to use.\nMinUI: Game.gba.sav, Retroarch: Game.srm, Generic: Game.sav",
+            // Bramley: the three rows that name save files say what changing them does, and Reset to
+            // defaults leaves them alone (no reset callback), since a reset would make saves look lost.
+            new MenuItem{ListItemType::Generic, "Save format", "How save files are named. Changing it does not rename the saves you already have.",
             {(int)SAVE_FORMAT_SAV, (int)SAVE_FORMAT_SRM, (int)SAVE_FORMAT_SRM_UNCOMPRESSED, (int)SAVE_FORMAT_GEN},
-            {"MinUI (default)", "Retroarch (compressed)", "Retroarch (uncompressed)", "Generic"}, []() -> std::any
+            {"Standard (default)", "RetroArch (compressed)", "RetroArch (uncompressed)", "Generic"}, []() -> std::any
             { return CFG_getSaveFormat(); }, [](const std::any &value)
             { CFG_setSaveFormat(std::any_cast<int>(value)); },
-            []() { CFG_setSaveFormat(CFG_DEFAULT_SAVEFORMAT);}},
-            new MenuItem{ListItemType::Generic, "Save state format", "The save state format to use. MinUI: Game.st0, \nRetroarch-ish: Game.state.0, Retroarch: Game.state0",
+            nullptr},
+            new MenuItem{ListItemType::Generic, "Save state format", "How save states are named. Changing it does not rename the states you already have.",
             {(int)STATE_FORMAT_SAV, (int)STATE_FORMAT_SRM_EXTRADOT, (int)STATE_FORMAT_SRM_UNCOMRESSED_EXTRADOT, (int)STATE_FORMAT_SRM, (int)STATE_FORMAT_SRM_UNCOMRESSED},
-            {"MinUI (default)", "Retroarch-ish (compressed)", "Retroarch-ish (uncompressed)", "Retroarch (compressed)", "Retroarch (uncompressed)"}, []() -> std::any
+            {"Standard (default)", "RetroArch-like (compressed)", "RetroArch-like (uncompressed)", "RetroArch (compressed)", "RetroArch (uncompressed)"}, []() -> std::any
             { return CFG_getStateFormat(); }, [](const std::any &value)
             { CFG_setStateFormat(std::any_cast<int>(value)); },
-            []() { CFG_setStateFormat(CFG_DEFAULT_STATEFORMAT);}},
-            new MenuItem{ListItemType::Generic, "Use extracted file name", "Use the extracted file name instead of the archive name.\nOnly applies to cores that do not handle archives natively", {false, true}, on_off,
+            nullptr},
+            new MenuItem{ListItemType::Generic, "Use extracted file name", "Names saves of zipped games after the game inside. Existing saves keep their names.", {false, true}, on_off,
             []() -> std::any{ return CFG_getUseExtractedFileName(); },
             [](const std::any &value){ CFG_setUseExtractedFileName(std::any_cast<bool>(value)); },
-            []() { CFG_setUseExtractedFileName(CFG_DEFAULT_EXTRACTEDFILENAME);}}
+            nullptr}
         };
 
         if(deviceInfo.getPlatform() == DeviceInfo::tg5040)
@@ -730,7 +692,7 @@ int settings_run(SDL_Surface *host_screen)
         }
 
         systemItems.push_back(
-            new MenuItem{ListItemType::Button, "Reset to defaults", "Resets all options in this menu to their default values.", ResetCurrentMenu});
+            new MenuItem{ListItemType::Button, "Reset to defaults", "Resets this menu, except how saves are named.", ResetCurrentMenu});
 
         // Bramley: Software Update first, as on iOS; only on a Bramley card
         if (auto *update = bramley_software_update_item())
