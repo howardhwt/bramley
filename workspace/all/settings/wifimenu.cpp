@@ -16,11 +16,11 @@ using namespace std::placeholders;
 
 Menu::Menu(const int &globalQuit, int &globalDirty) : MenuList(MenuItemType::Fixed, "Network", {}), globalQuit(globalQuit), globalDirty(globalDirty)
 {
-    toggleItem = new MenuItem(ListItemType::Generic, "WiFi", "Enable/disable WiFi", {false, true}, {"Off", "On"},
+    toggleItem = new MenuItem(ListItemType::Generic, "Wi-Fi", "Turn Wi-Fi on or off.", {false, true}, {"Off", "On"},
                               std::bind(&Menu::getWifToggleState, this),
                               std::bind(&Menu::setWifiToggleState, this, std::placeholders::_1),
                               std::bind(&Menu::resetWifiToggleState, this));
-    diagItem = new MenuItem(ListItemType::Generic, "WiFi diagnostics", "Enable/disable WiFi logging", {false, true}, {"Off", "On"},
+    diagItem = new MenuItem(ListItemType::Generic, "Wi-Fi diagnostics", "Keep a detailed Wi-Fi log, for reporting problems.", {false, true}, {"Off", "On"},
                               std::bind(&Menu::getWifDiagnosticsState, this),
                               std::bind(&Menu::setWifiDiagnosticsState, this, std::placeholders::_1),
                               std::bind(&Menu::resetWifiDiagnosticsState, this));
@@ -218,7 +218,7 @@ ConnectKnownItem::ConnectKnownItem(WIFI_network n, bool& dirty)
 {}
 
 ConnectNewItem::ConnectNewItem(WIFI_network n, bool& dirty)
-    : MenuItem(ListItemType::Button, "Enter WiFi passcode", "Connect to this network.", DeferToSubmenu, new KeyboardPrompt("Enter Wifi passcode", 
+    : MenuItem(ListItemType::Button, "Enter Password", "Join this network.", DeferToSubmenu, new KeyboardPrompt("Wi-Fi Password", 
         [&](AbstractMenuItem &item) -> InputReactionHint {
             ScopedOverlay overlay("Connecting...");
             WIFI_connectPass(net.ssid, net.security, item.getName().c_str()); 

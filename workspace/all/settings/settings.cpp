@@ -945,7 +945,7 @@ int settings_run(SDL_Surface *host_screen)
                 RA_Sync_hasPendingUnlocks(&count);
                 if (count > 0) {
                     char buf[64];
-                    snprintf(buf, sizeof(buf), "%u pending \u2014 send to RA server", count);
+                    snprintf(buf, sizeof(buf), "%u waiting to be sent to RetroAchievements", count);
                     return std::string(buf);
                 }
                 return std::string("No pending unlocks");
@@ -1124,7 +1124,7 @@ int settings_run(SDL_Surface *host_screen)
         if(buttonMenu)
             mainItems.push_back(new MenuItem{ListItemType::Generic, "Assignments", "Customize button assignments", {}, {}, nullptr, nullptr, DeferToSubmenu, buttonMenu});
 
-        mainItems.push_back(new MenuItem{ListItemType::Generic, "In-Game", "In-game settings for MinArch", {}, {}, nullptr, nullptr, DeferToSubmenu, minarchMenu});
+        mainItems.push_back(new MenuItem{ListItemType::Generic, "In-Game", "Notifications and RetroAchievements while you play.", {}, {}, nullptr, nullptr, DeferToSubmenu, minarchMenu});
 
         if(deviceInfo.hasWifi())
             mainItems.push_back(new MenuItem{ListItemType::Generic, "Network", "", {}, {}, nullptr, nullptr, DeferToSubmenu, new Wifi::Menu(appQuit, ctx.dirty)});

@@ -109,8 +109,9 @@ extern int is_brickpro;
 // USER-ASSIGNABLE BUTTONS
 #define BTN_FN1			(is_brick?BTN_L3:(is_brickpro?BTN_L4:BTN_NONE))
 #define BTN_FN2			(is_brick?BTN_R3:(is_brickpro?BTN_R4:BTN_NONE))
-#define BTN_FN1_NAME	(is_brick?"L3":(is_brickpro?"L4":""))
-#define BTN_FN2_NAME	(is_brick?"R3":(is_brickpro?"R4":""))
+// Bramley: the Brick's back buttons are printed F1 and F2 (NextUI named them after their codes, L3, R3)
+#define BTN_FN1_NAME	(is_brick?"F1":(is_brickpro?"L4":""))
+#define BTN_FN2_NAME	(is_brick?"F2":(is_brickpro?"R4":""))
 #define BTN_FN3			(is_brickpro?BTN_HOME:BTN_NONE)
 #define BTN_FN3_NAME	(is_brickpro?"HOME":"")
 

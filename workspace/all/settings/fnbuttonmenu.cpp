@@ -164,7 +164,7 @@ MenuList* buildFnButtonMenu()
         auto *submenu = new MenuList(MenuItemType::Fixed, button + " button", std::move(subItems));
 
         items.push_back(new FnMenuItem{ListItemType::Generic, button + " button",
-            "The pak to launch when this button is pressed in the main menu.",
+            "The app this button opens from Home. Holding both buttons locks the screen while music plays.",
             values, labels,
             [i]() -> std::any { return std::string(CFG_getFnAction(i)); },
             [i](const std::any &value) { CFG_setFnAction(i, std::any_cast<std::string>(value).c_str()); },

@@ -787,6 +787,13 @@ void PLAT_setCurrentTimezone(const char* tz) {
 	if (symlink(tz_path, "/tmp/localtime") == -1) {
 		LOG_error("Failed to set timezone: %s\n", strerror(errno));
 	}
+	// Bramley: and to this program's clock now. Without TZ, glibc reads /etc/localtime once and
+	// keeps it, so the clock showed the old zone until a restart. Programs started from here
+	// inherit TZ, which names the same zone.
+	char tz_env[300];
+	snprintf(tz_env, sizeof(tz_env), ":%s", tz_path);
+	setenv("TZ", tz_env, 1);
+	tzset();
 	free(tz_path);
 
 	// apply timezone to kernel
