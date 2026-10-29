@@ -365,6 +365,17 @@ void update_check(void) {
 	start(check_thread);
 }
 
+// Wi-Fi power saving delays every packet by seconds on the Brick, which held a download near
+// 100 KB/s; it is off while an update downloads and back on afterwards (approved by Howard,
+// 2026-10-29). Only on the device.
+static void wifi_power_save(int on) {
+#ifndef __APPLE__
+	system(on ? "iw dev wlan0 set power_save on >/dev/null 2>&1" : "iw dev wlan0 set power_save off >/dev/null 2>&1");
+#else
+	(void)on;
+#endif
+}
+
 static void* download_thread(void* arg) {
 	(void)arg;
 	char url[512], file[128], sum[65];
@@ -376,7 +387,9 @@ static void* download_thread(void* arg) {
 	snprintf(sum, sizeof(sum), "%s", sha256);
 	pthread_mutex_unlock(&lock);
 
+	wifi_power_save(0);
 	int rc = curl(PART, url, 1, 3600);
+	wifi_power_save(1);
 	char got[65] = "";
 	pthread_mutex_lock(&lock);
 	if (stopping) {
