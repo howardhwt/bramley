@@ -11,8 +11,10 @@ Install
 3. Put the card in the device and turn it on. "Setting up Bramley" shows for a minute, then the
    home screen appears.
 
-The first start also sets the device to start from the card from now on. TrimUI's own start-up
-script is kept on the device beside it.
+The first start also sets the device to start from the card from now on, and shows Bramley's mark
+when the device turns on (the boot logo and the loading picture after it). TrimUI's own start-up
+script is kept on the device beside it, and TrimUI's pictures are kept on the card in
+.userdata/shared/.bramley.
 
 Update
 ------
@@ -32,7 +34,8 @@ Pak Store) and the old Bramley Pak. Apps you added stay. What was removed is lis
 Back to TrimUI's own system
 ---------------------------
 Delete the .tmp_update folder from the top of the card. The device then starts TrimUI's own
-system again. Putting the folder back returns to Bramley.
+system again. Putting the folder back returns to Bramley. The boot logo and loading picture stay
+Bramley's until they are put back; TrimUI's are kept in .userdata/shared/.bramley.
 
 Buttons
 -------

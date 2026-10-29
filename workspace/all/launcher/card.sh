@@ -62,10 +62,11 @@ echo "== Bramley's programs"
 mv "$BIN/nextui.elf" "$BIN/nextui-stock.elf"         # the safety net's fallback
 cp "$PAK/nextui-wrapper.sh" "$BIN/nextui.elf"         # starts launcher.elf
 cp "$HERE/bramley-migrate.sh" "$BIN/"                # tidies a card upgraded from NextUI or 0.x
+cp "$HERE/bramley-startup-screens.sh" "$BIN/"        # Bramley's boot logo and loading picture
 cp "$PAK/launcher.elf" "$PAK/muse" "$PAK/minarch.elf" "$BIN/"
 cp "$PAK/libmsettings.so" "$SYS/.system/tg5040/lib/"
 cp "$PAK/wifi_init.sh" "$SYS/.system/tg5040/etc/wifi/"
-chmod +x "$BIN/nextui.elf" "$BIN/bramley-migrate.sh" "$BIN/launcher.elf" "$BIN/muse" "$BIN/minarch.elf"
+chmod +x "$BIN/nextui.elf" "$BIN/bramley-migrate.sh" "$BIN/bramley-startup-screens.sh" "$BIN/launcher.elf" "$BIN/muse" "$BIN/minarch.elf"
 echo "$VERSION" > "$BIN/.bramley-version"
 
 echo "== Bramley's apps: Settings replaced; NextUI's tools that Bramley does in Settings, removed"
@@ -102,6 +103,9 @@ echo "== Bramley's look"
 mkdir -p "$SYS/.system/res/bramley"
 cp -R "$PAK/res/"* "$SYS/.system/res/bramley/"
 cp "$PAK/fonts/"*.ttf "$SYS/.system/res/"
+
+cp "$ROOT/docs/brand/bramley-bootlogo.bmp" "$SYS/.system/res/bramley/brand/bootlogo.bmp"
+cp "$ROOT/docs/brand/bramley-splash.png" "$SYS/.system/res/bramley/brand/splash.png"
 
 echo "== the install screen: Bramley's mark in place of NextUI's logo"
 cp "$ROOT/docs/brand/bramley-install-logo.png" "$SYS/.tmp_update/tg5040/logo.png"

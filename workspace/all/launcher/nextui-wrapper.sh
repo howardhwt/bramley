@@ -15,6 +15,11 @@ fi
 
 # a card that came from NextUI or Bramley 0.x is tidied once (bramley-migrate.sh; the card only)
 [ -x "$BIN/bramley-migrate.sh" ] && "$BIN/bramley-migrate.sh"
+# and gets Bramley's start-up screens once (the card only; the Pak sets them when it installs)
+SCREENS_DONE=/mnt/SDCARD/.userdata/shared/.bramley/startup-screens-1
+if [ -x "$BIN/bramley-startup-screens.sh" ] && [ ! -f "$SCREENS_DONE" ]; then
+	"$BIN/bramley-startup-screens.sh" install && touch "$SCREENS_DONE"
+fi
 
 start=$(date +%s)
 "$BIN/launcher.elf" "$@"
