@@ -732,6 +732,10 @@ int settings_run(SDL_Surface *host_screen)
         systemItems.push_back(
             new MenuItem{ListItemType::Button, "Reset to defaults", "Resets all options in this menu to their default values.", ResetCurrentMenu});
 
+        // Bramley: Software Update first, as on iOS; only on a Bramley card
+        if (auto *update = bramley_software_update_item())
+            systemItems.insert(systemItems.begin(), update);
+
         auto systemMenu = new MenuList(MenuItemType::Fixed, "System", systemItems);
 
         std::vector<AbstractMenuItem*> muteItems =

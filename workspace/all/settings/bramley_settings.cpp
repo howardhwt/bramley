@@ -22,6 +22,7 @@
 #include "wifimenu.hpp"
 #include "colorpickermenu.hpp"
 #include "bramley_battery.h"
+#include "bramley_update.h"
 #include "bramley_pages.hpp"
 
 extern "C"
@@ -450,6 +451,11 @@ void draw_row(AbstractMenuItem *item, float x, float y, float w, float h, bool f
 		}
 		else if (item->getSubMenu() && !dynamic_cast<Wifi::NetworkItem *>(item))
 		{
+			if (dynamic_cast<SoftwareUpdateMenu *>(item->getSubMenu()) && update_badge())
+			{
+				lgfx_set_dim(1);
+				lgfx_draw_fill(right - 36, y + h * 0.5f - 6, 12, 12, 6, BRAMLEY_ALERT, 1); // an update waits
+			}
 			lgfx_set_dim(focused ? 0.35f : 1);
 			text(LFONT_BODY, "\xE2\x80\xBA", right, ty, focused ? 1 : 0.4f, 1);
 		}
@@ -804,6 +810,115 @@ void draw_battery(MenuList *menu, float px, float py, float pw, float pb, bool a
 	draw_list(menu, px, sy + 74, pw, pb, active);
 }
 
+// Software Update: the Bramley icon with what is installed, or a card with the new version, what
+// is new and the download's progress; then the rows.
+std::string megabytes(long long bytes)
+{
+	char s[32];
+	snprintf(s, sizeof(s), "%.0f MB", bytes / 1048576.0);
+	return s;
+}
+
+std::string when_checked(time_t t)
+{
+	struct tm then, now;
+	time_t n = time(NULL);
+	localtime_r(&t, &then);
+	localtime_r(&n, &now);
+	char s[64];
+	if (then.tm_year == now.tm_year && then.tm_yday == now.tm_yday)
+		strftime(s, sizeof(s), CFG_getClock24H() ? "Last checked today at %H:%M" : "Last checked today at %I:%M %p", &then);
+	else
+		strftime(s, sizeof(s), "Last checked %d %b", &then);
+	return s;
+}
+
+void draw_wrapped(const std::string &s, float x, float y, float w, int lines, float alpha, bool centered)
+{
+	std::string flat = s;
+	std::replace(flat.begin(), flat.end(), '\n', ' '); // the wrapper does not break at newlines
+	LTex *t = ltex_text_wrapped(LFONT_SMALL, flat.c_str(), (int)w, lines, centered);
+	if (!t)
+		return;
+	lgfx_draw_tex(t, centered ? x + (w - t->w) * 0.5f : x, y, t->w, t->h, 0, alpha);
+	ltex_free(t);
+}
+
+void draw_software_update(SoftwareUpdateMenu *menu, float px, float y, float pw, float pb)
+{
+	UpdateInfo u;
+	update_get(&u);
+	static LTex *mark;
+	if (!mark)
+		mark = ltex_load(BRAMLEY_RES_DIR "/brand/icon-176.png", 0);
+	if (u.state == UPDATE_CHECKING || u.state == UPDATE_DOWNLOADING || u.state == UPDATE_INSTALLING)
+		spinning = true; // the progress keeps moving
+	float x = px + 20, w = pw - 40;
+	if (u.newer && u.state != UPDATE_CHECKING)
+	{
+		float ch = 214;
+		lgfx_draw_fill(x, y, w, ch, 16, 1, 1, 1, 0.06f);
+		if (mark)
+			lgfx_draw_tex(mark, x + 20, y + 20, 64, 64, 0, 1);
+		text(LFONT_BODY, std::string("Bramley ") + u.version, x + 100, y + 24, 1);
+		std::string sub = megabytes(u.size);
+		if (u.state == UPDATE_READY)
+			sub += "  \xC2\xB7  Downloaded and checked";
+		text(LFONT_SMALL, sub, x + 100, y + 58, 0.55f);
+		float ny = y + 104;
+		if (u.state == UPDATE_DOWNLOADING)
+		{
+			float frac = u.size > 0 ? std::min(1.0f, (float)u.done / u.size) : 0;
+			text(LFONT_SMALL, "Downloading\xE2\x80\xA6  " + megabytes(u.done) + " of " + megabytes(u.size), x + 20, ny + 8, 0.8f);
+			lgfx_draw_fill(x + 20, ny + 46, w - 40, 8, 4, 1, 1, 1, 0.14f);
+			if (frac > 0)
+				lgfx_draw_fill(x + 20, ny + 46, std::max(8.0f, (w - 40) * frac), 8, 4, BRAMLEY_ACCENT, 1);
+		}
+		else if (u.state == UPDATE_INSTALLING)
+		{
+			draw_spinner(x + 29, ny + 19, 8);
+			text(LFONT_SMALL, "Installing\xE2\x80\xA6 The device restarts in a moment.", x + 50, ny + 8, 0.8f);
+		}
+		else if (u.state == UPDATE_FAILED && u.error[0])
+		{
+			lgfx_draw_fill(x + 20, ny + 9, 12, 12, 6, BRAMLEY_ALERT, 1);
+			draw_wrapped(u.error, x + 44, ny, w - 64, 3, 0.85f, false);
+		}
+		else
+			draw_wrapped(u.notes, x + 20, ny, w - 40, 4, 0.75f, false);
+		y += ch + 18;
+	}
+	else
+	{
+		float cx = px + pw * 0.5f;
+		if (mark)
+			lgfx_draw_tex(mark, cx - 36, y + 4, 72, 72, 0, 1);
+		std::string v = std::string("Bramley ") + u.current;
+		text(LFONT_BODY, v, cx - text_w(LFONT_BODY, v) * 0.5f, y + 90, 1);
+		if (u.state == UPDATE_CHECKING)
+		{
+			std::string c = "Checking for updates\xE2\x80\xA6";
+			float cw = text_w(LFONT_SMALL, c);
+			draw_spinner(cx - cw * 0.5f - 6, y + 138, 8);
+			text(LFONT_SMALL, c, cx - cw * 0.5f + 14, y + 127, 0.6f);
+		}
+		else
+		{
+			std::string line = u.state == UPDATE_FAILED && u.error[0] ? u.error
+			                 : u.state == UPDATE_CURRENT        ? "Bramley is up to date"
+			                                                    : "Not checked for updates yet";
+			draw_wrapped(line, px + 40, y + 126, pw - 80, 2, 0.6f, true);
+		}
+		if (u.checked && u.state != UPDATE_CHECKING)
+		{
+			std::string c = when_checked(u.checked);
+			text(LFONT_SMALL, c, cx - text_w(LFONT_SMALL, c) * 0.5f, y + 182, 0.4f);
+		}
+		y += 228;
+	}
+	draw_list(menu, px, y, pw, pb, true);
+}
+
 // About's title: the Bramley icon and name in place of the word "About" (docs/brand).
 void draw_about_title(float x, float y)
 {
@@ -985,6 +1100,11 @@ void draw_scene(MenuList *root, const std::vector<MenuList *> &chain, const std:
 			if (focused && !open)
 				lgfx_set_dim(0.1f);
 			text(LFONT_BODY, shown_name(items[i]->getName()), fx + (s ? 60 : 20), ty, open ? (focused ? 0.95f : 0.45f) : (focused ? 1 : 0.92f));
+			if (s && !strcmp(s->slug, "system") && update_badge())
+			{
+				lgfx_set_dim(1);
+				lgfx_draw_fill(fx + fw - 30, fy + fh * 0.5f - 6, 12, 12, 6, BRAMLEY_ALERT, 1); // an update waits
+			}
 			lgfx_set_dim(1);
 			if (focused)
 				focused_section = items[i];
@@ -1045,6 +1165,8 @@ void draw_scene(MenuList *root, const std::vector<MenuList *> &chain, const std:
 		auto *tester = dynamic_cast<TestButtonsMenu *>(chain.back());
 		if (depth == 1 && titles[0] == "Battery")
 			draw_battery(chain.back(), px, py, pw, pb, true);
+		else if (auto *update = dynamic_cast<SoftwareUpdateMenu *>(chain.back()))
+			draw_software_update(update, px, rows - 10, pw, pb);
 		else if (tester)
 			draw_test_buttons(tester, px, pw);
 		else

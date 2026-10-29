@@ -84,3 +84,19 @@ public:
 };
 // The Test Buttons row for the Buttons section.
 AbstractMenuItem *bramley_test_buttons_item();
+
+// Software Update: what is installed and what is new, then one action row that follows the state
+// (Check Now, Download, Stop Download, Restart and Install) and the automatic check switch. The
+// work happens in bramley_update.c; this page only shows it. Opening the page checks again when
+// the last check is over an hour old.
+class SoftwareUpdateMenu : public MenuList
+{
+public:
+    SoftwareUpdateMenu();
+    InputReactionHint handleInput(int &dirty, int &quit) override;
+    void opened();
+    void refresh(); // names the action row for the current state
+    bool installing = false;
+};
+// The Software Update row for System, or nullptr where Bramley cannot update itself (the Pak).
+AbstractMenuItem *bramley_software_update_item();

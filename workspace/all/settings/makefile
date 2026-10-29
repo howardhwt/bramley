@@ -21,9 +21,9 @@ SDL?=SDL
 
 TARGET = settings
 INCDIR = -I. -I../common/ -I../launcher/ -I../../$(PLATFORM)/platform/
-SOURCE = -c ../common/utils.c ../common/api.c ../common/config.c ../common/palette.c ../common/scaler.c ../common/http.c ../common/ra_auth.c ../common/ra_offline.c ../common/ra_sync.c ../common/ra_event_queue.c ../../$(PLATFORM)/platform/platform.c ../launcher/lgfx.c ../launcher/lwallpaper.c bramley_battery.c
+SOURCE = -c ../common/utils.c ../common/api.c ../common/config.c ../common/palette.c ../common/scaler.c ../common/http.c ../common/ra_auth.c ../common/ra_offline.c ../common/ra_sync.c ../common/ra_event_queue.c ../../$(PLATFORM)/platform/platform.c ../launcher/lgfx.c ../launcher/lwallpaper.c ../launcher/bramley_update.c bramley_battery.c
 CXXSOURCE = $(TARGET).cpp menu.cpp colorpickermenu.cpp palettemenu.cpp fnbuttonmenu.cpp wifimenu.cpp btmenu.cpp keyboardprompt.cpp bramley_settings.cpp bramley_pages.cpp
-CXXSOURCE += build/$(PLATFORM)/utils.o build/$(PLATFORM)/api.o build/$(PLATFORM)/config.o build/$(PLATFORM)/palette.o build/$(PLATFORM)/scaler.o build/$(PLATFORM)/http.o build/$(PLATFORM)/ra_auth.o build/$(PLATFORM)/ra_offline.o build/$(PLATFORM)/ra_sync.o build/$(PLATFORM)/ra_event_queue.o build/$(PLATFORM)/platform.o build/$(PLATFORM)/lgfx.o build/$(PLATFORM)/lwallpaper.o build/$(PLATFORM)/bramley_battery.o
+CXXSOURCE += build/$(PLATFORM)/utils.o build/$(PLATFORM)/api.o build/$(PLATFORM)/config.o build/$(PLATFORM)/palette.o build/$(PLATFORM)/scaler.o build/$(PLATFORM)/http.o build/$(PLATFORM)/ra_auth.o build/$(PLATFORM)/ra_offline.o build/$(PLATFORM)/ra_sync.o build/$(PLATFORM)/ra_event_queue.o build/$(PLATFORM)/platform.o build/$(PLATFORM)/lgfx.o build/$(PLATFORM)/lwallpaper.o build/$(PLATFORM)/bramley_battery.o build/$(PLATFORM)/bramley_update.o
 
 CC = $(CROSS_COMPILE)gcc
 CXX = $(CROSS_COMPILE)g++
@@ -44,7 +44,7 @@ PRODUCT= build/$(PLATFORM)/$(TARGET).elf
 all: $(PREFIX_LOCAL)/include/msettings.h
 	mkdir -p build/$(PLATFORM)
 	$(CC) $(SOURCE) $(CFLAGS) $(LDFLAGS)
-	mv utils.o api.o config.o palette.o scaler.o http.o ra_auth.o ra_offline.o ra_sync.o ra_event_queue.o platform.o lgfx.o lwallpaper.o bramley_battery.o build/$(PLATFORM)
+	mv utils.o api.o config.o palette.o scaler.o http.o ra_auth.o ra_offline.o ra_sync.o ra_event_queue.o platform.o lgfx.o lwallpaper.o bramley_update.o bramley_battery.o build/$(PLATFORM)
 	$(CXX) $(CXXSOURCE) -o $(PRODUCT) $(CXXFLAGS) $(LDFLAGS) -lstdc++
 clean:
 	rm -f $(PRODUCT)

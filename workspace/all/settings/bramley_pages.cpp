@@ -13,6 +13,7 @@
 extern "C"
 {
 #include "bramley.h"
+#include "bramley_update.h"
 #include "utils.h"
 }
 
@@ -556,4 +557,116 @@ AbstractMenuItem *bramley_test_buttons_item()
 {
     return new MenuItem{ListItemType::Generic, "Test Buttons", "Check that every button works.", {}, {}, nullptr, nullptr, DeferToSubmenu,
                         new TestButtonsMenu()};
+}
+
+// Software Update
+namespace
+{
+// The action row: a button whose name follows the update's state.
+class UpdateActionItem : public AbstractMenuItem
+{
+public:
+    UpdateActionItem() : AbstractMenuItem(ListItemType::Button, "Check Now", "") {}
+    void rename(const std::string &n, const std::string &d)
+    {
+        name = n;
+        desc = d;
+    }
+    const std::any getValue() const override { return {}; }
+    const std::string getLabel() const override { return ""; }
+};
+} // namespace
+
+SoftwareUpdateMenu::SoftwareUpdateMenu()
+    : MenuList(MenuItemType::Fixed, "Software Update",
+               {new UpdateActionItem(),
+                new MenuItem{ListItemType::Generic, "Check automatically",
+                             "Once a day, while Wi-Fi is on. Bramley never downloads without asking.", {false, true},
+                             {"Off", "On"}, []() -> std::any { return (bool)update_auto(); },
+                             [](const std::any &v) { update_set_auto(std::any_cast<bool>(v)); },
+                             []() { update_set_auto(1); }}})
+{
+    refresh();
+}
+
+void SoftwareUpdateMenu::opened()
+{
+    UpdateInfo u;
+    update_get(&u);
+    if (u.state != UPDATE_DOWNLOADING && u.state != UPDATE_READY && u.state != UPDATE_INSTALLING &&
+        time(NULL) - u.checked > 3600)
+        update_check();
+    refresh();
+}
+
+void SoftwareUpdateMenu::refresh()
+{
+    UpdateInfo u;
+    update_get(&u);
+    auto *action = static_cast<UpdateActionItem *>(items[0]);
+    switch (u.state)
+    {
+    case UPDATE_CHECKING:
+        action->rename("Checking\xE2\x80\xA6", "");
+        break;
+    case UPDATE_DOWNLOADING:
+        action->rename("Stop Download", "The part already downloaded is kept for next time.");
+        break;
+    case UPDATE_READY:
+        action->rename("Restart and Install", "The device restarts, installs the update and comes back to Home. "
+                                              "Games, saves and music stay as they are.");
+        break;
+    case UPDATE_INSTALLING:
+        action->rename("Installing\xE2\x80\xA6", "");
+        break;
+    default:
+        if (u.newer)
+            action->rename("Download", "Downloads over Wi-Fi. You choose when to install.");
+        else
+            action->rename("Check Now", "");
+    }
+}
+
+InputReactionHint SoftwareUpdateMenu::handleInput(int &dirty, int &quit)
+{
+    refresh();
+    if (installing)
+        return NoOp;
+    if (scope.selected == 0 && PAD_justPressed(BTN_A))
+    {
+        UpdateInfo u;
+        update_get(&u);
+        const std::string &n = items[0]->getName();
+        if (n == "Check Now")
+            update_check();
+        else if (n == "Download")
+            update_download();
+        else if (n == "Stop Download")
+            update_stop();
+        else if (n == "Restart and Install")
+        {
+            installing = true;
+            refresh();
+            if (update_install() == 0)
+                PWR_powerOff(1); // restarts; the install screen finishes the update
+            installing = false;
+        }
+        refresh();
+        dirty = 1;
+        return NoOp;
+    }
+    return MenuList::handleInput(dirty, quit);
+}
+
+AbstractMenuItem *bramley_software_update_item()
+{
+    if (!update_supported())
+        return nullptr;
+    auto *page = new SoftwareUpdateMenu();
+    return new MenuItem{ListItemType::Generic, "Software Update", "", {}, {}, nullptr, nullptr,
+                        [page](AbstractMenuItem &item) -> InputReactionHint {
+                            page->opened();
+                            return DeferToSubmenu(item);
+                        },
+                        page};
 }
