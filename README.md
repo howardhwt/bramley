@@ -1,151 +1,110 @@
 <div align="center">
 
-  <img width=128px src="github/logo_outline.png">
+<img width="128" src="docs/brand/bramley-icon-512.png" alt="Bramley icon">
+
+# Bramley
+
+An Apple-inspired system for the TrimUI Brick and Brick Hammer.
+Free, and not for sale.
+
+[Download the latest release](https://github.com/howardhwt/bramley/releases/latest)
 
 </div>
 
-<hr>
+<p align="center">
+  <img width="49%" src="docs/screenshots/home.png" alt="Home, with Continue Playing, consoles, collections and apps">
+  <img width="49%" src="docs/screenshots/welcome.png" alt="Welcome to Bramley, the first-boot setup">
+</p>
 
-<h4 align="center">
-  <a href="https://nextui.loveretro.games/usage/#getting-started" target="_blank">Installation Guide</a>
-  ·
-  <a href="https://nextui.loveretro.games/docs/" target="_blank">Documentation</a>
-  ·
-  <a href="https://discord.gg/HKd7wqZk3h" target="_blank">Discord</a>
-</h4>
+Bramley turns the Brick into a calm, quick handheld that feels like an Apple device. The home screen lifts what you focus on, Settings is a split view like an iPad's, and music plays from anywhere. It is a full system: copy it to a card and it starts on its own.
 
-<div align="center"><p>
-    <a href="https://github.com/LoveRetro/NextUI/releases/latest">
-      <img alt="Latest release" src="https://img.shields.io/github/v/release/LoveRetro/NextUI?style=for-the-badge&logo=starship&include_prerelease=false&color=C9CBFF&logoColor=D9E0EE&labelColor=302D41&sort=semver" />
-    </a>
-    <a href="https://github.com/LoveRetro/NextUI/pulse">
-      <img alt="Last commit" src="https://img.shields.io/github/last-commit/LoveRetro/NextUI?style=for-the-badge&logo=starship&color=8bd5ca&logoColor=D9E0EE&labelColor=302D41"/>
-    </a>
-    <a href="https://github.com/LoveRetro/NextUI/blob/main/LICENSE">
-      <img alt="License" src="https://img.shields.io/github/license/LoveRetro/NextUI?style=for-the-badge&logo=starship&color=ee999f&logoColor=D9E0EE&labelColor=302D41" />
-    </a>
-    <a href="https://github.com/LoveRetro/NextUI/stargazers">
-      <img alt="Stars" src="https://img.shields.io/github/stars/LoveRetro/NextUI?style=for-the-badge&logo=starship&color=c69ff5&logoColor=D9E0EE&labelColor=302D41" />
-    </a>
-    <a href="https://github.com/LoveRetro/NextUI/issues">
-      <img alt="Issues" src="https://img.shields.io/github/issues/LoveRetro/NextUI?style=for-the-badge&logo=bilibili&color=F5E0DC&logoColor=D9E0EE&labelColor=302D41" />
-    </a>
-</div>
+Bramley is forked from [NextUI](https://github.com/LoveRetro/NextUI), and NextUI's emulation engine, cores and device support still sit underneath. Everything you see and touch is redrawn.
 
----
+## What's in it
 
-A CFW based of MinUI with a rebuild emulation engine and tons of added features for the TrimUI Brick and Smart Pro. 
+- **Home.** Continue Playing, your consoles, collections and apps, in rows that lift and glide as you move, over a softly blurred wallpaper.
+- **Game libraries.** Box art for each console, a styled card when art is missing, and L1 and R1 to jump through the alphabet.
+- **Music and audiobooks.** A full player with albums, artists and audiobooks that remember your place. SELECT opens Now Playing from anywhere, a game pauses the music, and you can resume it afterwards.
+- **Quick menu.** MENU opens Wi-Fi, Bluetooth, Settings, Sleep, Restart and Shut Down from anywhere.
+- **Settings.** A split view with Wi-Fi, Bluetooth, Display, Wallpaper, Lights, Battery history, Date and Time with a list of cities, Buttons with a button tester, and Software Update.
+- **Files.** Browse the whole card, copy, move and rename, with a Trash that keeps deleted files until it is emptied. Saves are protected.
+- **Activity.** Time played per day and per game.
+- **In-game menu.** Redrawn to match, with save states, achievements and quiet notifications.
+- **First-boot setup.** Welcome to Bramley asks for Wi-Fi and your time zone, then shows how MENU and SELECT work.
+- **Software Update.** Finds new versions on GitHub, downloads them over Wi-Fi with a checked SHA-256, and installs them on restart. It checks quietly once a day while Wi-Fi is on and never downloads without asking.
+- **Start-up screens.** The device turns on to Bramley's mark, and the start-up pictures can be switched back to TrimUI's in Settings > About.
 
-For other devices we recommend checking out [MinUI](https://github.com/shauninman/MinUI)
+<p align="center">
+  <img width="32%" src="docs/screenshots/library.png" alt="A game library">
+  <img width="32%" src="docs/screenshots/nowplaying.png" alt="Now Playing">
+  <img width="32%" src="docs/screenshots/quickmenu.png" alt="The quick menu">
+</p>
+<p align="center">
+  <img width="49%" src="docs/screenshots/settings.png" alt="Settings">
+  <img width="49%" src="docs/screenshots/files.png" alt="Files">
+</p>
 
-## License
+## Install
 
-This project is licensed under [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0).
-Personal, educational, and non-commercial use is freely permitted. Commercial use is not.
-See [LICENSE](LICENSE) and [NOTICE](NOTICE) for full details.
+Bramley runs on the **TrimUI Brick** and **Brick Hammer** only.
 
-> **Note:** This project was previously licensed under GPL 3.0. As of August 15, 2026, the license
-> has changed to PolyForm Noncommercial 1.0.0. The full transition history and rationale
-> is documented in [issue #765](https://github.com/LoveRetro/NextUI/issues/765).
+**On a new card**
 
-## Changes and additions
+1. Format a card as FAT32.
+2. Download `Bramley-<version>-card.zip` from the [latest release](https://github.com/howardhwt/bramley/releases/latest) and extract everything in it to the top of the card.
+3. Put the card in the device and turn it on. "Setting up Bramley" shows for about a minute, then Welcome to Bramley starts.
 
-- Fixed both screen tearing and sync stutter problems of MinUI by rebuilding the emulator engine core
-- Game switcher menu (Onion OS style) by [@frysee](https://github.com/frysee)
-- High audio quality, due to advanced resampling engine using [libsamplerate](https://github.com/libsndfile/libsamplerate) (with quality/performance setting per emulator)
-- Much lower latency (average 20ms, 1 frame of 60fps)
-- Shaders!
-- Fully OpenGL/GPU based for faster performance!
-- native WiFi support
-- Game art/media support
-- Game time tracker!
-- Cheats support
-- Integrated WiFi
-- Bluetooth Audio
-- Overlays support!
-- Dynamic cpu speed scaling (keeps your device cool and extends battery life, but gives the performance right when needed)
-- Fully GPU OpenGL based for faster performance
-- Custom bootlogos contributed by [@SolvalouArt](https://bsky.app/profile/solvalouart.bsky.social)
-- Color and font settings to customize the NextUI interface
-- Menu animations
-- LED control, change colors, effects, brightness
-- LED indicators, low battery, stand by, charging (brightness can be set seperately)
-- Haptic feedback in the menu by [@ExonakiDev](https://github.com/exonakidev)
-- Ambient LED mode, the LEDS act like Ambient light TV's for extra immersion, configurable per emulator
-- Display controls (color temperature, brightness, contrast, saturation, exposure)
-- Support for automatic NTP time synchronization with timezones and realtime clock (RTC)
-- Deep Sleep mode, gives instant ON and avoids the overheat bug on the Brick by [@zhaofengli](https://github.com/zhaofengli)
-- Battery Monitoring including history graph and time left prediction
-- Scrolling animated titles for longer game names
-- Updated and optimized build emulation cores
-- Rumble strength fixed and is now variable as used by the games
-- FBNeo Arcade screen rotation
-- PAL Mode
-- Next font supports CJK for JP/CN etc rom names
-- Lot of other smaller fixes and optimizations
+**From NextUI, or from Bramley 0.x (the Pak)**
 
----
+Extract the card zip over your card, replacing files when asked, and restart. Saves, games, music and settings stay. On its first start Bramley tidies the card once: it removes NextUI's files for other devices, the NextUI apps Bramley replaces (including NextUI's Updater) and the old Bramley Pak. Apps you added stay, and the list of what was removed is in `.userdata/shared/.bramley/migrate.log`.
 
-## Currently supported devices:
-- Trimui Brick
-- Trimui Brick Pro
-- Trimui Smart Pro
-- Trimui Smart Pro S
-- Anbernic H700 Devices
+**Updates** come through Settings > System > Software Update.
 
----
+**To go back to TrimUI's own system**, use Settings > About to put TrimUI's start-up screens back, then delete the `.tmp_update` folder from the card.
 
-## Installing
+## Your card
 
-Follow our [installation guide](https://nextui.loveretro.games/usage/#getting-started).
+| What | Where |
+|---|---|
+| Games | `Roms/<Console name> (<TAG>)/`, for example `Roms/Game Boy (GB)/` |
+| Box art | `Roms/<Console>/.media/<game name>.png` |
+| Console icons | `.media/consoles/<TAG>.png` at the top of the card |
+| BIOS files | `Bios/<TAG>/` (none are included) |
+| Music | `Music/<Artist>/<Album>/` or `Music/<Album>/`, with an optional `cover.jpg` |
+| Audiobooks | `Audiobooks/<Author>/<Book>/` or `Audiobooks/<Book>/` |
+| Wallpapers | `Wallpapers/` |
+| Fonts | `Fonts/` with Regular, SemiBold and Bold files, to use a font you own instead of Inter |
 
----
+## Buttons
 
-## How to use
+| Where | Button | Does |
+|---|---|---|
+| Anywhere | MENU | Quick menu |
+| Anywhere | SELECT | Now Playing |
+| Home | A / X | Open or play / resume a manual save |
+| Library | L1, R1 | Jump A to Z |
+| Now Playing | A, L1 and R1, left and right | Play or pause, track, 10 seconds |
+| Music playing | Power, short press | Screen off, music keeps going |
+| In a game | MENU | In-game menu |
 
-While in menu:
+## Status
 
-- Hold `start` and press `volume up` or `volume down` to adjust brighness
-- Hold `select` and press `volume up` or `volume down` to adjust color temperature
-- Short press `select` to open the game switcher
+Bramley 0.9 is a beta. Please report problems as [GitHub issues](https://github.com/howardhwt/bramley/issues) with your Bramley version (Settings > About) and what you did.
 
-While in game:
+## Building
 
-- `Menu` opens in game options menu, adjusting controls, scaling and what not
-- Hold `menu` and `select` at same time to open up the game switcher
+Bramley builds like NextUI, inside the tg5040 toolchain container (Docker or OrbStack). `workspace/all/launcher/card.sh` builds a whole card; it needs the emulator cores built first, from `workspace/tg5040/cores`, where every core is pinned to an exact upstream commit. A desktop build for macOS runs the launcher and Settings in a window for quick work on the interface. Details are in [CLAUDE.md](CLAUDE.md).
 
-Deep sleep:
+## Licences and credits
 
-When the device is left idle it will enter light sleep. Light sleep turns the screen off and pulses the leds 5 times.
+Bramley is free and not for sale, under the [PolyForm Noncommercial License 1.0.0](LICENSE), the same licence as NextUI. See [NOTICE](NOTICE).
 
-After two minutes the device will go into deep sleep. The leds will turn completely off.
+- [NextUI](https://github.com/LoveRetro/NextUI) by the LoveRetro team and contributors, itself a fork of [MinUI](https://github.com/shauninman/MinUI) by Shaun Inman.
+- The emulator cores keep their own licences, mostly the GNU GPL. Each card lists the exact source of every core in `CORES-SOURCE.md` and includes each core's licence in `Licenses/`. See [docs/plans/cores-licenses.md](docs/plans/cores-licenses.md).
+- The music player is based on Muse from [TortOS](https://github.com/ericreinsmidt/TortOS) by Eric Reinsmidt (MIT).
+- The interface font is [Inter](https://github.com/rsms/inter) (SIL Open Font License).
+- Screenshots show free homebrew games, credited in [spikes/demo-library/CREDITS.md](spikes/demo-library/CREDITS.md).
 
----
+Full third-party notices are in [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md).
 
-## What about X feature?
-
-NextUI supports a variety of optional extras called Paks that are maintained by community members.
-
-Our wiki has a [list of all available Paks](https://nextui.loveretro.games/pak-store/) that can be downloaded from our Pak Store straight on your device.
-
----
-
-## Credits
-
-- [josegonzalez](https://github.com/josegonzalez) for [minui-keyboard](https://github.com/josegonzalez/minui-keyboard)
-- [knulli-cfw](https://github.com/knulli-cfw)/[Mikhailzrick](https://github.com/Mikhailzrick) for [fan-control-daemon](https://github.com/knulli-cfw/knulli-linux/commit/5c1b4724330b59cbe8af79d0a7f1dac86f1c221a)
-- [Kenney](www.kenney.nl) for [Input Prompts](https://kenney.nl/assets/input-prompts)
-
----
-
-## Play Retro's review of NextUI
-
-[![image](https://github.com/user-attachments/assets/43217a30-e052-4f67-88a9-c4361f82e72f)](https://www.youtube.com/watch?v=m_7ObMHAFK4)
-
-##  Retro Handhelds' coverage of NextUI
-
-[![image](https://github.com/user-attachments/assets/5fd538ea-285b-46e9-add4-1ef99b2ee9e5)](https://www.youtube.com/watch?v=KlYVmtYDqRI)
-
----
-
-## For all other info visit our website: [nextui.loveretro.games](https://nextui.loveretro.games)
+Bramley is not affiliated with Apple, TrimUI, NextUI or the authors of the games shown.

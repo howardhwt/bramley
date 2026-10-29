@@ -1,3 +1,5 @@
+> Bramley keeps NextUI's hooks unchanged, so this page, written for NextUI, applies to Bramley too.
+
 # About NextUI hooks
 
 ## The idea

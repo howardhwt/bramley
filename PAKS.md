@@ -1,3 +1,5 @@
+> Bramley keeps NextUI's Pak system unchanged, so this page, written for NextUI, applies to Bramley too. Bramley shows Tool Paks in the Apps row on Home. Bramley does not ship NextUI's Pak Store.
+
 # About NextUI paks
 
 A pak is just a folder with a ".pak" extension that contains a shell script named "launch.sh". 
