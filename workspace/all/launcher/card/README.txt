@@ -72,3 +72,5 @@ Licenses
 NextUI is PolyForm Noncommercial 1.0.0 (LICENSE), so Bramley is free only. The Muse
 player is from TortOS (MIT), Inter is SIL Open Font License 1.1, and three Settings symbols are
 from Phosphor Icons (MIT); see THIRD-PARTY-LICENSES.md.
+The emulator cores keep their own licenses, mostly the GNU GPL; each core's license is in the
+Licenses folder, and CORES-SOURCE.md lists the exact source each core is built from.

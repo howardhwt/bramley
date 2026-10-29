@@ -75,3 +75,9 @@ SOFTWARE.
 - **License:** SIL Open Font License 1.1. The full text is in `workspace/all/launcher/res/Inter-LICENSE.txt`.
 - **Copyright:** Copyright (c) 2016 The Inter Project Authors.
 - **Used in:** `workspace/all/launcher/res/Inter-SemiBold.ttf` and `Inter-Bold.ttf`, unchanged, as the launcher's UI font.
+
+## Emulator cores
+
+- **Source:** the upstream repos and exact commits are listed in `CORES-SOURCE.md` on each Bramley card, made by `workspace/all/launcher/cores-source.sh` from the pins in `workspace/tg5040/cores/makefile`. Bramley's patches are in `workspace/tg5040/cores/patches/` and `workspace/all/cores/patches/`.
+- **Licenses:** mostly GPL-2.0, with GPL-3.0 (PokeMini, Gearcoleco), MPL-2.0 (mGBA), zlib (Handy), MIT (fake-08), and noncommercial licenses (Snes9x, PicoDrive, FBNeo). Each core's own license files are copied to `Licenses/<core>/` on the card. The survey is in `docs/plans/cores-licenses.md`.
+- **Conditions:** Bramley stays free, with no sale, ads or donation requests (FBNeo forbids asking for donations), and each release publishes the source of the cores it ships.

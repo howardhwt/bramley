@@ -82,6 +82,18 @@ find "$SYS/.system/tg5040/cores" "$CARD/Emus/tg5040" -name '*_libretro.so' | whi
 	cp "$ours" "$so"
 done
 sh "$HERE/cores-source.sh" > "$CARD/CORES-SOURCE.md"
+# each core's license files, from its source at the pinned commit
+CORESRC="$ROOT/workspace/tg5040/cores/src"
+for dir in "$CORESRC"/*/; do
+	core=$(basename "$dir")
+	(cd "$dir" && find . -maxdepth 3 \( -iname 'license*' -o -iname 'copying*' \) -type f | grep -v -i '/test\|/deps/\|/3rdparty\|/platforms/ios') |
+	while read -r f; do
+		mkdir -p "$CARD/Licenses/$core/$(dirname "$f")"
+		cp "$dir/$f" "$CARD/Licenses/$core/$f"
+	done
+	[ -d "$CARD/Licenses/$core" ] || { echo "no license file found for the $core core" >&2; exit 1; }
+done
+[ -d "$CORESRC/mgba/res/licenses" ] && cp -R "$CORESRC/mgba/res/licenses" "$CARD/Licenses/mgba/third-party"
 
 echo "== Bramley's look"
 mkdir -p "$SYS/.system/res/bramley"
