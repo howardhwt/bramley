@@ -61,6 +61,6 @@ Bramley stays PolyForm Noncommercial 1.0.0, free, and credits NextUI. The cores 
 1. Bramley card build target, producing a card that boots straight into Bramley (with NextUI's install screen still).
 2. Bramley's install screen and renaming.
 3. Content trim and core license check. Done 2026-10-29: licenses in `docs/plans/cores-licenses.md`; every core pinned and built by Bramley, matching NextUI 6.15.0's. Still open: the license texts on the card, and the legal question in that file. Note that the update zip (MinUI.zip) only carries the six system cores; the cores in `Emus/` are outside it, so the updater must handle them.
-4. Updater.
+4. Updater. Done 2026-10-29: `bramley_update.c`, Settings > System > Software Update, the daily check and the dot on Settings, and `bramley-update.txt` from card.sh. Tested on the Brick from 0.2.2 to a 0.2.3 test release. Each release must upload the card zip and `bramley-update.txt`, and be marked latest (the check reads `releases/latest`).
 5. First-boot setup.
 6. Upgrade path from 0.x, then a public beta.
