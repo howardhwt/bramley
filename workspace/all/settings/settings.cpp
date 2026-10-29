@@ -1114,7 +1114,7 @@ int settings_run(SDL_Surface *host_screen)
                 "reverting to clean stock firmware.",
                 OverlayDismissMode::DismissOnA);
 
-        auto aboutMenu = new MenuList(MenuItemType::Fixed, "About",
+        std::vector<AbstractMenuItem*> aboutItems =
         {
             // Bramley: Bramley's version, written by the installer in both the Pak and the card,
             // and a credit to NextUI, which Bramley is forked from.
@@ -1141,7 +1141,11 @@ int settings_run(SDL_Surface *host_screen)
             new StaticMenuItem{ListItemType::Generic, "Busybox version", "",
             [&]() -> std::any { return bbver; }
             },
-        });
+        };
+        // Bramley: switch the start-up screens between Bramley's and TrimUI's (a Bramley card only)
+        if (auto *screens = bramley_startup_screens_item())
+            aboutItems.push_back(screens);
+        auto aboutMenu = new MenuList(MenuItemType::Fixed, "About", aboutItems);
 
         MenuList *buttonMenu = buildFnButtonMenu(); // nullptr if this device has none
 

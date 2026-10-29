@@ -670,3 +670,50 @@ AbstractMenuItem *bramley_software_update_item()
                         },
                         page};
 }
+
+// Start-up screens
+namespace
+{
+const char *const SCREENS_SCRIPT = BIN_PATH "/bramley-startup-screens.sh";
+
+// TrimUI's pictures are kept on the card while Bramley's are in place
+bool bramley_screens_on()
+{
+    return access(BRAMLEY_STATE_DIR "/bootlogo-stock.bmp", F_OK) == 0 ||
+           access(BRAMLEY_STATE_DIR "/splash-stock.png", F_OK) == 0;
+}
+
+class StartupScreensItem : public AbstractMenuItem
+{
+public:
+    StartupScreensItem()
+        : AbstractMenuItem(ListItemType::Button, "", "The logo when the device turns on, and the picture while it starts.")
+    {
+        refresh();
+    }
+    void refresh() { name = bramley_screens_on() ? "Use TrimUI\xE2\x80\x99s Start-up Screens" : "Use Bramley\xE2\x80\x99s Start-up Screens"; }
+    const std::any getValue() const override { return {}; }
+    const std::string getLabel() const override { return ""; }
+    InputReactionHint handleInput(int &dirty) override
+    {
+        if (!PAD_justPressed(BTN_A))
+            return Unhandled;
+        bool to_bramley = !bramley_screens_on();
+        {
+            ScopedOverlay overlay(to_bramley ? "Setting Bramley\xE2\x80\x99s start-up screens\xE2\x80\xA6" : "Putting TrimUI\xE2\x80\x99s start-up screens back\xE2\x80\xA6");
+            std::string cmd = std::string("'") + SCREENS_SCRIPT + "' " + (to_bramley ? "install" : "restore");
+            system(cmd.c_str());
+        }
+        refresh();
+        dirty = 1;
+        return NoOp;
+    }
+};
+} // namespace
+
+AbstractMenuItem *bramley_startup_screens_item()
+{
+    if (access(SCREENS_SCRIPT, X_OK) != 0)
+        return nullptr;
+    return new StartupScreensItem();
+}

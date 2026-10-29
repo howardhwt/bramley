@@ -100,3 +100,7 @@ public:
 };
 // The Software Update row for System, or nullptr where Bramley cannot update itself (the Pak).
 AbstractMenuItem *bramley_software_update_item();
+
+// About: switches the device's start-up screens (boot logo and loading picture) between Bramley's
+// and TrimUI's, with bramley-startup-screens.sh. Only on a Bramley card; nullptr elsewhere.
+AbstractMenuItem *bramley_startup_screens_item();
