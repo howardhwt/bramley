@@ -1,6 +1,6 @@
 # Bramley v1.0: a standalone card
 
-Status: draft plan, 2026-10-29. Nothing here is built yet.
+Status: plan, 2026-10-29. Decisions below were made with Howard; nothing is built yet.
 
 ## Goal
 
@@ -17,6 +17,16 @@ How a card starts today:
 1. On first boot, TrimUI's firmware runs `trimui/app/MainUI` from the card. It is a script that replaces the device's `/usr/trimui/bin/runtrimui.sh` with one that runs the card's `.tmp_update/updater` on every boot (TrimUI's original is kept as `runtrimui-original.sh`).
 2. `updater` runs `.tmp_update/tg5040.sh`, which shows the "Installing NextUI" screen, unpacks `MinUI.zip` (the system) and starts the launcher through `MinUI.pak/launch.sh`.
 3. `launch.sh` starts the background helpers (keymon, batmon, audiomon), Wi-Fi and Bluetooth, then loops the launcher and whatever it asks to run next.
+
+## Decisions (2026-10-29)
+
+- **Devices:** the TrimUI Brick and Brick Hammer only (tg5040, 1024x768). Other devices NextUI supports are out of scope.
+- **Cores:** ship what NextUI ships, after checking each core's license; GPL cores ship with their source and our patches.
+- **Pak Store:** dropped from v1.0. Paks copied to `Tools/` by hand still show in Apps.
+- **Release format:** one zip to extract onto a FAT32 card, for new installs and updates alike. No card image.
+- **First-boot setup:** Wi-Fi (titled "Welcome to Bramley"), then time zone, then home with a hint for SELECT and MENU. Every step skips with B. No separate welcome screen.
+- **Updates:** a Software Update page in Settings, plus a quiet check at most once a day while the launcher is on the home screen and Wi-Fi is already on (never turning Wi-Fi on for it). A dot on Settings shows an update; downloading and installing only happen when the user chooses.
+- **Motion preview:** the setup flow is shown as a video rendered from the real drawing code before it is built.
 
 ## What v1.0 needs
 
@@ -43,11 +53,7 @@ Bramley stays PolyForm Noncommercial 1.0.0, free, and credits NextUI. The cores 
 
 ## Open questions
 
-- Which cores ship in v1.0, and which wait for license checks.
-- Pak Store: keep the third-party one, replace it, or drop it.
-- Brick only (tg5040), or also the other devices NextUI supports.
 - How first-boot Wi-Fi setup works with the keyboard and the radio's slow start.
-- Release format: one zip to extract, or a card image to flash.
 - Trademark check in the EU and UK registers before the v1.0 name goes public.
 
 ## Order of work (proposed)
