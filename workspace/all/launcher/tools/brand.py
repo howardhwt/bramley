@@ -109,11 +109,13 @@ def wordmark(d, x, y, size, weight, colour=IVORY, anchor="ls"):
 
 
 def boot_logo():
-    W, H = 1024, 768
+    """The boot logo, as Apple starts its devices: the bare mark in white, centred a little above the
+    middle of a black screen. No tile and no name. The launcher's start-up splash puts the mark in
+    the same place."""
+    W, H, s = 1024, 768, 150
     img = Image.new("RGB", (W, H), (0, 0, 0))
-    t = icon(176)
-    img.paste(t, ((W - 176) // 2, H // 2 - 150), t)
-    wordmark(ImageDraw.Draw(img), W / 2, H // 2 + 86, 44, "Regular", anchor="ms")
+    m = mark_mask(s * 4).resize((s, s), Image.LANCZOS)
+    img.paste(Image.new("RGB", (s, s), (255, 255, 255)), ((W - s) // 2, (H - s) // 2 - 20), m)
     return img
 
 

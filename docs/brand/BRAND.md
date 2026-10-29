@@ -24,7 +24,7 @@ The mark is five apple pips with their points meeting near the centre and a smal
 | `bramley-icon-1024.png`, `-512`, `-150`, `-36` | The app icon: ivory mark on an orchard green glass tile |
 | `bramley-lockup-stacked.png` | Icon over the wordmark: boot screen, splash, About |
 | `bramley-lockup-horizontal.png` | Icon beside the wordmark: headers, the README |
-| `bramley-bootlogo.bmp` | Boot logo, 1024x768, 24-bit, for the Brick's boot partition (`.png` copy for viewing) |
+| `bramley-bootlogo.bmp` | Boot logo, 1024x768, 24-bit, for the Brick's boot partition (`.png` copy for viewing): the bare mark in white, 150 px, centred 20 px above the middle, on black, as Apple starts its devices |
 | `brand-sheet.png` | Everything on one page |
 
 - Keep clear space around the icon of at least a quarter of its width.
