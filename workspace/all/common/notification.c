@@ -518,8 +518,8 @@ static void render_challenge_indicator(int count) {
 }
 
 // Render a single notification pill
-// Bramley: toasts at the bottom centre, newest at the bottom, each with a coloured dot (green for
-// saves, gold for achievements, blue for the rest) or the achievement's badge.
+// Bramley: toasts at the bottom centre, newest at the bottom, each with a coloured dot (the accent for
+// saves, gold for achievements, white for the rest) or the achievement's badge.
 static void render_notification_stack(void) {
     bram_fonts();
     if (!bram_font) return;
@@ -537,7 +537,7 @@ static void render_notification_stack(void) {
         } else {
             int ach = n->type == NOTIFICATION_ACHIEVEMENT || n->type == NOTIFICATION_OFFLINE_ACHIEVEMENT;
             int save = n->type == NOTIFICATION_SAVE_STATE || n->type == NOTIFICATION_LOAD_STATE;
-            float r = save ? 0.20f : ach ? 1.0f : 0.04f, g = save ? 0.78f : ach ? 0.75f : 0.52f, b = save ? 0.35f : ach ? 0.2f : 1.0f;
+            float r = save ? 0.290f : ach ? 1.0f : 0.95f, g = save ? 0.698f : ach ? 0.75f : 0.95f, b = save ? 0.471f : ach ? 0.2f : 0.95f; // accent, gold, white
             bram_round(gl_notification_surface, x + 20, y + 16, 20, 20, ach ? 5 : 10, r, g, b, 1);
         }
         bram_text(gl_notification_surface, bram_font, n->message, (int)(x + 54), (int)(y + (h - th) * 0.5f), 255);

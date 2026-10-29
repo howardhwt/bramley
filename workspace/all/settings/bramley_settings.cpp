@@ -336,7 +336,7 @@ void draw_switch(float right, float y, bool on, bool focused)
 {
 	float w = 58, h = 34;
 	if (on)
-		lgfx_draw_fill(right - w, y, w, h, h * 0.5f, 0.20f, 0.78f, 0.35f, 1);
+		lgfx_draw_fill(right - w, y, w, h, h * 0.5f, BRAMLEY_ACCENT, 1);
 	else
 		lgfx_draw_fill(right - w, y, w, h, h * 0.5f, focused ? 0 : 1, focused ? 0 : 1, focused ? 0 : 1, focused ? 0.15f : 0.22f);
 	float k = h - 6;
@@ -445,7 +445,7 @@ void draw_row(AbstractMenuItem *item, float x, float y, float w, float h, bool f
 			lgfx_set_dim(focused ? 0.45f : 1);
 			text(LFONT_BODY, "Connected", right, ty, focused ? 1 : 0.7f, 1);
 			lgfx_set_dim(1);
-			lgfx_draw_fill(right - tw - 22, y + h * 0.5f - 6, 12, 12, 6, 0.20f, 0.78f, 0.35f, 1);
+			lgfx_draw_fill(right - tw - 22, y + h * 0.5f - 6, 12, 12, 6, BRAMLEY_ACCENT, 1);
 		}
 		else if (item->getSubMenu() && !dynamic_cast<Wifi::NetworkItem *>(item))
 		{
@@ -481,7 +481,7 @@ void draw_picker(ClockPicker *p, const std::string &name, float x, float y, floa
 		int before = p->lo[c] + ((v - p->lo[c] - 1) % span + span) % span, after = p->lo[c] + (v - p->lo[c] + 1) % span;
 		lgfx_set_dim(1);
 		if (c == p->column)
-			lgfx_draw_fill(cx + c * cw + 8, cy + 44, cw - 16, 48, 12, 0.04f, 0.52f, 1.0f, 1);
+			lgfx_draw_fill(cx + c * cw + 8, cy + 44, cw - 16, 48, 12, BRAMLEY_ACCENT, 1);
 		else
 			lgfx_draw_fill(cx + c * cw + 8, cy + 44, cw - 16, 48, 12, 0, 0, 0, 0.07f);
 		lgfx_set_dim(c == p->column ? 1 : 0.1f);
@@ -603,9 +603,9 @@ void draw_test_buttons(TestButtonsMenu *t, float px, float pw)
 	};
 	auto colour = [](int st, float &r, float &g, float &b, float &a) {
 		if (st == 1)
-			r = 0.04f, g = 0.52f, b = 1.0f, a = 1;
+			r = 1, g = 1, b = 1, a = 1; // held: bright
 		else if (st == 2)
-			r = 0.20f, g = 0.78f, b = 0.35f, a = 0.75f;
+			r = 0.290f, g = 0.698f, b = 0.471f, a = 0.9f; // tested: the accent
 		else
 			r = g = b = 1, a = 0.14f;
 	};
@@ -771,9 +771,9 @@ void draw_battery(MenuList *menu, float px, float py, float pw, float pb, bool a
 		any = true;
 		float bh = std::max(2.0f, gh * b.level / 100.0f), bx = gx + i * slot + 1.5f;
 		if (b.charging)
-			lgfx_draw_fill(bx, gy + gh - bh, slot - 3, bh, 2, 0.20f, 0.78f, 0.35f, 1);
+			lgfx_draw_fill(bx, gy + gh - bh, slot - 3, bh, 2, BRAMLEY_ACCENT, 1);
 		else if (b.level <= 20)
-			lgfx_draw_fill(bx, gy + gh - bh, slot - 3, bh, 2, 1, 0.27f, 0.23f, 0.9f);
+			lgfx_draw_fill(bx, gy + gh - bh, slot - 3, bh, 2, BRAMLEY_ALERT, 0.9f);
 		else
 			lgfx_draw_fill(bx, gy + gh - bh, slot - 3, bh, 2, 1, 1, 1, 0.85f);
 	}
@@ -801,6 +801,17 @@ void draw_battery(MenuList *menu, float px, float py, float pw, float pb, bool a
 	stat(x + sw, "LAST CHARGED", battery.charged_to >= 0 ? "To " + std::to_string(battery.charged_to) + "%" : dash);
 	stat(x + 2 * sw, "LONGEST", battery.longest > 0 ? hours_minutes(battery.longest) : dash);
 	draw_list(menu, px, sy + 74, pw, pb, active);
+}
+
+// About's title: the Bramley icon and name in place of the word "About" (docs/brand).
+void draw_about_title(float x, float y)
+{
+	static LTex *mark;
+	if (!mark)
+		mark = ltex_load(BRAMLEY_RES_DIR "/brand/icon-64.png", 0);
+	if (mark)
+		lgfx_draw_tex(mark, x, y - 6, 56, 56, 0, 1);
+	text(LFONT_TITLE, "Bramley", x + (mark ? 72 : 0), y, 1);
 }
 
 void draw_top_bar()
@@ -990,7 +1001,10 @@ void draw_scene(MenuList *root, const std::vector<MenuList *> &chain, const std:
 			draw_battery(sub, px, py, pw, pb, false);
 		else if (focused_section)
 		{
-			text(LFONT_TITLE, shown_name(focused_section->getName()), px + 28, py + 20, 1);
+			if (s && !strcmp(s->slug, "about"))
+				draw_about_title(px + 28, py + 20);
+			else
+				text(LFONT_TITLE, shown_name(focused_section->getName()), px + 28, py + 20, 1);
 			if (sub && BramleyView::type(sub) != MenuItemType::Custom)
 				draw_list(sub, px, py + 90, pw, pb, false);
 		}
@@ -1004,7 +1018,10 @@ void draw_scene(MenuList *root, const std::vector<MenuList *> &chain, const std:
 			text(LFONT_BODY, "\xE2\x80\xB9  " + shown_name(titles[depth - 2]), px + 28, py + 18, 0.5f);
 			ty = py + 52;
 		}
-		text(LFONT_TITLE, shown_name(titles[depth - 1]), px + 28, ty, 1);
+		if (depth == 1 && titles[0] == "About")
+			draw_about_title(px + 28, ty);
+		else
+			text(LFONT_TITLE, shown_name(titles[depth - 1]), px + 28, ty, 1);
 		float rows = ty + 70;
 		bool network = depth == 1 && titles[0] == "Network";
 		if (depth == 1 && (network || titles[0] == "Bluetooth"))
@@ -1114,7 +1131,7 @@ void draw_keyboard(KeyboardPrompt *kp)
 	else
 		text(LFONT_BODY, "Type with the keys below", tx, ty, 0.35f);
 	if ((SDL_GetTicks() / 530) % 2 == 0)
-		lgfx_draw_fill(tx + 2, fy + 16, 2.5f, fh - 32, 1, 0.04f, 0.52f, 1, 1);
+		lgfx_draw_fill(tx + 2, fy + 16, 2.5f, fh - 32, 1, BRAMLEY_ACCENT, 1);
 	spinning = true; // keeps the caret blinking
 
 	// the keys, each row centred
@@ -1150,7 +1167,7 @@ void draw_keyboard(KeyboardPrompt *kp)
 				lgfx_set_dim(0.1f);
 			}
 			else if (done)
-				lgfx_draw_fill(kx, ky, w, kh, 12, 0.04f, 0.52f, 1, 1);
+				lgfx_draw_fill(kx, ky, w, kh, 12, BRAMLEY_ACCENT, 1);
 			else
 				lgfx_draw_fill(kx, ky, w, kh, 12, 1, 1, 1, key == "shift" || key == "space" ? 0.10f : 0.14f);
 			std::string label = key;

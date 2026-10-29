@@ -330,7 +330,7 @@ static void option_row(MenuItem* item, int is_input, float x, float y, float w, 
 		lgfx_set_dim(1);
 		int on = item->value == 1;
 		float sw = 58, sh = 34, sy = y + (h - sh) * 0.5f;
-		if (on) lgfx_draw_fill(right - sw, sy, sw, sh, sh * 0.5f, 0.20f, 0.78f, 0.35f, 1);
+		if (on) lgfx_draw_fill(right - sw, sy, sw, sh, sh * 0.5f, BRAMLEY_ACCENT, 1);
 		else lgfx_draw_fill(right - sw, sy, sw, sh, sh * 0.5f, focused ? 0 : 1, focused ? 0 : 1, focused ? 0 : 1, focused ? 0.15f : 0.22f);
 		float k = sh - 6;
 		lgfx_draw_fill(on ? right - k - 3 : right - sw + 3, sy + 3, k, k, k * 0.5f, 1, 1, 1, 1);
@@ -536,7 +536,7 @@ void bramley_achievements_draw(const char* game, unsigned unlocked, unsigned tot
 	snprintf(p, sizeof(p), "%u of %u unlocked", unlocked, total);
 	ctext(LFONT_BODY, p, W - 72, 66, 0.85f, 1);
 	lgfx_draw_fill(W - 72 - 260, 104, 260, 8, 4, 1, 1, 1, 0.18f);
-	if (total) lgfx_draw_fill(W - 72 - 260, 104, 260.0f * unlocked / total, 8, 4, 0.20f, 0.78f, 0.35f, 1);
+	if (total) lgfx_draw_fill(W - 72 - 260, 104, 260.0f * unlocked / total, 8, 4, BRAMLEY_ACCENT, 1);
 
 	float x = 72, w = W - 144, y = 150, rh = 86, gap = 8;
 	int fit = (int)((H - 70 - y) / (rh + gap));
@@ -568,7 +568,7 @@ void bramley_achievements_draw(const char* game, unsigned unlocked, unsigned tot
 		snprintf(p, sizeof(p), "%u pts", a->points);
 		ctext(LFONT_BODY, p, fx + fw - 24, fy + (fh - 30) * 0.5f, f ? 1 : 0.6f, 1);
 		lgfx_set_dim(1);
-		if (a->unlocked) lgfx_draw_fill(fx + fw - 130, fy + fh * 0.5f - 6, 12, 12, 6, 0.20f, 0.78f, 0.35f, 1);
+		if (a->unlocked) lgfx_draw_fill(fx + fw - 130, fy + fh * 0.5f - 6, 12, 12, 6, BRAMLEY_ACCENT, 1);
 	}
 	if (top > 0) ctext(LFONT_SMALL, "\xE2\x96\xB2", W * 0.5f, 126, 0.35f, 0);
 	if (top + fit < count) ctext(LFONT_SMALL, "\xE2\x96\xBC", W * 0.5f, y - 6, 0.35f, 0);

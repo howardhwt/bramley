@@ -190,6 +190,11 @@ def main():
     boot.save(os.path.join(OUT, "bramley-bootlogo.bmp"))
     boot.save(os.path.join(OUT, "bramley-bootlogo.png"))
     sheet(boot).save(os.path.join(OUT, "brand-sheet.png"))
+    # the icon for the OS itself (power screen, About), installed to .system/res/bramley/brand
+    res_brand = os.path.join(RES, "brand")
+    os.makedirs(res_brand, exist_ok=True)
+    for s in (176, 64):
+        icon(s).save(os.path.join(res_brand, "icon-%d.png" % s))
     print("wrote", OUT)
 
 

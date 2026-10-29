@@ -395,7 +395,7 @@ static std::vector<AbstractMenuItem *> light_rows()
     ColorPickerMenu *picker = new ColorPickerMenu(0xFFFFFFFF, [](const std::any &v) {
         uint32_t c = std::any_cast<uint32_t>(v) >> 8;
         each([c](LightSettings &l) { l.color1 = c, l.color2 = c; });
-    }, {}, "Colour");
+    }, {}, "Color");
 
     std::vector<AbstractMenuItem *> rows = {
         new MenuItem{ListItemType::Generic, "Lights", "Turns every light on the Brick on or off.", {false, true}, {"Off", "On"},
@@ -438,10 +438,10 @@ static std::vector<AbstractMenuItem *> light_rows()
         new MenuItem{ListItemType::Generic, "Effect", "", effect_values, effect_labels,
                      []() -> std::any { return chosen().effect; },
                      [](const std::any &v) { int e = std::any_cast<int>(v); each([e](LightSettings &l) { l.effect = e; }); }},
-        new MenuItem{ListItemType::Color, "Colour", "", colour_value, {""},
+        new MenuItem{ListItemType::Color, "Color", "", colour_value, {""},
                      []() -> std::any { return (uint32_t)(chosen().color1 << 8 | 0xFF); }, nullptr, nullptr,
                      [picker](AbstractMenuItem &item) -> InputReactionHint {
-                         picker->reset(chosen().color1 << 8 | 0xFF, {}, "Colour");
+                         picker->reset(chosen().color1 << 8 | 0xFF, {}, "Color");
                          return DeferToSubmenu(item);
                      },
                      picker},

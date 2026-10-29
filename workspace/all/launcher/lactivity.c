@@ -58,8 +58,9 @@ static struct {
 } act;
 
 static const float palette[COLORS + 1][3] = {
-	{ 0.04f, 0.52f, 1.00f }, { 0.20f, 0.78f, 0.35f }, { 1.00f, 0.62f, 0.04f },
-	{ 1.00f, 0.22f, 0.37f }, { 0.75f, 0.35f, 0.95f }, { 0.56f, 0.56f, 0.58f },
+	// the accent first, then hues that keep clear of it and of the alert red
+	{ 0.290f, 0.698f, 0.471f }, { 1.00f, 0.62f, 0.04f }, { 0.40f, 0.62f, 0.95f },
+	{ 0.85f, 0.45f, 0.65f }, { 0.65f, 0.50f, 0.90f }, { 0.56f, 0.56f, 0.58f },
 };
 
 // Text textures, kept while Activity is open.
@@ -422,7 +423,7 @@ static void draw_chart(float x, float y, float w, float h) {
 	if (!act.day && act.total > 0) {
 		// a dashed line at the daily average
 		float avg = gy + gh * (1 - (act.total / 7.0f) / top);
-		for (float dx = 0; dx < gw; dx += 14) lgfx_draw_fill(gx + dx, avg - 1, 8, 2, 1, 0.20f, 0.78f, 0.35f, 0.9f);
+		for (float dx = 0; dx < gw; dx += 14) lgfx_draw_fill(gx + dx, avg - 1, 8, 2, 1, 1, 1, 1, 0.7f); // white: the accent is the first game
 		text(LFONT_SMALL, "avg", gx + 2, avg - 26, 0.8f, 0);
 	}
 	float slot = gw / act.buckets;

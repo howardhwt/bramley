@@ -169,10 +169,22 @@ static void crash_report(int sig) {
 static void power_screen(const char* message) {
 	lgfx_begin_frame();
 	lgfx_draw_fill(0, 0, SCREEN_W, SCREEN_H, 0, 0, 0, 0, 1);
-	LTex* t = ltex_text(LFONT_HERO, BRAMLEY_NAME, 0);
+	// the boot screen's layout (docs/brand): the icon, "Bramley" in ivory, then the message
+	LTex* icon = ltex_load(BRAMLEY_RES_DIR "/brand/icon-176.png", 0);
+	// the wordmark: Inter Regular in ivory (docs/brand)
+	LTex* t = NULL;
+	TTF_Font* f = TTF_OpenFont(RES_PATH "/Inter-Regular.ttf", 44);
+	if (f) {
+		SDL_Surface* s = TTF_RenderUTF8_Blended(f, BRAMLEY_NAME, (SDL_Color){ 243, 235, 214, 255 });
+		if (s) t = ltex_from_surface(s, 0), SDL_FreeSurface(s);
+		TTF_CloseFont(f);
+	}
 	LTex* m = ltex_text(LFONT_BODY, message, 0);
-	if (t) lgfx_draw_tex(t, (SCREEN_W - t->w) * 0.5f, SCREEN_H * 0.5f - t->h - 4, t->w, t->h, 0, 1);
-	if (m) lgfx_draw_tex(m, (SCREEN_W - m->w) * 0.5f, SCREEN_H * 0.5f + 18, m->w, m->h, 0, 0.6f);
+	float y = SCREEN_H * 0.5f - 150;
+	if (icon) lgfx_draw_tex(icon, (SCREEN_W - 176) * 0.5f, y, 176, 176, 0, 1);
+	if (t) lgfx_draw_tex(t, (SCREEN_W - t->w) * 0.5f, y + 196, t->w, t->h, 0, 1);
+	if (m) lgfx_draw_tex(m, (SCREEN_W - m->w) * 0.5f, y + 270, m->w, m->h, 0, 0.6f);
+	ltex_free(icon);
 	ltex_free(t);
 	ltex_free(m);
 	lgfx_end_frame();
@@ -181,7 +193,7 @@ static void power_screen(const char* message) {
 static void apply_bramley_palette(void) {
 	static const uint32_t palette[7] = {
 		0xFFFFFFFFu, // main: white
-		0x0A84FFFFu, // accent: Bramley blue
+		0x4AB278FFu, // accent: Bramley green (docs/brand)
 		0x2C2C2EFFu, // second accent: dark gray
 		0xFFFFFFFFu, // list text
 		0x1C1C1EFFu, // selected list text, on the white highlight

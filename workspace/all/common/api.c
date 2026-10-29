@@ -4299,11 +4299,11 @@ void PWR_disablePowerOff(void)
 }
 void (*PWR_drawPowerOffScreen)(const char *message) = NULL;
 
-// Bramley: "Bramley" in Inter Bold and the message under it, centred on black.
+// Bramley: the icon, "Bramley" in ivory Inter Regular, and the message under it, on black.
 static void bramley_power_screen(SDL_Surface *dst, const char *msg)
 {
 	SDL_FillRect(dst, NULL, SDL_MapRGB(dst->format, 0, 0, 0));
-	TTF_Font *big = TTF_OpenFont(RES_PATH "/Inter-Bold.ttf", 64), *small = TTF_OpenFont(RES_PATH "/Inter-Regular.ttf", 26);
+	TTF_Font *big = TTF_OpenFont(RES_PATH "/Inter-Regular.ttf", 44), *small = TTF_OpenFont(RES_PATH "/Inter-Regular.ttf", 26);
 	if (!big || !small)
 	{
 		// the fonts are missing: NextUI's message instead
@@ -4311,12 +4311,20 @@ static void bramley_power_screen(SDL_Surface *dst, const char *msg)
 	}
 	else
 	{
-		SDL_Surface *t = TTF_RenderUTF8_Blended(big, "Bramley", (SDL_Color){255, 255, 255, 255});
+		// the boot screen's layout (docs/brand): the icon, "Bramley" in ivory, then the message
+		int y = dst->h / 2 - 150;
+		SDL_Surface *icon = IMG_Load(RES_PATH "/bramley/brand/icon-176.png");
+		if (icon)
+		{
+			SDL_BlitSurface(icon, NULL, dst, &(SDL_Rect){(dst->w - icon->w) / 2, y});
+			SDL_FreeSurface(icon);
+		}
+		SDL_Surface *t = TTF_RenderUTF8_Blended(big, "Bramley", (SDL_Color){243, 235, 214, 255});
 		SDL_Surface *m = TTF_RenderUTF8_Blended(small, msg, (SDL_Color){150, 150, 155, 255});
 		if (t)
-			SDL_BlitSurface(t, NULL, dst, &(SDL_Rect){(dst->w - t->w) / 2, dst->h / 2 - t->h - 4});
+			SDL_BlitSurface(t, NULL, dst, &(SDL_Rect){(dst->w - t->w) / 2, y + 196});
 		if (m)
-			SDL_BlitSurface(m, NULL, dst, &(SDL_Rect){(dst->w - m->w) / 2, dst->h / 2 + 18});
+			SDL_BlitSurface(m, NULL, dst, &(SDL_Rect){(dst->w - m->w) / 2, y + 270});
 		SDL_FreeSurface(t);
 		SDL_FreeSurface(m);
 	}

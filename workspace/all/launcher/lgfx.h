@@ -11,6 +11,10 @@ typedef struct {
 } LTex;
 
 // SMALL and BODY are Inter Regular, LABEL is SemiBold, TITLE and HERO are Bold.
+// Bramley's interface colors (docs/brand/BRAND.md), as r, g, b arguments for lgfx_draw_fill.
+#define BRAMLEY_ACCENT 0.290f, 0.698f, 0.471f // #4AB278: on, selected, progress
+#define BRAMLEY_ALERT 0.898f, 0.282f, 0.302f  // #E5484D: warnings only
+
 enum { LFONT_SMALL, LFONT_LABEL, LFONT_BODY, LFONT_TITLE, LFONT_HERO, LFONT_COUNT };
 
 void lgfx_init(int screen_w, int screen_h);
