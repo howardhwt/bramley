@@ -22,7 +22,10 @@ same() { [ "$(md5sum < "$1")" = "$(md5sum < "$2")" ]; }
 boot_logo() { # install | restore
 	mkdir -p "$BOOTMNT"
 	mount -t vfat "$BOOTDEV" "$BOOTMNT" 2>/dev/null || { say "boot logo: could not open the boot partition; left as it was"; return; }
-	if [ "$1" = install ]; then
+	if [ "$1" = install ] && same "$ART/bootlogo.bmp" "$BOOTMNT/bootlogo.bmp"; then
+		# already Bramley's (from another Bramley card): never keep it as TrimUI's
+		say "boot logo: already Bramley's"
+	elif [ "$1" = install ]; then
 		[ -f "$STATE/bootlogo-stock.bmp" ] || cp -f "$BOOTMNT/bootlogo.bmp" "$STATE/bootlogo-stock.bmp"
 		if [ -f "$STATE/bootlogo-stock.bmp" ] && cp -f "$ART/bootlogo.bmp" "$BOOTMNT/bootlogo.bmp.new" && sync &&
 			same "$ART/bootlogo.bmp" "$BOOTMNT/bootlogo.bmp.new" && mv -f "$BOOTMNT/bootlogo.bmp.new" "$BOOTMNT/bootlogo.bmp"; then
@@ -40,7 +43,9 @@ boot_logo() { # install | restore
 }
 
 splash() { # install | restore
-	if [ "$1" = install ]; then
+	if [ "$1" = install ] && [ -f /etc/splash.png ] && same "$ART/splash.png" /etc/splash.png; then
+		say "splash: already Bramley's"
+	elif [ "$1" = install ]; then
 		[ -f /etc/splash.png ] || return
 		[ -f "$STATE/splash-stock.png" ] || cp -f /etc/splash.png "$STATE/splash-stock.png"
 		if [ -f "$STATE/splash-stock.png" ] && cp -f "$ART/splash.png" /etc/splash.png.new && sync &&

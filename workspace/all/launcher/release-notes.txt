@@ -1,1 +1,1 @@
-Bramley now updates itself. Software Update in Settings finds new versions, downloads them over Wi-Fi and installs them on restart. Every emulator core is now built by Bramley, with its source listed on the card.
+Bramley is now its own system: copy it to a card and it starts on its own, with no NextUI needed. A short setup asks for Wi-Fi and your time zone, and Software Update in Settings keeps it current. Every emulator core is built by Bramley, with its source and licence on the card.
