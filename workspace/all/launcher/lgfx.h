@@ -41,6 +41,8 @@ void ltex_free(LTex* tex);
 
 // Draws tex into the rect, cropping it to fill the rect without stretching.
 void lgfx_draw_tex(LTex* tex, float x, float y, float w, float h, float radius, float alpha);
+// Draws the part (sx, sy, sw, sh) of tex, in texture pixels, into (x, y, w, h), such as a long text cut to fit.
+void lgfx_draw_tex_part(LTex* tex, float sx, float sy, float sw, float sh, float x, float y, float w, float h, float alpha);
 void lgfx_draw_fill(float x, float y, float w, float h, float radius, float r, float g, float b, float a);
 // Vertical gradient from the top colour to the bottom colour.
 void lgfx_draw_gradient(float x, float y, float w, float h, float radius, const float top[4], const float bottom[4]);

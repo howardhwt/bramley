@@ -1115,27 +1115,36 @@ void draw_keyboard(KeyboardPrompt *kp)
 			lgfx_draw_tex(t, (W - t->w) * 0.5f, 72, t->w, t->h, 0, 1);
 	}
 
-	// the text field, with a caret after the text
+	// the text field, with a caret at the cursor (L1 and R1 move it)
 	float fx = 112, fw = W - 224, fy = 130, fh = 64;
 	lgfx_draw_fill(fx, fy, fw, fh, fh * 0.5f, 1, 1, 1, 0.12f);
 	lgfx_draw_ring(fx, fy, fw, fh, fh * 0.5f, 1.5f, 1, 1, 1, 0.25f);
-	float tx = fx + 28, ty = fy + (fh - 30) * 0.5f;
+	float tx = fx + 28, ty = fy + (fh - 30) * 0.5f, caret = tx;
 	if (!k.current_text.empty())
 	{
 		LTex *t = ltex_text(LFONT_BODY, k.current_text.c_str(), 0);
+		size_t c = k.cursor < k.current_text.size() ? k.cursor : k.current_text.size();
+		std::string before = k.current_text.substr(0, c);
+		LTex *b = before.empty() ? nullptr : ltex_text(LFONT_BODY, before.c_str(), 0);
+		float bw = b ? b->w : 0;
 		if (t)
 		{
-			// keep the end of long text in view
-			float avail = fw - 70, shift = t->w > avail ? t->w - avail : 0;
-			lgfx_draw_tex(t, tx - shift, ty, t->w, t->h, 0, 1);
-			tx += t->w - shift;
+			// keep the caret in view: scroll so it sits inside the field
+			float avail = fw - 70, shift = 0;
+			if (t->w > avail)
+				shift = std::min(t->w - avail, std::max(0.0f, bw - avail * 0.8f));
+			// draw only what fits in the field
+			float vis = std::min(avail, t->w - shift);
+			lgfx_draw_tex_part(t, shift, 0, vis, t->h, tx, ty, vis, t->h, 1);
+			caret = tx + bw - shift;
 			ltex_free(t);
 		}
+		ltex_free(b);
 	}
 	else
 		text(LFONT_BODY, "Type with the keys below", tx, ty, 0.35f);
 	if ((SDL_GetTicks() / 530) % 2 == 0)
-		lgfx_draw_fill(tx + 2, fy + 16, 2.5f, fh - 32, 1, BRAMLEY_ACCENT, 1);
+		lgfx_draw_fill(caret + 1, fy + 16, 2.5f, fh - 32, 1, BRAMLEY_ACCENT, 1);
 	spinning = true; // keeps the caret blinking
 
 	// the keys, each row centred
@@ -1188,7 +1197,7 @@ void draw_keyboard(KeyboardPrompt *kp)
 			x += kw.second + gap;
 		}
 	}
-	text(LFONT_SMALL, "A  Type        B  Delete        SELECT  Shift        X  Done        Y  Cancel", W * 0.5f - 300, H - 44, 0.6f);
+	text(LFONT_SMALL, "A  Type        B  Delete        L1 R1  Move        SELECT  Shift        X  Done        Y  Cancel", W * 0.5f - 375, H - 44, 0.6f);
 }
 
 // A horizontal colour ramp from a to b, drawn as thin bands (the kit's gradients are vertical).

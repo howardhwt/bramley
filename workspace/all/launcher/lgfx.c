@@ -808,6 +808,12 @@ static void draw_tex_uv(LTex* tex, float x, float y, float w, float h, float rad
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
+// Draws the part of tex from (sx, sy, sw, sh), in texture pixels, into (x, y, w, h).
+void lgfx_draw_tex_part(LTex* tex, float sx, float sy, float sw, float sh, float x, float y, float w, float h, float alpha) {
+	if (!tex || tex->w <= 0 || tex->h <= 0) return;
+	draw_tex_uv(tex, x, y, w, h, 0, alpha, sx / tex->w, sy / tex->h, sw / tex->w, sh / tex->h);
+}
+
 void lgfx_set_dim(float dim) {
 	tex_dim = dim;
 }

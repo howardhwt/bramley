@@ -185,10 +185,32 @@ void KeyboardPrompt::handleKeyboardInput(AppState &state)
         state.quitting = true;
         state.exit_code = ExitCode::Success;
     }
+    // Bramley: L1 and R1 move the cursor a character at a time (whole UTF-8 characters), and typing
+    // and deleting happen at the cursor, not only at the end.
+    else if (PAD_justRepeated(BTN_L1) || PAD_justRepeated(BTN_R1))
+    {
+        std::string &t = state.keyboard.current_text;
+        size_t &c = state.keyboard.cursor;
+        if (c > t.size())
+            c = t.size();
+        if (PAD_justRepeated(BTN_L1) && c > 0)
+            do c--; while (c > 0 && (t[c] & 0xC0) == 0x80);
+        else if (PAD_justRepeated(BTN_R1) && c < t.size())
+            do c++; while (c < t.size() && (t[c] & 0xC0) == 0x80);
+    }
     else if (PAD_justPressed(BTN_B))
     {
-        if (!state.keyboard.current_text.empty())
-            state.keyboard.current_text.pop_back();
+        std::string &t = state.keyboard.current_text;
+        size_t &c = state.keyboard.cursor;
+        if (c > t.size())
+            c = t.size();
+        if (c > 0)
+        {
+            size_t start = c;
+            do start--; while (start > 0 && (t[start] & 0xC0) == 0x80);
+            t.erase(start, c - start);
+            c = start;
+        }
     }
     else if (PAD_justPressed(BTN_A))
     {
@@ -202,7 +224,10 @@ void KeyboardPrompt::handleKeyboardInput(AppState &state)
             }
             else if (key == "space")
             {
-                state.keyboard.current_text.append(" ");
+                if (state.keyboard.cursor > state.keyboard.current_text.size())
+                    state.keyboard.cursor = state.keyboard.current_text.size();
+                state.keyboard.current_text.insert(state.keyboard.cursor, " ");
+                state.keyboard.cursor += 1;
             }
             else if (key == "enter")
             {
@@ -213,7 +238,10 @@ void KeyboardPrompt::handleKeyboardInput(AppState &state)
             }
             else
             {
-                state.keyboard.current_text.append(key);
+                if (state.keyboard.cursor > state.keyboard.current_text.size())
+                    state.keyboard.cursor = state.keyboard.current_text.size();
+                state.keyboard.current_text.insert(state.keyboard.cursor, key);
+                state.keyboard.cursor += key.size();
             }
         }
     }

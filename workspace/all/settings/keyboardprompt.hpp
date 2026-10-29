@@ -48,6 +48,7 @@ struct KeyboardState
     std::string initial_text; // the initial value of the text on keyboard entry
     std::string final_text;   // the final value of the text on keyboard exit
     std::string title;        // the title of the keyboard
+    size_t cursor = 0;        // Bramley: where typing goes, a byte offset into current_text (L1 and R1 move it)
 };
 
 // AppState holds the current state of the application
@@ -81,6 +82,7 @@ public:
         state.exit_code = ExitCode::Uninitialized;
         state.keyboard.initial_text = text;
         state.keyboard.current_text = text;
+        state.keyboard.cursor = text.size(); // Bramley
         state.redraw = true;
     }
 
