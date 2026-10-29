@@ -35,7 +35,7 @@ No BIOS files ship. `Bios/PUAE/readme.txt` lists checksums only.
 
 ## Problems
 
-1. **Exact source unknown.** 24 cores were built from an unrecorded commit, so we cannot publish the exact GPL source for the binaries in NextUI's zip. Fix: pin every core to a commit and build them ourselves.
+1. **Exact source unknown (fixed 2026-10-29).** 24 cores were built from an unrecorded commit. Every core is now pinned in `workspace/tg5040/cores/makefile` to the upstream commit current when NextUI built 6.15.0. Built in the toolchain container, 20 cores came out byte for byte the same as NextUI's, 7 differ only in their embedded build time and mGBA only in its branch name, so the pins are the exact source. The card build ships these builds and writes `CORES-SOURCE.md` (repo, commit and patches per core) to the card.
 2. **FBNeo forbids asking for donations** in any project using its code. Bramley must never add a donate or sponsor link while it ships FBNeo. Its MAME license part was not read (unverified).
 3. **cap32 contains Amstrad's firmware** as headers. Amstrad's redistribution permission is widely cited but unverified here.
 4. **minarch (PolyForm Noncommercial) loads GPL cores** into one process. MinUI and NextUI have always done this, but whether it makes a combined work under the GPL is unsettled. Needs a real opinion before a wide v1.0 release (unverified).

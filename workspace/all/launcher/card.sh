@@ -72,6 +72,17 @@ for t in Battery Clock Input LedControl Bootlogo "Remove Loading"; do
 done
 # Files.pak and Game Tracker.pak stay: their cards open Bramley's Files and Activity.
 
+echo "== the emulator cores: Bramley's own builds, pinned (docs/plans/cores-licenses.md)"
+# Built with: docker run ... tg5040-toolchain ... 'cd /root/workspace/tg5040/cores && make'
+# (the pins in workspace/tg5040/cores/makefile rebuild NextUI 6.15.0's cores exactly).
+COREOUT="$ROOT/workspace/tg5040/cores/output"
+find "$SYS/.system/tg5040/cores" "$CARD/Emus/tg5040" -name '*_libretro.so' | while read -r so; do
+	ours="$COREOUT/$(basename "$so")"
+	[ -f "$ours" ] || { echo "no Bramley build of $(basename "$so"); build the cores first" >&2; exit 1; }
+	cp "$ours" "$so"
+done
+sh "$HERE/cores-source.sh" > "$CARD/CORES-SOURCE.md"
+
 echo "== Bramley's look"
 mkdir -p "$SYS/.system/res/bramley"
 cp -R "$PAK/res/"* "$SYS/.system/res/bramley/"

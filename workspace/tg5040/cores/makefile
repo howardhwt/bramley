@@ -132,4 +132,36 @@ gearcoleco_BUILD_PATH = gearcoleco/platforms/libretro
 
 ###############################
 
+# Bramley: every core is pinned, so a release can publish the exact source of each core it ships
+# (GPL; see docs/plans/cores-licenses.md). These are the upstream commits current when NextUI
+# built 6.15.0 (2026-10-13). fbneo, picodrive and pokemini keep NextUI's own pins above.
+
+a2600_HASH = 7d1361e407e63f29e52892655069e5fb4096e691
+a5200_HASH = 40c6f2f1ad4a3145b328d5baaf010fae6c7e752b
+a7800_HASH = 8a88014287c7a01cd568067e5a557d0a2b2a051f
+handy_HASH = bc55d462f0b2d6b073ea93dc552ebd73cec60fd1
+mednafen_pce_fast_HASH = 3f946f277aef3aa99a95551618bbcd1dd2bda0d9
+mednafen_vb_HASH = d5ae54c8e23b573a3b34e888b2d48a588027e92c
+fake-08_HASH = 814991a2571ad3970e386cef48f3b148aa1c27b9
+fceumm_HASH = ac0d00a7fc01166f84c7bac01d1084ebfd2b865e
+gambatte_HASH = d9d6cd06382d1ced30de34d56d3609452323dab1
+gpsp_HASH = 5819380c2ffb0900219d700a382ee68c464ebb99
+mednafen_supafaust_HASH = 642d1d1b6684aa7e306a02a89885f3f5456a5157
+mgba_HASH = 7a12d6d4b9acb14c0ae62c9166b6a2f3d08007f6
+pcsx_rearmed_HASH = c8816799b50388e61cfe237fe2cdbb7d8175f20a
+prboom_HASH = c6e0fcb8325fc7969c91387f56c63433de0f1a53
+snes9x_HASH = fae2fea08f74180759ef540ee94259213f503480
+libretro-uae_HASH = 151828f14d43bb2b0651327ee19a23b36a7081b2
+libretro-cap32_HASH = 2d41a1f07e654e97c4f24ab8447c3fbd7d728bc8
+c64_HASH = f63b56688f3133a2bb17499db9eebb7ab81df5f5
+c128_HASH = f63b56688f3133a2bb17499db9eebb7ab81df5f5
+vic_HASH = f63b56688f3133a2bb17499db9eebb7ab81df5f5
+pet_HASH = f63b56688f3133a2bb17499db9eebb7ab81df5f5
+plus4_HASH = f63b56688f3133a2bb17499db9eebb7ab81df5f5
+bluemsx_HASH = e3086eb5d36d77fa11704cf53dc176686e70127d
+race_HASH = c7810dd7f172827bfa2004813bc000b13786636b
+gearcoleco_HASH = eb27adde758d31ae1c4cbd3e74aca1be3b872c5b
+
+###############################
+
 include ../../all/cores/makefile
