@@ -202,6 +202,11 @@ def main():
     mark = Image.new("RGBA", (150, 150), (255, 255, 255, 0))
     mark.putalpha(m)
     mark.save(os.path.join(res_brand, "mark-150.png"))
+    # the install screen's picture (show2, logoheight 144): the bare mark in white, as the boot logo
+    m = mark_mask(2048).resize((512, 512), Image.LANCZOS)  # the size of NextUI's logo it replaces
+    mark = Image.new("RGBA", (512, 512), (255, 255, 255, 0))
+    mark.putalpha(m)
+    mark.save(os.path.join(OUT, "bramley-install-logo.png"))
     print("wrote", OUT)
 
 

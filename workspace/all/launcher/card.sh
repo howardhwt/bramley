@@ -77,6 +77,9 @@ mkdir -p "$SYS/.system/res/bramley"
 cp -R "$PAK/res/"* "$SYS/.system/res/bramley/"
 cp "$PAK/fonts/"*.ttf "$SYS/.system/res/"
 
+echo "== the install screen: Bramley's mark in place of NextUI's logo"
+cp "$ROOT/docs/brand/bramley-install-logo.png" "$SYS/.tmp_update/tg5040/logo.png"
+
 echo "== names users see"
 sed -i '' 's/TEXT:Updating NextUI/TEXT:Updating Bramley/; s/TEXT:Installing NextUI/TEXT:Setting up Bramley/' "$SYS/.tmp_update/tg5040.sh"
 sed -i '' 's/(NextUI)/(Bramley)/' "$SYS/.system/tg5040/etc/bluetooth/bt_init.sh"
