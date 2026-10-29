@@ -14,6 +14,7 @@
 #include <signal.h>
 
 #include "defines.h"
+#include "bramley_clock.h"
 #include "api.h"
 #include "utils.h"
 #include "config.h"
@@ -538,7 +539,7 @@ static int update_status(void) {
 	ltex_free(status.clock);
 	ltex_free(status.percent);
 	char text[16];
-	snprintf(text, sizeof(text), "%d:%02d", tm.tm_hour, tm.tm_min);
+	bramley_clock(&tm, text, sizeof(text), 0);
 	status.clock = ltex_text(LFONT_LABEL, text, 0);
 	snprintf(text, sizeof(text), "%d%%", battery);
 	status.percent = ltex_text(LFONT_SMALL, text, 0);
@@ -1434,7 +1435,7 @@ static void open_quick_menu(void) {
 	struct tm tm;
 	localtime_r(&now, &tm);
 	char text[32];
-	snprintf(text, sizeof(text), "%d:%02d", tm.tm_hour, tm.tm_min);
+	bramley_clock(&tm, text, sizeof(text), 0);
 	qm.clock = ltex_text(LFONT_HERO, text, 0);
 	snprintf(text, sizeof(text), "Battery %d%%%s", PWR_getBattery(), PWR_isCharging() ? ", charging" : "");
 	qm.battery = ltex_text(LFONT_BODY, text, 0);
@@ -1678,7 +1679,7 @@ static void draw_lock_screen(void) {
 	if (tm.tm_hour * 60 + tm.tm_min != lock_clock_minute) {
 		lock_clock_minute = tm.tm_hour * 60 + tm.tm_min;
 		char text[16];
-		snprintf(text, sizeof(text), "%d:%02d", tm.tm_hour, tm.tm_min);
+		bramley_clock(&tm, text, sizeof(text), 0);
 		ltex_free(lock_clock);
 		lock_clock = ltex_text(LFONT_HERO, text, 0);
 	}

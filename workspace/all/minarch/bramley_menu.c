@@ -1,5 +1,6 @@
 // Bramley: the in-game menu drawn with the GL kit. See bramley_menu.h.
 #include "bramley_menu.h"
+#include "bramley_clock.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -106,7 +107,7 @@ static void saved_when(time_t t, char* out, size_t size) {
 	localtime_r(&t, &a);
 	localtime_r(&now, &b);
 	char clock[16];
-	strftime(clock, sizeof(clock), "%H:%M", &a);
+	bramley_clock(&a, clock, sizeof(clock), 1);
 	if (a.tm_year == b.tm_year && a.tm_yday == b.tm_yday)
 		snprintf(out, size, "Saved today at %s", clock);
 	else {
@@ -135,7 +136,7 @@ void bramley_menu_draw(const BramleyMenuView* v) {
 	struct tm tm;
 	localtime_r(&now, &tm);
 	char status[32];
-	strftime(status, sizeof(status), "%H:%M", &tm);
+	bramley_clock(&tm, status, sizeof(status), 0);
 	char pct[16];
 	snprintf(pct, sizeof(pct), "      %d%%", PWR_getBattery());
 	strncat(status, pct, sizeof(status) - strlen(status) - 1);

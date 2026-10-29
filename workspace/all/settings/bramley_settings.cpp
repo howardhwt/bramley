@@ -1,5 +1,6 @@
 // Bramley: Settings drawn with the launcher's GL kit. See bramley_settings.hpp.
 #include "bramley_settings.hpp"
+#include "bramley_clock.h"
 
 #include <cctype>
 #include <cmath>
@@ -827,7 +828,11 @@ std::string when_checked(time_t t)
 	localtime_r(&n, &now);
 	char s[64];
 	if (then.tm_year == now.tm_year && then.tm_yday == now.tm_yday)
-		strftime(s, sizeof(s), CFG_getClock24H() ? "Last checked today at %H:%M" : "Last checked today at %I:%M %p", &then);
+	{
+		char t[16];
+		bramley_clock(&then, t, sizeof(t), 1);
+		snprintf(s, sizeof(s), "Last checked today at %s", t);
+	}
 	else
 		strftime(s, sizeof(s), "Last checked %d %b", &then);
 	return s;
@@ -940,7 +945,7 @@ void draw_top_bar()
 	struct tm tm;
 	localtime_r(&now, &tm);
 	char clock[16], pct[16];
-	strftime(clock, sizeof(clock), "%H:%M", &tm);
+	bramley_clock(&tm, clock, sizeof(clock), 0);
 	snprintf(pct, sizeof(pct), "%d%%", PWR_getBattery());
 	text(LFONT_LABEL, pct, W - 48, 30, 0.8f, 1);
 	text(LFONT_LABEL, clock, W - 48 - text_w(LFONT_LABEL, pct) - 28, 30, 0.8f, 1);

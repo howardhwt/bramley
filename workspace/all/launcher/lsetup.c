@@ -12,6 +12,7 @@
 #include "lgfx.h"
 #include "lwallpaper.h"
 #include "lsetup.h"
+#include "bramley_clock.h"
 
 extern int bramley_text_input(const char* app, const char* title, const char* initial, char* out, size_t size,
                               void (*backdrop)(void), void (*after)(void));
@@ -176,7 +177,7 @@ static const char* zone_time(int z) {
 		tzset();
 		struct tm tm;
 		localtime_r(&now, &tm);
-		strftime(zone_times[z], sizeof(zone_times[z]), CFG_getClock24H() ? "%H:%M" : "%I:%M %p", &tm);
+		bramley_clock(&tm, zone_times[z], sizeof(zone_times[z]), 1);
 		if (tz) setenv("TZ", saved, 1);
 		else unsetenv("TZ");
 		tzset();
