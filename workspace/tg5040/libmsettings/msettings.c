@@ -836,26 +836,22 @@ void SetMute(int value) {
 	SetExposure(GetExposure());
 	applyDisplayCalSettings();
 
-	if(is_brick && GetMuteDisablesDpad())
-		disableDpad(settings->mute);
-	if(is_brick && GetMuteEmulatesJoystick())
-		emulateJoystick(settings->mute);
-	if(GetMuteTurboA())
-		turboA(settings->mute);
-	if(GetMuteTurboB())
-		turboB(settings->mute);
-	if(GetMuteTurboX())
-		turboX(settings->mute);
-	if(GetMuteTurboY())
-		turboY(settings->mute);
-	if(GetMuteTurboL1())
-		turboL1(settings->mute);
-	if(GetMuteTurboL2())
-		turboL2(settings->mute);
-	if(GetMuteTurboR1())
-		turboR1(settings->mute);
-	if(GetMuteTurboR2())
-		turboR2(settings->mute);
+	// Bramley: each one is set from both the switch and its option, so turning the switch off
+	// always clears it. Before, an option turned off while the switch was on kept its file, and
+	// turbo or the D-pad mode stayed on in games until a reboot.
+	int m = settings->mute;
+	if(is_brick) {
+		disableDpad(m && GetMuteDisablesDpad());
+		emulateJoystick(m && GetMuteEmulatesJoystick());
+	}
+	turboA(m && GetMuteTurboA());
+	turboB(m && GetMuteTurboB());
+	turboX(m && GetMuteTurboX());
+	turboY(m && GetMuteTurboY());
+	turboL1(m && GetMuteTurboL1());
+	turboL2(m && GetMuteTurboL2());
+	turboR1(m && GetMuteTurboR1());
+	turboR2(m && GetMuteTurboR2());
 }
 
 void SetMutedBrightness(int value)
