@@ -14,6 +14,10 @@ Install
 Installing over Brick Hammer Launcher updates it in place. Afterwards the old
 "Brick Hammer Launcher.pak" folder can be deleted.
 
+Installing also changes the start-up screens to Bramley's: the logo shown when the device turns
+on, and the loading picture after it. The stock ones are kept on the card in
+.userdata/shared/.bramley and come back when Bramley is removed.
+
 Remove
 ------
 Open the Bramley Pak again (it is in Apps). Stock NextUI comes back.

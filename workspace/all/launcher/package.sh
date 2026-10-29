@@ -51,6 +51,8 @@ cp "$HERE/VERSION" "$PAK/"
 cp "$ROOT/THIRD-PARTY-LICENSES.md" "$HERE/res/Inter-LICENSE.txt" "$PAK/"
 cp "$ROOT/LICENSE" "$PAK/LICENSE-NextUI.txt"
 cp "$HERE/package/README.txt" "$PAK/"
+cp "$ROOT/docs/brand/bramley-bootlogo.bmp" "$PAK/bootlogo.bmp"
+cp "$ROOT/docs/brand/bramley-splash.png" "$PAK/splash.png"
 chmod +x "$PAK/launch.sh" "$PAK/launcher.elf" "$PAK/settings.elf" "$PAK/minarch.elf" "$PAK/muse" "$PAK/nextui-wrapper.sh"
 file "$PAK/launcher.elf" "$PAK/settings.elf" "$PAK/minarch.elf" "$PAK/muse" | sed 's/,.*//'
 

@@ -9,6 +9,10 @@
 # (nextui-wrapper.sh, installed as nextui.elf) falls back to the stock launcher if ours ever
 # crashes on start. Music bookmarks and Bramley's settings in .userdata are kept either way.
 #
+# Installing also sets the start-up screens to Bramley's: the boot logo on the boot partition and
+# the firmware's loading picture, keeping the stock ones in .userdata/shared/.bramley; removing puts
+# them back.
+#
 # A NextUI update can restore the stock programs; run this Pak again afterwards to reinstall.
 
 cd "$(dirname "$0")"
@@ -19,6 +23,9 @@ SETTINGS="$SDCARD_PATH/Tools/$PLATFORM/Settings.pak"
 WIFI="$SYSTEM_PATH/etc/wifi"
 LIB="$SYSTEM_PATH/lib"
 LOG="${LOGS_PATH:-$SDCARD_PATH/.userdata/$PLATFORM/logs}/bramley.txt"
+STATE="$SDCARD_PATH/.userdata/shared/.bramley"
+BOOTDEV=/dev/mmcblk0p1
+BOOTMNT=/tmp/bramley-boot
 MARK="Bramley: safety-net wrapper"
 OLD_MARK="Brick Hammer launcher: safety-net wrapper" # Bramley's name before 2026-10-27
 mkdir -p "$(dirname "$LOG")"
@@ -29,6 +36,50 @@ say() {
 
 installed() {
 	grep -q -e "$MARK" -e "$OLD_MARK" "$BIN/nextui.elf" 2>/dev/null
+}
+
+# The start-up screens: the boot logo on the boot partition and the firmware's loading picture
+# (/etc/splash.png). Both are outside the SD card, so the stock ones are kept on the card first and
+# each write is read back and checked. A failure leaves the stock picture in place.
+same() { [ "$(md5sum < "$1")" = "$(md5sum < "$2")" ]; }
+
+boot_logo() { # install | restore
+	mkdir -p "$BOOTMNT" "$STATE"
+	mount -t vfat "$BOOTDEV" "$BOOTMNT" 2>/dev/null || { say "boot logo: could not open the boot partition; left as it was"; return; }
+	if [ "$1" = install ]; then
+		[ -f "$STATE/bootlogo-stock.bmp" ] || cp -f "$BOOTMNT/bootlogo.bmp" "$STATE/bootlogo-stock.bmp"
+		if [ -f "$STATE/bootlogo-stock.bmp" ] && cp -f "$PAK/bootlogo.bmp" "$BOOTMNT/bootlogo.bmp.new" && sync &&
+			same "$PAK/bootlogo.bmp" "$BOOTMNT/bootlogo.bmp.new" && mv -f "$BOOTMNT/bootlogo.bmp.new" "$BOOTMNT/bootlogo.bmp"; then
+			say "boot logo: Bramley's"
+		else
+			rm -f "$BOOTMNT/bootlogo.bmp.new"
+			say "boot logo: could not write; the stock one stays"
+		fi
+	elif [ -f "$STATE/bootlogo-stock.bmp" ]; then
+		cp -f "$STATE/bootlogo-stock.bmp" "$BOOTMNT/bootlogo.bmp" && sync && same "$STATE/bootlogo-stock.bmp" "$BOOTMNT/bootlogo.bmp" &&
+			rm -f "$STATE/bootlogo-stock.bmp" && say "boot logo: stock one back"
+	fi
+	sync
+	umount "$BOOTMNT"
+}
+
+splash() { # install | restore
+	mkdir -p "$STATE"
+	if [ "$1" = install ]; then
+		[ -f /etc/splash.png ] || return
+		[ -f "$STATE/splash-stock.png" ] || cp -f /etc/splash.png "$STATE/splash-stock.png"
+		if [ -f "$STATE/splash-stock.png" ] && cp -f "$PAK/splash.png" /etc/splash.png.new && sync &&
+			same "$PAK/splash.png" /etc/splash.png.new && chmod 775 /etc/splash.png.new && mv -f /etc/splash.png.new /etc/splash.png; then
+			say "splash: Bramley's"
+		else
+			rm -f /etc/splash.png.new
+			say "splash: could not write; the stock one stays"
+		fi
+	elif [ -f "$STATE/splash-stock.png" ]; then
+		cp -f "$STATE/splash-stock.png" /etc/splash.png && sync && same "$STATE/splash-stock.png" /etc/splash.png &&
+			rm -f "$STATE/splash-stock.png" && say "splash: stock one back"
+	fi
+	sync
 }
 
 # Puts back a stock program kept as <name>-stock.elf, if there is one.
@@ -66,6 +117,8 @@ if installed && [ "$(cat "$BIN/.bramley-version" 2>/dev/null)" = "$(cat VERSION)
 	rm -f "$BIN/launcher.elf" "$BIN/muse" "$BIN/.bramley-version"
 	rm -f "$RES/Inter-Regular.ttf" "$RES/Inter-SemiBold.ttf" "$RES/Inter-Bold.ttf"
 	rm -rf "$RES/bramley"
+	boot_logo restore
+	splash restore
 	sync
 	say "removed $(cat VERSION); stock NextUI is back"
 	exit 0
@@ -97,6 +150,8 @@ fi
 mkdir -p "$RES/bramley"
 cp -f "$PAK"/fonts/*.ttf "$RES/"
 cp -rf "$PAK"/res/* "$RES/bramley/"
+boot_logo install
+splash install
 cp -f VERSION "$BIN/.bramley-version"
 rm -f /tmp/launcher_crashes
 sync
