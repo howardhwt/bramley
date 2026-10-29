@@ -24,6 +24,7 @@
 #include "lradio.h"
 #include "lmusic.h"
 #include "bramley.h"
+#include "bramley_update.h"
 #include "lwallpaper.h"
 
 #define SCREEN_W 1024
@@ -251,6 +252,9 @@ static SDL_Surface* screen;
 static int settings_wants_music, back_to_settings;
 // Set when Settings has left its own frame in the blur snapshot for Now Playing to use.
 static int np_over_settings;
+
+// Set while Software Update has an update waiting (bramley_update.h); read every half minute.
+static int update_waiting;
 
 static int is_settings(const Card* card) {
 	return card->kind == CARD_TOOL && suffixMatch("/Settings.pak", (char*)card->path);
@@ -580,6 +584,11 @@ static void draw_icon(int r, int c, float row_alpha) {
 		}
 	}
 	if (focused && shine_t < 1.0f) lgfx_draw_shine(x, y, w, h, radius, shine_t);
+	// Settings carries a red dot while a Bramley update waits, as iOS badges an app
+	if (update_waiting && is_settings(card)) {
+		float d = 22 * s;
+		lgfx_draw_fill(x + w - d * 0.7f, y - d * 0.3f, d, d, d * 0.5f, BRAMLEY_ALERT, row_alpha);
+	}
 }
 
 static void draw_pill(LTex* text, float x, float y) {
@@ -1957,6 +1966,18 @@ int main(int argc, char* argv[]) {
 		if (exists("/tmp/launcher_reload")) {
 			unlink("/tmp/launcher_reload");
 			break;
+		}
+
+		// Software Update: the quiet daily check while Wi-Fi is on, and the dot on Settings
+		static Uint32 update_at;
+		if (!update_at || now - update_at > 30000) {
+			update_at = now | 1;
+			if (!lfiles_is_open() && !lactivity_is_open()) update_tick();
+			int waiting = update_badge();
+			if (waiting != update_waiting) {
+				update_waiting = waiting;
+				dirty = 1;
+			}
 		}
 
 		if (lock_state != LOCK_NONE) {

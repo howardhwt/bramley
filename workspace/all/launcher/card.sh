@@ -13,11 +13,13 @@
 #   Bramley-<version>-card.zip   the whole card, to extract onto an empty FAT32 card
 #   Bramley-<version>-update.zip MinUI.zip only, to put at the root of a card that already runs
 #                                 NextUI or Bramley; the device installs it on the next start
+#   bramley-update.txt           what Software Update reads from the latest release: the version,
+#                                 the card zip's name, size and SHA-256, and release-notes.txt
 set -e
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
-VERSION="$(cat "$HERE/VERSION")"
+VERSION="${BRAMLEY_VERSION:-$(cat "$HERE/VERSION")}"   # BRAMLEY_VERSION overrides, for test builds
 OUT="$ROOT/build/card"
 CACHE="$ROOT/build/card-cache"
 
@@ -126,4 +128,14 @@ mkdir -p "$ROOT/releases"
 rm -f "$ROOT/releases/Bramley-$VERSION-card.zip" "$ROOT/releases/Bramley-$VERSION-update.zip"
 (cd "$CARD" && zip -q -r -X "$ROOT/releases/Bramley-$VERSION-card.zip" .)
 cp "$OUT/MinUI.zip" "$ROOT/releases/Bramley-$VERSION-update.zip"
-ls -l "$ROOT/releases/Bramley-$VERSION-card.zip" "$ROOT/releases/Bramley-$VERSION-update.zip"
+ZIPF="Bramley-$VERSION-card.zip"
+{
+	echo "bramley-update 1"
+	echo "version $VERSION"
+	echo "file $ZIPF"
+	echo "size $(stat -f%z "$ROOT/releases/$ZIPF")"
+	echo "sha256 $(shasum -a 256 "$ROOT/releases/$ZIPF" | cut -d' ' -f1)"
+	echo "notes"
+	cat "$HERE/release-notes.txt"
+} > "$ROOT/releases/bramley-update.txt"
+ls -l "$ROOT/releases/$ZIPF" "$ROOT/releases/Bramley-$VERSION-update.zip" "$ROOT/releases/bramley-update.txt"

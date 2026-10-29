@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <openssl/evp.h>
 #include <pthread.h>
+#include <spawn.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,7 +27,10 @@
 #define MANIFEST_TMP DIR "/manifest.txt"
 #define PART DIR "/download.part"
 #define ZIP DIR "/download.zip"
+#define TEST_SERVER DIR "/test-server.txt"
 #define DAY (24 * 3600)
+
+extern char** environ;
 
 #ifdef __APPLE__
 #define UNZIP "unzip" // the Mac's own, for the desktop build
@@ -200,26 +204,38 @@ void update_get(UpdateInfo* out) {
 static int curl(const char* out, const char* url, int resume, int max_seconds) {
 	char timeout[16];
 	snprintf(timeout, sizeof(timeout), "%d", max_seconds);
-	pid_t pid = fork();
-	if (pid == 0) {
-		if (resume)
-			execlp("curl", "curl", "-s", "-f", "-L", "--cacert", CA_BUNDLE, "--connect-timeout", "15", "-m", timeout,
-			       "-C", "-", "-o", out, url, (char*)NULL);
-		else
-			execlp("curl", "curl", "-s", "-f", "-L", "--cacert", CA_BUNDLE, "--connect-timeout", "15", "-m", timeout,
-			       "-o", out, url, (char*)NULL);
-		_exit(127);
+	const char* argv[20];
+	int n = 0;
+	const char* fixed[] = {"curl", "-s", "-f", "-L", "--cacert", CA_BUNDLE, "--connect-timeout", "15", "-m", timeout};
+	for (size_t i = 0; i < sizeof(fixed) / sizeof(fixed[0]); i++) argv[n++] = fixed[i];
+	if (resume) {
+		argv[n++] = "-C";
+		argv[n++] = "-";
 	}
+	argv[n++] = "-o";
+	argv[n++] = out;
+	argv[n++] = url;
+	argv[n] = NULL;
+	pid_t pid = -1;
+	// posix_spawn, not fork: forking a big process with GL and threads is fragile
+	if (posix_spawnp(&pid, "curl", NULL, NULL, (char* const*)argv, environ) != 0) pid = -1;
 	if (pid < 0) return -1;
 	pthread_mutex_lock(&lock);
 	curl_pid = pid;
 	pthread_mutex_unlock(&lock);
 	int status = 0;
-	while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+	pid_t w;
+	while ((w = waitpid(pid, &status, 0)) < 0 && errno == EINTR) {}
+	if (w < 0) {
+		LOG_info("bramley_update: waiting for curl failed (%s)\n", strerror(errno));
+		status = 0xFF00; // treated as a failure
+	}
 	pthread_mutex_lock(&lock);
 	curl_pid = 0;
 	pthread_mutex_unlock(&lock);
-	return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+	int rc = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+	if (rc != 0) LOG_info("bramley_update: curl %s ended with %d\n", url, rc);
+	return rc;
 }
 
 static int sha256_of(const char* path, char hex[65]) {
@@ -276,12 +292,23 @@ static int parse_manifest(const char* path, UpdateInfo* m, char sum[65]) {
 	return 0;
 }
 
+// Development aid: an address in test-server.txt (such as http://127.0.0.1:8000, reached through
+// adb reverse) serves the manifest and the zip in place of GitHub, to test updates unpublished.
+static int test_server(char* base, size_t size) {
+	read_file(TEST_SERVER, base, size);
+	trim(base);
+	return base[0] != 0;
+}
+
 static void* check_thread(void* arg) {
 	(void)arg;
 	mkdir(BRAMLEY_STATE_DIR, 0755);
 	mkdir(DIR, 0755);
 	unlink(MANIFEST_TMP);
-	int rc = curl(MANIFEST_TMP, MANIFEST_URL, 0, 30);
+	char url[512], base[256];
+	if (test_server(base, sizeof(base))) snprintf(url, sizeof(url), "%s/bramley-update.txt", base);
+	else snprintf(url, sizeof(url), "%s", MANIFEST_URL);
+	int rc = curl(MANIFEST_TMP, url, 0, 30);
 	UpdateInfo m = {0};
 	char sum[65];
 	pthread_mutex_lock(&lock);
@@ -343,7 +370,9 @@ static void* download_thread(void* arg) {
 	char url[512], file[128], sum[65];
 	pthread_mutex_lock(&lock);
 	snprintf(file, sizeof(file), "%s", info.file);
-	snprintf(url, sizeof(url), RELEASE_URL, info.version, file);
+	char base[256];
+	if (test_server(base, sizeof(base))) snprintf(url, sizeof(url), "%s/%s", base, file);
+	else snprintf(url, sizeof(url), RELEASE_URL, info.version, file);
 	snprintf(sum, sizeof(sum), "%s", sha256);
 	pthread_mutex_unlock(&lock);
 

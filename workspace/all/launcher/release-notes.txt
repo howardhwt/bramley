@@ -1,0 +1,1 @@
+Bramley now updates itself. Software Update in Settings finds new versions, downloads them over Wi-Fi and installs them on restart. Every emulator core is now built by Bramley, with its source listed on the card.
