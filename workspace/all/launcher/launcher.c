@@ -1860,6 +1860,13 @@ static void draw_frame(int show_setting) {
 	lgfx_end_frame();
 }
 
+// For screens that run their own loop (Files' keyboard): keeps the development key script going.
+void launcher_debug_tick(void) {
+	debug_drawing = 1;
+	debug_step();
+	debug_drawing = 0;
+}
+
 static double now_ms(void) {
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);

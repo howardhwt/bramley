@@ -43,6 +43,7 @@ struct BramleyView
 	static std::vector<AbstractMenuItem *> &items(MenuList *l) { return l->items; }
 	static std::any live(AbstractMenuItem *i) { return i->on_get ? i->on_get() : i->getValue(); }
 	static const KeyboardState &keyboard(KeyboardPrompt *k) { return k->state.keyboard; }
+	static ExitCode exit_code(KeyboardPrompt *k) { return k->state.exit_code; }
 	static const WIFI_network &network(Wifi::NetworkItem *n) { return n->net; }
 	static bool connected(Wifi::NetworkItem *n) { return n->connected; }
 	struct Picker
@@ -814,9 +815,12 @@ void draw_about_title(float x, float y)
 	text(LFONT_TITLE, "Bramley", x + (mark ? 72 : 0), y, 1);
 }
 
+// The app name in the top left; the launcher's Files sets its own while it borrows the keyboard.
+const char *top_label = "Settings";
+
 void draw_top_bar()
 {
-	text(LFONT_LABEL, "Settings", 48, 30, 0.55f);
+	text(LFONT_LABEL, top_label, 48, 30, 0.55f);
 	time_t now = time(NULL);
 	struct tm tm;
 	localtime_r(&now, &tm);
@@ -1582,4 +1586,48 @@ extern "C" int bramley_settings_typing(void)
 	std::vector<std::string> titles;
 	open_chain(last.root, chain, titles);
 	return BramleyView::type(chain.back()) == MenuItemType::Custom; // SELECT belongs to the page
+}
+
+// For the launcher (C): the Bramley keyboard on its own, for a name. Runs until A on Done or B,
+// drawing backdrop() under the keyboard each frame. Returns 1 with the text in out, 0 if cancelled.
+extern "C" int bramley_text_input(const char *app, const char *title, const char *initial, char *out, size_t size,
+                                  void (*backdrop)(void), void (*after)(void))
+{
+	KeyboardPrompt kp(title);
+	kp.setInitialText(initial ? initial : "");
+	const char *was = top_label;
+	top_label = app;
+	int dirty = 1, done = 0, ok = 0;
+	while (!done)
+	{
+		GFX_startFrame();
+		PAD_poll();
+		int quit = 0;
+		InputReactionHint r = kp.handleInput(dirty, quit);
+		if (quit || r == InputReactionHint::Exit)
+		{
+			const KeyboardState &k = BramleyView::keyboard(&kp);
+			ok = BramleyView::exit_code(&kp) == ExitCode::Success;
+			if (ok)
+				snprintf(out, size, "%s", k.final_text.c_str());
+			done = 1;
+		}
+		PWR_update(&dirty, NULL, NULL, NULL);
+		static const int scripted = getenv("LAUNCHER_DEBUG_KEYS") != NULL; // development: keep frames coming
+		if (!dirty && !scripted)
+		{
+			SDL_Delay(16);
+			continue;
+		}
+		lgfx_begin_frame();
+		if (backdrop)
+			backdrop();
+		draw_keyboard(&kp);
+		if (after)
+			after();
+		lgfx_end_frame();
+		dirty = 0;
+	}
+	top_label = was;
+	return ok;
 }

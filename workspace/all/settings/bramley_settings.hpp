@@ -66,3 +66,6 @@ void bramley_restore_section(MenuList *root);
 extern "C" void bramley_close_settings(int keep_place);
 // For the launcher: true while a page that uses SELECT itself (the keyboard) is open.
 extern "C" int bramley_settings_typing(void);
+// For the launcher: the Bramley keyboard on its own (see bramley_settings.cpp).
+extern "C" int bramley_text_input(const char *app, const char *title, const char *initial, char *out, size_t size,
+                                  void (*backdrop)(void), void (*after)(void));
