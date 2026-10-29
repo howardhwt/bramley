@@ -30,6 +30,7 @@ static struct {
 	int open, page, prev_page;
 	Uint32 intro_at;  // when the mark started to rise (0: still under the boot splash)
 	Uint32 page_at;   // when the current page came in
+	Uint32 closing_at; // when Get Started was pressed
 	int sel, top;
 	float fpos;       // focus position, following sel
 	Uint32 last_tick;
@@ -218,8 +219,9 @@ int lsetup_begin(void) {
 }
 
 static void finish(void) {
+	// the worker may be inside a scan for seconds; it stops on its own, nobody waits for it
 	worker_quit = 1;
-	pthread_join(worker_thread, NULL);
+	pthread_detach(worker_thread);
 	unlink(SETUP_PENDING);
 	ltex_free(S.mark);
 	ltex_free(S.backdrop);
@@ -443,6 +445,7 @@ static void draw_card(void) {
 	// a soft spring, as the launcher's focus moves
 	float x = clamp01((t - 0.5f) / 0.7f);
 	float c = 1 - expf(-6.5f * x) * cosf(7.5f * x);
+	if (S.closing_at) c *= 1 - ease_out(since(S.closing_at) / 0.22f); // leaves at once on the press
 	if (c <= 0.01f) return;
 	float cw = 560, ch = 236, cx = (W - cw) * 0.5f, cy = H - ch - 64 + (1 - c) * 40;
 	lgfx_draw_shadow(cx, cy, cw, ch, 18, 0.5f * c);
@@ -501,6 +504,10 @@ void lsetup_draw(float splash_alpha) {
 
 int lsetup_update(void) {
 	if (!S.open) return 0;
+	if (S.closing_at && since(S.closing_at) > 0.25f) {
+		finish();
+		return 1;
+	}
 	Uint32 now = SDL_GetTicks();
 	float dt = (now - S.last_tick) / 1000.0f;
 	S.last_tick = now;
@@ -540,8 +547,8 @@ static void join(int i) {
 int lsetup_input(void) {
 	if (!S.open) return 0;
 	if (S.page == PAGE_CARD) {
-		if (since(S.page_at) > 0.6f && (PAD_justPressed(BTN_A) || PAD_justPressed(BTN_B))) {
-			finish();
+		if (!S.closing_at && since(S.page_at) > 0.6f && (PAD_justPressed(BTN_A) || PAD_justPressed(BTN_B))) {
+			S.closing_at = SDL_GetTicks() | 1;
 			return 1;
 		}
 		return 0;
