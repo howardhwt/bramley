@@ -197,6 +197,11 @@ def main():
     os.makedirs(res_brand, exist_ok=True)
     for s in (176, 64):
         icon(s).save(os.path.join(res_brand, "icon-%d.png" % s))
+    # the bare mark as the boot logo draws it (150 px, white), for the launcher's start-up splash
+    m = mark_mask(600).resize((150, 150), Image.LANCZOS)
+    mark = Image.new("RGBA", (150, 150), (255, 255, 255, 0))
+    mark.putalpha(m)
+    mark.save(os.path.join(res_brand, "mark-150.png"))
     print("wrote", OUT)
 
 

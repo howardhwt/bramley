@@ -1781,12 +1781,62 @@ static void check_battery(void) {
 	PWR_powerOff(0);
 }
 
+// The start-up splash after a cold boot: the boot logo's mark, in the same place, over black, with a
+// thin bar that fills while the home screen gets ready, then fades into it, as Apple's devices
+// start. /tmp is empty after every boot, so a flag there tells a cold boot from a return to home.
+#define SPLASH_FLAG "/tmp/bramley_booted"
+static struct {
+	int on;
+	Uint32 start, fade_at;
+	float progress;
+	LTex* mark;
+} splash;
+
+static void splash_begin(void) {
+	if (exists(SPLASH_FLAG)) return;
+	touch(SPLASH_FLAG);
+	splash.mark = ltex_load(BRAMLEY_RES_DIR "/brand/mark-150.png", 0);
+	if (!splash.mark) return;
+	splash.on = 1;
+	splash.start = SDL_GetTicks();
+}
+
+// Moves the bar on. It fills over about a second, waits at 85% until the wallpaper is in, then
+// finishes and fades out over 0.4 s. Returns 1 while it is still showing.
+static int splash_update(void) {
+	if (!splash.on) return 0;
+	Uint32 now = SDL_GetTicks();
+	float t = (now - splash.start) / 1000.0f;
+	int ready = !wall_thread || SDL_AtomicGet(&wall_done) || t > 3;
+	float goal = fminf(1.0f, t / 1.0f) * (ready ? 1.0f : 0.85f);
+	if (goal > splash.progress) splash.progress = goal;
+	if (splash.progress >= 1.0f && !splash.fade_at) splash.fade_at = now + 150;
+	if (splash.fade_at && now > splash.fade_at + 400) {
+		splash.on = 0;
+		ltex_free(splash.mark);
+		splash.mark = NULL;
+	}
+	return 1;
+}
+
+static void draw_splash(void) {
+	float a = 1;
+	if (splash.fade_at && SDL_GetTicks() > splash.fade_at) a = fmaxf(0, 1 - (SDL_GetTicks() - splash.fade_at) / 400.0f);
+	lgfx_draw_fill(0, 0, SCREEN_W, SCREEN_H, 0, 0, 0, 0, a);
+	// the boot logo's mark: 150 px, centred 20 px above the middle (docs/brand)
+	lgfx_draw_tex(splash.mark, (SCREEN_W - 150) / 2, (SCREEN_H - 150) / 2 - 20, 150, 150, 0, a);
+	float bw = 200, bx = (SCREEN_W - bw) * 0.5f, by = SCREEN_H * 0.5f + 110;
+	lgfx_draw_fill(bx, by, bw, 6, 3, 0.24f, 0.24f, 0.25f, a);
+	lgfx_draw_fill(bx, by, fmaxf(6, bw * splash.progress), 6, 3, 0.92f, 0.92f, 0.92f, a);
+}
+
 static void draw_frame(int show_setting) {
 	lgfx_begin_frame();
 	if (np.open) draw_now_playing();
 	else if (qm.open) draw_quick_menu();
 	else draw_scene();
 	draw_setting_overlay(show_setting);
+	if (splash.on) draw_splash();
 
 	if (toast && SDL_GetTicks() / 1000.0 < toast_until) {
 		float w = toast->w + 48, h = toast->h + 24, x = (SCREEN_W - w) * 0.5f, y = SCREEN_H - h - 40;
@@ -1845,6 +1895,7 @@ int main(int argc, char* argv[]) {
 
 	lgfx_init(SCREEN_W, SCREEN_H);
 	PWR_drawPowerOffScreen = power_screen; // shutting down from the launcher draws with the kit
+	splash_begin();
 	t[nt++] = now_ms();
 	lradio_start();
 	lmusic_init();
@@ -2118,6 +2169,7 @@ int main(int argc, char* argv[]) {
 			animating |= load_next_art();
 		}
 		animating |= update_status();
+		animating |= splash_update();
 		if (toast && SDL_GetTicks() / 1000.0 < toast_until + 0.1) animating = 1;
 
 		// The playing indicator moves too, but 10 times a second is enough for three bars.
