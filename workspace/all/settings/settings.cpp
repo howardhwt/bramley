@@ -1116,18 +1116,23 @@ int settings_run(SDL_Surface *host_screen)
 
         auto aboutMenu = new MenuList(MenuItemType::Fixed, "About",
         {
-            new StaticMenuItem{ListItemType::Generic, "NextUI version", "",
+            // Bramley: Bramley's version, written by the installer in both the Pak and the card,
+            // and a credit to NextUI, which Bramley is forked from.
+            new StaticMenuItem{ListItemType::Generic, "Version", "",
             []() -> std::any {
-                std::ifstream t(ROOT_SYSTEM_PATH "/version.txt");
-                std::stringstream buffer;
-                buffer << t.rdbuf();
-                return buffer.str();
+                std::ifstream t(BIN_PATH "/.bramley-version");
+                std::string v;
+                std::getline(t, v);
+                return v.empty() ? std::string("Unknown") : v;
             }},
+            new StaticMenuItem{ListItemType::Generic, "Based on", "",
+            []() -> std::any { return std::string("NextUI 6.15.0"); }
+            },
             new StaticMenuItem{ListItemType::Generic, "Platform", "",
             []() -> std::any {
                 return std::string(PLAT_getModel()); }
             },
-            new StaticMenuItem{ListItemType::Generic, "Stock OS version", "",
+            new StaticMenuItem{ListItemType::Generic, "TrimUI firmware", "",
             []() -> std::any {
                 char osver[128];
                 PLAT_getOsVersionInfo(osver, 128);

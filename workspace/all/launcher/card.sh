@@ -82,13 +82,19 @@ cp "$ROOT/docs/brand/bramley-install-logo.png" "$SYS/.tmp_update/tg5040/logo.png
 
 echo "== names users see"
 sed -i '' 's/TEXT:Updating NextUI/TEXT:Updating Bramley/; s/TEXT:Installing NextUI/TEXT:Setting up Bramley/' "$SYS/.tmp_update/tg5040.sh"
+# the add-on packages (the Bluetooth update) showed their full path; plain words instead
+sed -i '' 's/TEXT:Extracting \$pakz/TEXT:Setting up Bramley/; s/TEXT:Installing \$pakz/TEXT:Setting up Bramley/' "$SYS/.tmp_update/tg5040.sh"
 sed -i '' 's/(NextUI)/(Bramley)/' "$SYS/.system/tg5040/etc/bluetooth/bt_init.sh"
 printf 'Bramley %s\n%s\n' "$VERSION" "$(git -C "$ROOT" rev-parse --short HEAD)" > "$SYS/.system/version.txt"
+# A new card runs the first-boot copy in trimui/app, which upstream matches the one in MinUI.zip.
+TU="$CARD/trimui/app/.tmp_update"
+rm -rf "$TU"
+cp -R "$SYS/.tmp_update" "$TU"
 
 echo "== card root"
 rm -f "$CARD/nextui.pak_store.pakz" "$CARD/nextui.updater.pakz"   # NextUI's store and updater: not shipped
-cp "$PAK/README.txt" "$CARD/README.txt"
-cp "$ROOT/THIRD-PARTY-LICENSES.md" "$ROOT/LICENSE" "$CARD/" 2>/dev/null || true
+cp "$HERE/card/README.txt" "$CARD/README.txt"
+cp "$ROOT/THIRD-PARTY-LICENSES.md" "$ROOT/LICENSE" "$HERE/res/Inter-LICENSE.txt" "$CARD/"
 
 echo "== zipping"
 (cd "$SYS" && rm -f "$OUT/MinUI.zip" && zip -q -r -X "$OUT/MinUI.zip" .system .tmp_update Tools)
