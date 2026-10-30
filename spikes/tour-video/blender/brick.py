@@ -48,9 +48,9 @@ M_PILL = mat("pill", srgb("b9babd"), rough=0.4)
 M_GLASS = mat("glass", srgb("060607"), rough=0.08, coat=0.6)
 M_HOLE = mat("hole", srgb("0a0a0a"), rough=0.8)
 M_LETTER = mat("letter", srgb("4a4a4d"), rough=0.5)
-M_ENGRAVE = mat("engrave", srgb("2e2f32"), metal=1.0, rough=0.7)
+M_ENGRAVE = mat("engrave", srgb("3f4045"), metal=1.0, rough=0.62)
 M_TEAL = mat("teal", srgb("5fd6c8"), rough=0.35, emit=srgb("5fd6c8"), strength=0.4)
-M_LABEL = mat("label", srgb("060607"), rough=0.08, coat=1.0)
+M_LABEL = mat("label", (0.0, 0.0, 0.0), rough=0.03)
 M_LABEL_TEXT = mat("labeltext", srgb("c8c8cc"), rough=0.5)
 M_LED = mat("led", LED, emit=LED, strength=6.0)
 M_PILL_LIT = mat("pill_lit", (0.85, 0.95, 1.0), rough=0.3, emit=LED, strength=3.0)
@@ -136,7 +136,7 @@ slab("grip", outline(x0, 0, x1, GRIP_TOP, 0.0012, 0.0012, R_BOT, R_BOT), D1 - 0.
 for i in range(26):
     z = GRIP_TOP * 0.10 + i * GRIP_TOP * 0.028
     left = fx(0.10) if i % 7 else fx(0.30)
-    slab(f"line{i}", outline(left, z, fx(0.86), z + GRIP_TOP * 0.0045, 0.0001, 0.0001, 0.0001, 0.0001, 2),
+    slab(f"line{i}", outline(left, z, fx(0.86), z + GRIP_TOP * 0.003, 0.0001, 0.0001, 0.0001, 0.0001, 2),
          D2 - 0.00005, D2 + 0.00004, M_ENGRAVE, bevel=0)
 text("BRICK HAMMER", 0, GRIP_TOP * 0.88, W * 0.045, M_ENGRAVE, D2 + 0.00006, face="back", align="CENTER")
 text("FC  CE", fx(0.24), GRIP_TOP * 0.16, W * 0.05, M_ENGRAVE, D2 + 0.00006, face="back", align="CENTER")
@@ -225,9 +225,15 @@ for v, mark in ((0.09, "+"), (0.195, "-")):    # volume, near the top of the lef
     side_key(-1, v, H * 0.076, M_BLACK)
     t = text(mark, -W / 2 - 0.00075, fz(v), W * 0.04, M_ICON, D1 * 0.5, align="CENTER")
     t.rotation_euler = (math.radians(90), 0, math.radians(-90)); t.location = (-W / 2 - 0.00075, D1 * 0.5, fz(v))
-t = text("TRIMUI \u2234 BRICK", W / 2 + 0.00002, fz(0.86), W * 0.035, M_ENGRAVE, D1 * 0.5, align="CENTER")
-t.data.body = "TRIMUI ∴ BRICK"
-t.rotation_euler = (math.radians(90), math.radians(-90), math.radians(90)); t.location = (W / 2 + 0.00002, D1 * 0.55, fz(0.86))
+# "TRIMUI", the three-dot mark as three discs (no font needed), "BRICK", running up the right side
+for word, v in (("TRIMUI", 0.93), ("BRICK", 0.80)):
+    t = text(word, W / 2 + 0.00002, fz(v), W * 0.035, M_ENGRAVE, D1 * 0.5, align="CENTER")
+    t.rotation_euler = (math.radians(90), math.radians(-90), math.radians(90)); t.location = (W / 2 + 0.00002, D1 * 0.55, fz(v))
+for a in (0, 120, 240):
+    bpy.ops.mesh.primitive_cylinder_add(vertices=24, radius=W * 0.0045, depth=0.00004,
+        location=(W / 2 + 0.00002, D1 * 0.55 + math.cos(math.radians(a)) * W * 0.006, fz(0.865) + math.sin(math.radians(a)) * W * 0.006),
+        rotation=(0, math.radians(90), 0))
+    bpy.context.object.data.materials.append(M_ENGRAVE)
 # bottom edge: card slot, USB-C, headphone jack
 # bottom edge, measured on the bottom view: card slot, reset, USB-C, light, headphones
 def bottom_hole(u, w_, h_, r):
