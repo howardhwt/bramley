@@ -1,1 +1,1 @@
-A new look for Home: every console, collection and app gets a widget tile with an icon, its name and a count, and consoles use the short names people know, such as NES, Super NES and Genesis. Downloads also hold up better on a weak connection.
+Home has a new look: every console, collection and app is a colour tile like iOS Shortcuts, and the focused one shows large, with when you last played it.
