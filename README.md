@@ -38,7 +38,7 @@ Cards over 32 GB: macOS formats them as FAT32 in Disk Utility (MS-DOS (FAT)). Wi
 - **In-game menu.** Save states, achievements and quiet notifications, redrawn to match.
 
 <p align="center">
-  <img width="32%" src="docs/screenshots/library.png" alt="A game library">
+  <img width="32%" src="docs/screenshots/activity.png" alt="Activity, time played this week">
   <img width="32%" src="docs/screenshots/nowplaying.png" alt="Now Playing">
   <img width="32%" src="docs/screenshots/settings.png" alt="Settings">
 </p>
@@ -50,6 +50,7 @@ Cards over 32 GB: macOS formats them as FAT32 in Disk Utility (MS-DOS (FAT)). Wi
   <img width="49%" src="docs/screenshots/quickmenu.png" alt="The quick menu">
   <img width="49%" src="docs/screenshots/files.png" alt="Files">
   <img width="49%" src="docs/screenshots/home.png" alt="Home, with the Consoles row">
+  <img width="49%" src="docs/screenshots/library.png" alt="A game library">
 </p>
 </details>
 
