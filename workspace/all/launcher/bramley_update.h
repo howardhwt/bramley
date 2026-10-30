@@ -22,6 +22,7 @@ typedef enum {
 	UPDATE_DOWNLOADING,
 	UPDATE_READY,       // downloaded and verified
 	UPDATE_INSTALLING,
+	UPDATE_INSTALLED,   // unpacked; the device restarts to finish
 	UPDATE_FAILED,      // the last step failed; error says why
 } UpdateState;
 
@@ -49,9 +50,9 @@ void update_download(void);
 // Cancels a download and deletes what was downloaded. (A download that breaks off by itself keeps
 // its part, and the next download resumes it.)
 void update_stop(void);
-// Unpacks the downloaded release onto the card (a few seconds). Returns 0 when the device
-// should restart to finish, or -1 with the error in update_get.
-int update_install(void);
+// Unpacks the downloaded release onto the card on its own thread (a few seconds). The state turns
+// UPDATE_INSTALLED when the device should restart to finish, or UPDATE_FAILED with the error.
+void update_install(void);
 // Whether the launcher checks by itself once a day (on by default).
 int update_auto(void);
 void update_set_auto(int on);

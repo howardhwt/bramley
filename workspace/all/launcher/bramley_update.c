@@ -604,14 +604,8 @@ void update_stop(void) {
 	pthread_mutex_unlock(&lock);
 }
 
-int update_install(void) {
-	update_init();
+static int install_now(void) {
 	pthread_mutex_lock(&lock);
-	if (busy || fake || info.state != UPDATE_READY) {
-		pthread_mutex_unlock(&lock);
-		return -1;
-	}
-	info.state = UPDATE_INSTALLING;
 	char sum[65];
 	snprintf(sum, sizeof(sum), "%s", sha256);
 	pthread_mutex_unlock(&lock);
@@ -651,6 +645,29 @@ int update_install(void) {
 	sync();
 	pthread_mutex_unlock(&lock);
 	return 0;
+}
+
+static void* install_thread(void* arg) {
+	(void)arg;
+	int rc = install_now();
+	pthread_mutex_lock(&lock);
+	if (rc == 0) info.state = UPDATE_INSTALLED;
+	busy = 0;
+	pthread_mutex_unlock(&lock);
+	return NULL;
+}
+
+void update_install(void) {
+	update_init();
+	pthread_mutex_lock(&lock);
+	if (busy || fake || info.state != UPDATE_READY) {
+		pthread_mutex_unlock(&lock);
+		return;
+	}
+	busy = 1;
+	info.state = UPDATE_INSTALLING; // shown at once; the work runs on its own thread
+	pthread_mutex_unlock(&lock);
+	start(install_thread);
 }
 
 int update_downloading(void) {

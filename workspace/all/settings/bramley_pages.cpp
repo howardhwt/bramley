@@ -619,6 +619,9 @@ void SoftwareUpdateMenu::refresh()
     case UPDATE_INSTALLING:
         action->rename("Installing\xE2\x80\xA6", "");
         break;
+    case UPDATE_INSTALLED:
+        action->rename("Restarting\xE2\x80\xA6", "");
+        break;
     default:
         if (u.newer && u.done > 0 && u.done < u.size)
         {
@@ -637,8 +640,12 @@ void SoftwareUpdateMenu::refresh()
 InputReactionHint SoftwareUpdateMenu::handleInput(int &dirty, int &quit)
 {
     refresh();
-    if (installing)
-        return NoOp;
+    UpdateInfo now;
+    update_get(&now);
+    if (now.state == UPDATE_INSTALLED)
+        PWR_powerOff(1); // restarts; the install screen finishes the update
+    if (now.state == UPDATE_INSTALLING || now.state == UPDATE_INSTALLED)
+        return NoOp; // nothing to press while it installs
     if (scope.selected == 0 && PAD_justPressed(BTN_A))
     {
         UpdateInfo u;
@@ -651,13 +658,7 @@ InputReactionHint SoftwareUpdateMenu::handleInput(int &dirty, int &quit)
         else if (n == "Cancel Download")
             update_stop();
         else if (n == "Restart and Install")
-        {
-            installing = true;
-            refresh();
-            if (update_install() == 0)
-                PWR_powerOff(1); // restarts; the install screen finishes the update
-            installing = false;
-        }
+            update_install(); // on its own thread; the page shows Installing until it is done
         refresh();
         dirty = 1;
         return NoOp;

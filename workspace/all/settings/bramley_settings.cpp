@@ -856,7 +856,7 @@ void draw_software_update(SoftwareUpdateMenu *menu, float px, float y, float pw,
 	static LTex *mark;
 	if (!mark)
 		mark = ltex_load(BRAMLEY_RES_DIR "/brand/icon-176.png", 0);
-	if (u.state == UPDATE_CHECKING || u.state == UPDATE_DOWNLOADING || u.state == UPDATE_INSTALLING)
+	if (u.state == UPDATE_CHECKING || u.state == UPDATE_DOWNLOADING || u.state == UPDATE_INSTALLING || u.state == UPDATE_INSTALLED)
 		spinning = true; // the progress keeps moving
 	float x = px + 20, w = pw - 40;
 	if (u.newer && u.state != UPDATE_CHECKING)
@@ -879,7 +879,7 @@ void draw_software_update(SoftwareUpdateMenu *menu, float px, float y, float pw,
 			if (frac > 0)
 				lgfx_draw_fill(x + 20, ny + 46, std::max(8.0f, (w - 40) * frac), 8, 4, BRAMLEY_ACCENT, 1);
 		}
-		else if (u.state == UPDATE_INSTALLING)
+		else if (u.state == UPDATE_INSTALLING || u.state == UPDATE_INSTALLED)
 		{
 			draw_spinner(x + 29, ny + 19, 8);
 			text(LFONT_SMALL, "Installing\xE2\x80\xA6 The device restarts in a moment.", x + 50, ny + 8, 0.8f);

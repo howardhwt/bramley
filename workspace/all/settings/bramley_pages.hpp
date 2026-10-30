@@ -96,7 +96,6 @@ public:
     InputReactionHint handleInput(int &dirty, int &quit) override;
     void opened();
     void refresh(); // names the action row for the current state
-    bool installing = false;
 };
 // The Software Update row for System, or nullptr where Bramley cannot update itself (the Pak).
 AbstractMenuItem *bramley_software_update_item();
