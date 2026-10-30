@@ -52,9 +52,11 @@ M_ENGRAVE = mat("engrave", srgb("3f4045"), metal=1.0, rough=0.62)
 M_TEAL = mat("teal", srgb("5fd6c8"), rough=0.35, emit=srgb("5fd6c8"), strength=0.4)
 M_LABEL = mat("label", (0.0, 0.0, 0.0), rough=0.03)
 M_LABEL_TEXT = mat("labeltext", srgb("c8c8cc"), rough=0.5)
-M_LED = mat("led", LED, emit=LED, strength=6.0)
+M_LED = mat("led", LED, emit=LED, strength=4.0)
 M_PILL_LIT = mat("pill_lit", (0.85, 0.95, 1.0), rough=0.3, emit=LED, strength=3.0)
 M_ICON = mat("icon", srgb("3c3c3f"), rough=0.5)
+M_BRASS = mat("brass", srgb("b9a47a"), metal=1.0, rough=0.3)
+M_ETCH = mat("etch", srgb("8a8b90"), metal=1.0, rough=0.55)   # light, thin markings on the grip
 
 def screen_mat():
     m = bpy.data.materials.new("screen"); m.use_nodes = True
@@ -131,20 +133,26 @@ def text(s, x, z, size, material, y, rot_z=0.0, depth=0.00008, align="LEFT", fac
 # body: the upper slab and the grip behind its lower half
 x0, x1 = -W / 2, W / 2
 slab("body", outline(x0, 0, x1, H, R_TOP, R_TOP, R_BOT, R_BOT), 0, D1, M_BODY, bevel=0.0009, segs=4)
-slab("grip", outline(x0, 0, x1, GRIP_TOP, 0.0012, 0.0012, R_BOT, R_BOT), D1 - 0.0005, D2, M_BACK, bevel=0.0012, segs=4)
+slab("grip", outline(x0, 0, x1, GRIP_TOP, 0.0025, 0.0025, R_BOT, R_BOT), D1 - 0.0005, D2, M_BACK, bevel=0.0032, segs=8)
 # the grip's back: fine engraved lines (photos 5 and 8), its name, the marks, and four screw holes
 for i in range(26):
     z = GRIP_TOP * 0.10 + i * GRIP_TOP * 0.028
     left = fx(0.10) if i % 7 else fx(0.30)
     slab(f"line{i}", outline(left, z, fx(0.86), z + GRIP_TOP * 0.003, 0.0001, 0.0001, 0.0001, 0.0001, 2),
          D2 - 0.00005, D2 + 0.00004, M_ENGRAVE, bevel=0)
-text("BRICK HAMMER", 0, GRIP_TOP * 0.88, W * 0.045, M_ENGRAVE, D2 + 0.00006, face="back", align="CENTER")
-text("FC  CE", fx(0.24), GRIP_TOP * 0.16, W * 0.05, M_ENGRAVE, D2 + 0.00006, face="back", align="CENTER")
+t = text("BRICK HAMMER", 0, GRIP_TOP * 0.86, W * 0.036, M_ETCH, D2 + 0.00006, face="back", align="CENTER")
+t.data.font = bpy.data.fonts.load(INTER.replace("Bold", "Regular")); t.data.space_character = 1.6
+t = text("FC   CE   \u267b   \u2612", fx(0.27), GRIP_TOP * 0.17, W * 0.04, M_ETCH, D2 + 0.00006, face="back", align="CENTER")
+t.data.font = bpy.data.fonts.load(INTER.replace("Bold", "Regular")); t.data.body = "FC   CE"
 for (u, z) in [(0.07, GRIP_TOP * 0.90), (0.93, GRIP_TOP * 0.90), (0.07, GRIP_TOP * 0.07), (0.93, GRIP_TOP * 0.07)]:
     cyl("hole", fx(u), z, W * 0.016, D2 - 0.0003, D2 + 0.00005, M_HOLE, bevel=0)
 # two screws at the top corners of the upper back
 for u in (0.08, 0.92):
-    cyl("screw", fx(u), fz(0.035), W * 0.02, D1 - 0.0001, D1 + 0.00025, M_LETTER, bevel=0.0001)
+    cyl("screw", fx(u), fz(0.035), W * 0.019, D1 - 0.0001, D1 + 0.00022, M_BRASS, bevel=0.00012)
+    for horiz in (True, False):  # the cross
+        w_, h_ = (W * 0.022, W * 0.004) if horiz else (W * 0.004, W * 0.022)
+        slab("slot", outline(fx(u) - w_ / 2, fz(0.035) - h_ / 2, fx(u) + w_ / 2, fz(0.035) + h_ / 2, 0.00005, 0.00005, 0.00005, 0.00005, 1),
+             D1 + 0.00018, D1 + 0.00024, M_HOLE, bevel=0)
 # the black label with its light edge on the upper back (photo 7)
 # the black glass label at the top edge of the back, lit along its top (photo 8)
 slab("label", outline(fx(0.27), fz(0.125), fx(0.73), H - 0.0002, 0.0002, 0.0002, 0.0008, 0.0008, 4), D1 - 0.0001, D1 + 0.0004, M_LABEL, bevel=0.0001, segs=1)
@@ -155,23 +163,27 @@ for a in (90, 210, 330):  # the three-dot mark below it
         D1 - 0.00005, D1 + 0.00005, M_ICON, bevel=0)
 # shoulder buttons on the step, and the light under them
 # L1 and R1 wide and rounded at the outer corner, L2 and R2 narrow, USB-C between them (top view)
-for (u0, u1, r_out, side) in [(0.02, 0.27, W * 0.05, -1), (0.29, 0.43, 0.0008, -1), (0.57, 0.71, 0.0008, 1), (0.73, 0.98, W * 0.05, 1)]:
-    rl, rr = (r_out, 0.0008) if side < 0 else (0.0008, r_out)
-    slab("shoulder", outline(fx(u0), GRIP_TOP + 0.0012, fx(u1), GRIP_TOP + 0.0012 + H * 0.036, rl, rr, 0.0004, 0.0004, 8),
-         D1 + 0.0004, D2 - 0.0008, M_BLACK, bevel=0.0007, segs=4)
-slab("usb_top", outline(fx(0.445), GRIP_TOP + 0.0010, fx(0.555), GRIP_TOP + H * 0.02, 0.0005, 0.0005, 0.0003, 0.0003, 4),
-     D1 + 0.0004, D2 - 0.0012, M_BACK, bevel=0.0003, segs=2)
+for (u0, u1, tall, side) in [(0.03, 0.27, 0.042, -1), (0.285, 0.42, 0.030, -1), (0.58, 0.715, 0.030, 1), (0.73, 0.97, 0.042, 1)]:
+    r_out = W * 0.035 if tall > 0.04 else 0.0008
+    rl, rr = (r_out, 0.0012) if side < 0 else (0.0012, r_out)
+    slab("shoulder", outline(fx(u0), GRIP_TOP - 0.002, fx(u1), GRIP_TOP + H * tall, rl, rr, 0.0004, 0.0004, 10),
+         D1 + 0.0006, D2 - 0.0006, M_BLACK, bevel=0.0022 if tall > 0.04 else 0.0012, segs=8)
+slab("usb_top", outline(fx(0.435), GRIP_TOP - 0.002, fx(0.565), GRIP_TOP + H * 0.018, 0.0005, 0.0005, 0.0003, 0.0003, 4),
+     D1 + 0.0006, D2 - 0.0014, M_BACK, bevel=0.0003, segs=2)
+for k in range(6):  # its ribs
+    slab("usb_rib", outline(fx(0.445), GRIP_TOP + H * (0.002 + k * 0.0028), fx(0.555), GRIP_TOP + H * (0.003 + k * 0.0028), 0.0001, 0.0001, 0.0001, 0.0001, 1),
+         D2 - 0.0015, D2 - 0.0012, M_ENGRAVE, bevel=0)
 slab("usb_top_hole", outline(fx(0.465), GRIP_TOP + H * 0.02 - 0.0002, fx(0.535), GRIP_TOP + H * 0.02 + 0.00005, 0.0004, 0.0004, 0.0004, 0.0004, 4),
      (D1 + D2) / 2 - 0.0012, (D1 + D2) / 2 + 0.0004, M_HOLE, bevel=0)
 # the light under the shoulder buttons, in the gap above the grip, seen from behind and above (photos 4, 5, 8)
-slab("shoulder_led", outline(fx(0.03), GRIP_TOP - 0.0002, fx(0.97), GRIP_TOP + 0.0012, 0.0003, 0.0003, 0.0003, 0.0003, 2),
-     D1 + 0.0002, D2 - 0.0002, M_LED, bevel=0)
+slab("shoulder_led", outline(fx(0.03), GRIP_TOP - 0.0022, fx(0.97), GRIP_TOP - 0.0012, 0.0002, 0.0002, 0.0002, 0.0002, 2),
+     D2 - 0.0012, D2 - 0.0002, M_LED, bevel=0)
 # the light bar on the top edge (photos 2 and 8)
-slab("top_led", outline(fx(0.28), H - 0.0001, fx(0.72), H + 0.0003, 0.0002, 0.0002, 0.0002, 0.0002, 2),
-     D1 * 0.70, D1 + 0.00035, M_LED, bevel=0)
+slab("top_led", outline(fx(0.28), H - 0.0001, fx(0.72), H + 0.0002, 0.0002, 0.0002, 0.0002, 0.0002, 2),
+     D1 - 0.0005, D1 + 0.0004, M_LED, bevel=0)
 # and its glow along the top of the label on the back
-slab("label_led", outline(fx(0.27), H - 0.0016, fx(0.73), H - 0.0002, 0.0002, 0.0002, 0.0002, 0.0002, 2),
-     D1 + 0.0002, D1 + 0.00048, M_LED, bevel=0)
+slab("label_led", outline(fx(0.275), fz(0.035), fx(0.725), H - 0.0002, 0.0002, 0.0002, 0.0002, 0.0002, 2),
+     D1 + 0.0002, D1 + 0.00044, M_LED, bevel=0)
 
 # front: glass across the top 52 %, the display inside it
 slab("glass", outline(x0 + 0.0004, fz(0.517), x1 - 0.0004, H - 0.0004, R_TOP * 0.8, R_TOP * 0.8, 0.0003, 0.0003),
@@ -301,12 +313,15 @@ SHOTS = {
     "back34": (0.26, 0.36, 0.16),
     "left": (-0.45, -0.12, 0.12),
     "bottom": (0.10, -0.30, -0.22),
+    "backtop": (0.05, 0.30, 0.42),   # the angle of reference photo 8
 }
 if os.environ.get("BRICK_SAVE"):  # BRICK_SAVE=/path/brick.blend saves the scene to open in Blender, without rendering
     cam.location = SHOTS["front34"]; place_lights(cam.location)
     bpy.ops.wm.save_as_mainfile(filepath=os.environ["BRICK_SAVE"])
     sys.exit(0)
+ONLY = os.environ.get("BRICK_SHOTS")  # a comma list of shot names to render only those
 for name, loc in SHOTS.items():
+    if ONLY and name not in ONLY.split(","): continue
     cam.location = loc
     place_lights(loc)
     scene.render.filepath = f"{OUT}-{name}.png"
