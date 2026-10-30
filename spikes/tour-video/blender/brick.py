@@ -67,7 +67,8 @@ def sparkle(m, lo=0.26, hi=0.46):
     bump = n.new("ShaderNodeBump"); bump.inputs["Strength"].default_value = 0.05
     nt.links.new(noise.outputs["Fac"], bump.inputs["Height"]); nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
 sparkle(M_BODY); sparkle(M_BACK)
-M_LABEL_BTN = mat("btnlabel", srgb("2c2c2f"), rough=0.5)
+M_SHOULDER = mat("shoulder", srgb("0e0e10"), rough=0.85)   # matte black rubber
+M_LABEL_BTN = mat("btnlabel", srgb("232326"), rough=0.7)
 M_SCREW = mat("screw", srgb("c4c5c8"), metal=1.0, rough=0.25)
 M_ETCH = mat("etch", srgb("8a8b90"), metal=1.0, rough=0.55)   # light, thin markings on the grip
 
@@ -178,7 +179,7 @@ for (a, b, lab, outer) in [(0.07, 0.305, "R1", True), (0.315, 0.44, "R2", False)
     r_out = W * 0.03 if outer else 0.0008
     rl, rr = (0.0008, r_out) if lab.startswith("R") else (r_out, 0.0008)
     slab("shoulder_" + lab, outline(u0, LEDGE - 0.0003, u1, LEDGE + BTN_H, rl, rr, 0.0004, 0.0004, 10),
-         D1 + 0.0003, LED_Y0 - 0.0002, M_BLACK, bevel=0.0016 if outer else 0.0010, segs=8)
+         D1 + 0.0003, LED_Y0 - 0.0002, M_SHOULDER, bevel=0.0016 if outer else 0.0010, segs=8)
     t = text(lab, (u0 + u1) / 2, LEDGE + BTN_H + 0.00002, W * 0.045, M_LABEL_BTN, (D1 + LED_Y0) / 2, align="CENTER")
     t.rotation_euler = (0, 0, math.radians(180)); t.location = ((u0 + u1) / 2, (D1 + LED_Y0) / 2, LEDGE + BTN_H + 0.00002)
     slab("led_" + lab, outline(u0 + 0.0003, LEDGE - 0.0002, u1 - 0.0003, LEDGE + 0.0009, 0.0002, 0.0002, 0.0002, 0.0002, 2),
@@ -318,7 +319,7 @@ LIGHTS = [  # (name, offset from the camera's side: azimuth degrees, height, dis
     ("key", (-40, 0.30, 0.42), 0.5, 10),
     ("fill", (55, 0.05, 0.40), 0.6, 3),
     ("rim", (160, 0.22, 0.38), 0.3, 10),
-    ("top", (0, 0.45, 0.05), 0.9, 6),
+    ("top", (0, 0.45, 0.05), 1.2, 2.5),
     ("side", (-110, 0.10, 0.40), 0.5, 4),
 ]
 for name, _, size, power in LIGHTS:
