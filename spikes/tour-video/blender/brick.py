@@ -161,7 +161,13 @@ slab("body", outline(x0, 0, x1, H, R_TOP, R_TOP, R_BOT, R_BOT), 0, D1, M_BODY, b
 # its back edges round off (photo 12). Positions are fractions of the width seen from the back,
 # mirrored to the front's fractions with bu().
 def bu(u): return fx(1 - u)
-PANEL_TOP, BAY_TOP, BAY_BOT = fz(0.565), fz(0.446), fz(0.545)
+def pv(v):
+    """A height measured on Howard's photo, mapped to TrimUI's flat back view: the phone's close, low
+    angle stretched the shoulder row (photo 44.6-56.5 %, true 36.5-45.5 %)."""
+    if v <= 0.446: return v * 0.365 / 0.446
+    if v >= 0.565: return 0.455 + (v - 0.565) * (1 - 0.455) / (1 - 0.565)
+    return 0.365 + (v - 0.446) * (0.455 - 0.365) / (0.565 - 0.446)
+PANEL_TOP, BAY_TOP, BAY_BOT = fz(0.455), fz(0.365), fz(0.44)
 slab("grip", outline(x0, 0, x1, PANEL_TOP, 0.0025, 0.0025, R_BOT, R_BOT), D1 - 0.0005, D2, M_BACK, bevel=0.0038, segs=10, back_only=True)
 # the bay behind the buttons, flush with the body's sides
 slab("bay", outline(x0, PANEL_TOP - 0.001, x1, BAY_TOP, 0.0008, 0.0008, 0.0003, 0.0003, 4), D1 - 0.0005, D1 + 0.0012, M_BACK, bevel=0.0004, segs=2)
@@ -187,36 +193,36 @@ slab("usb_port", outline(bu(0.56), BAY_BOT + H * 0.012, bu(0.455), BAY_TOP - H *
 slab("usb_hole", outline(bu(0.545), BAY_BOT + H * 0.022, bu(0.47), BAY_TOP - H * 0.042, 0.0009, 0.0009, 0.0009, 0.0009, 8),
      D2 - 0.0012, D2 - 0.0009, M_HOLE, bevel=0)
 # the grip panel: "BRICK HAMMER" spaced wide, raised ribs, the marks in a band, four screw holes
-t = text("BRICK HAMMER", 0, fz(0.635), W * 0.04, M_ETCH, D2 + 0.00006, face="back", align="CENTER")
+t = text("BRICK HAMMER", 0, fz(pv(0.635)), W * 0.04, M_ETCH, D2 + 0.00006, face="back", align="CENTER")
 t.data.font = bpy.data.fonts.load(INTER.replace("Bold", "Regular")); t.data.space_character = 1.7
 for i in range(18):
     v = 0.675 + i * 0.0155
     if 0.868 < v < 0.902: continue            # the band with the marks
-    slab(f"rib{i}", outline(bu(0.87), fz(v + 0.0085), bu(0.13), fz(v), 0.0003, 0.0003, 0.0003, 0.0003, 2),
+    slab(f"rib{i}", outline(bu(0.87), fz(pv(v + 0.0085)), bu(0.13), fz(pv(v)), 0.0003, 0.0003, 0.0003, 0.0003, 2),
          D2 - 0.0001, D2 + 0.00028, M_BACK, bevel=0.00012, segs=2)
-t = text("FC   CE", bu(0.62), fz(0.885), W * 0.042, M_ETCH, D2 + 0.00006, face="back", align="CENTER")
+t = text("FC   CE", bu(0.62), fz(pv(0.885)), W * 0.042, M_ETCH, D2 + 0.00006, face="back", align="CENTER")
 t.data.font = bpy.data.fonts.load(INTER.replace("Bold", "Regular"))
 for (u, v) in [(0.155, 0.68), (0.86, 0.675), (0.155, 0.962), (0.85, 0.965)]:
     cyl("hole", bu(u), fz(v), W * 0.02, D2 - 0.0003, D2 + 0.00005, M_HOLE, bevel=0)
 # upper back: two silver Phillips screws, the three-dot mark
 for u in (0.09, 0.91):
-    cyl("screw", bu(u), fz(0.045), W * 0.02, D1 - 0.0001, D1 + 0.00022, M_SCREW, bevel=0.00012)
+    cyl("screw", bu(u), fz(pv(0.045)), W * 0.02, D1 - 0.0001, D1 + 0.00022, M_SCREW, bevel=0.00012)
     for horiz in (True, False):
         w_, h_ = (W * 0.022, W * 0.004) if horiz else (W * 0.004, W * 0.022)
-        slab("slot", outline(bu(u) - w_ / 2, fz(0.045) - h_ / 2, bu(u) + w_ / 2, fz(0.045) + h_ / 2, 0.00005, 0.00005, 0.00005, 0.00005, 1),
+        slab("slot", outline(bu(u) - w_ / 2, fz(pv(0.045)) - h_ / 2, bu(u) + w_ / 2, fz(pv(0.045)) + h_ / 2, 0.00005, 0.00005, 0.00005, 0.00005, 1),
              D1 + 0.00018, D1 + 0.00024, M_HOLE, bevel=0)
 for a in (90, 210, 330):
-    cyl("mark", math.cos(math.radians(a)) * W * 0.014, fz(0.37) + math.sin(math.radians(a)) * W * 0.014, W * 0.011,
+    cyl("mark", math.cos(math.radians(a)) * W * 0.014, fz(pv(0.37)) + math.sin(math.radians(a)) * W * 0.014, W * 0.011,
         D1 - 0.00005, D1 + 0.00005, M_HOLE, bevel=0)
 # the label: a frosted light band at the top edge, then black glass with the name spaced wide
-slab("label_led", outline(bu(0.77), fz(0.034), bu(0.23), H - 0.0001, 0.0002, 0.0002, 0.0002, 0.0002, 2),
+slab("label_led", outline(bu(0.77), fz(pv(0.034)), bu(0.23), H - 0.0001, 0.0002, 0.0002, 0.0002, 0.0002, 2),
      D1 - 0.0004, D1 + 0.0004, M_LED, bevel=0.0001, segs=1)
 slab("top_led", outline(bu(0.77), H - 0.0002, bu(0.23), H + 0.00015, 0.0002, 0.0002, 0.0002, 0.0002, 2),
      D1 - 0.0010, D1 + 0.0004, M_LED, bevel=0)
-slab("label", outline(bu(0.77), fz(0.175), bu(0.23), fz(0.034), 0.0003, 0.0003, W * 0.03, W * 0.03, 8), D1 - 0.0001, D1 + 0.0004, M_LABEL, bevel=0.0001, segs=1)
-t = text("BRICK HAMMER", 0, fz(0.095), W * 0.05, M_LABEL_TEXT, D1 + 0.00042, face="back", align="CENTER")
+slab("label", outline(bu(0.77), fz(pv(0.175)), bu(0.23), fz(pv(0.034)), 0.0003, 0.0003, W * 0.03, W * 0.03, 8), D1 - 0.0001, D1 + 0.0004, M_LABEL, bevel=0.0001, segs=1)
+t = text("BRICK HAMMER", 0, fz(pv(0.095)), W * 0.05, M_LABEL_TEXT, D1 + 0.00042, face="back", align="CENTER")
 t.data.font = bpy.data.fonts.load(INTER.replace("Bold", "Regular")); t.data.space_character = 1.5
-text("BRICK METAL VERSION DESIGNED BY TRIMUI", 0, fz(0.135), W * 0.016, M_LABEL_TEXT, D1 + 0.00042, face="back", align="CENTER")
+text("BRICK METAL VERSION DESIGNED BY TRIMUI", 0, fz(pv(0.135)), W * 0.016, M_LABEL_TEXT, D1 + 0.00042, face="back", align="CENTER")
 # front: glass across the top 52 %, the display inside it
 slab("glass", outline(x0 + 0.0004, fz(0.517), x1 - 0.0004, H - 0.0004, R_TOP * 0.8, R_TOP * 0.8, 0.0003, 0.0003),
      -0.00025, 0.0002, M_GLASS, bevel=0.00015, segs=2)
