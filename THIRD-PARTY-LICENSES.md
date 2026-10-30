@@ -81,3 +81,10 @@ SOFTWARE.
 - **Source:** the upstream repos and exact commits are listed in `CORES-SOURCE.md` on each Bramley card, made by `workspace/all/launcher/cores-source.sh` from the pins in `workspace/tg5040/cores/makefile`. Bramley's patches are in `workspace/tg5040/cores/patches/` and `workspace/all/cores/patches/`.
 - **Licenses:** mostly GPL-2.0, with GPL-3.0 (PokeMini, Gearcoleco), MPL-2.0 (mGBA), zlib (Handy), MIT (fake-08), and noncommercial licenses (Snes9x, PicoDrive, FBNeo). Each core's own license files are copied to `Licenses/<core>/` on the card. The survey is in `docs/plans/cores-licenses.md`.
 - **Conditions:** Bramley stays free, with no sale, ads or donation requests (FBNeo forbids asking for donations), and each release publishes the source of the cores it ships.
+
+## Material Symbols
+
+- **Source:** https://github.com/google/material-design-icons, commit 10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7, the variable font `MaterialSymbolsRounded`.
+- **License:** Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0).
+- **Copyright:** Google LLC.
+- **Used in:** four symbols (stadia_controller, album, joystick, keyboard), rendered by `workspace/all/launcher/tools/console-glyphs.py` into the console icons in `workspace/all/launcher/res/brand/consoles/`. The symbols are drawn white on Bramley's coloured tiles; no other change is made to them.
