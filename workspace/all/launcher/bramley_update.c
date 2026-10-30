@@ -57,6 +57,8 @@ static int auto_check = 1;
 static int system_only; // the download is the system zip alone, installed as MinUI.zip
 static int loaded, busy, fake;
 static pid_t curl_pid;
+#define SEGMENTS 4
+static pid_t seg_pids[SEGMENTS];
 static int stopping;
 static time_t last_try;
 
@@ -108,16 +110,45 @@ static void trim(char* s) {
 	while (n && (s[n - 1] == '\n' || s[n - 1] == '\r' || s[n - 1] == ' ')) s[--n] = 0;
 }
 
+// A download comes in SEGMENTS pieces over as many connections at once (download.part.0 to .3),
+// joined into one file at the end. On the Brick's 2.4 GHz radio a single connection was held to
+// tens of KB/s by delay and retries; several run side by side.
+static void seg_path(int i, char* out, size_t size) { snprintf(out, size, "%s.%d", PART, i); }
+
+static long long file_size(const char* path) {
+	struct stat st;
+	return stat(path, &st) == 0 ? st.st_size : 0;
+}
+
+static long long downloaded(void) {
+	long long n = file_size(PART);
+	char p[300];
+	for (int i = 0; i < SEGMENTS; i++) {
+		seg_path(i, p, sizeof(p));
+		n += file_size(p);
+	}
+	return n;
+}
+
+static void remove_download(void) {
+	char p[300];
+	unlink(PART);
+	for (int i = 0; i < SEGMENTS; i++) {
+		seg_path(i, p, sizeof(p));
+		unlink(p);
+	}
+}
+
 // The known state after a check: newer, current, or downloaded already.
 static void settle(void) {
 	struct stat st;
 	if (info.version[0] && newer(info.version, info.current)) {
 		info.state = stat(ZIP, &st) == 0 ? UPDATE_READY : UPDATE_AVAILABLE;
-		info.done = stat(PART, &st) == 0 ? st.st_size : 0;
+		info.done = downloaded();
 	} else {
 		info.state = info.checked ? UPDATE_CURRENT : UPDATE_UNKNOWN;
 		unlink(ZIP);
-		unlink(PART);
+		remove_download();
 	}
 }
 
@@ -200,7 +231,7 @@ void update_get(UpdateInfo* out) {
 	pthread_mutex_lock(&lock);
 	if (info.state == UPDATE_DOWNLOADING && !fake) {
 		struct stat st;
-		if (stat(PART, &st) == 0) info.done = st.st_size;
+		info.done = downloaded();
 	}
 	info.newer = info.version[0] && newer(info.version, info.current);
 	*out = info;
@@ -245,6 +276,19 @@ static int curl(const char* out, const char* url, int resume, int max_seconds) {
 	int rc = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 	if (rc != 0) LOG_info("bramley_update: curl %s ended with %d\n", url, rc);
 	return rc;
+}
+
+// Starts curl for bytes from..to of url, appended to out (so a piece resumes where it stopped).
+static pid_t start_piece(const char* url, long long from, long long to, const char* out) {
+	char range[64];
+	snprintf(range, sizeof(range), "%lld-%lld", from, to);
+	const char* argv[] = {"sh", "-c",
+	                      "exec curl -s -f -L --cacert \"$1\" --connect-timeout 15 -m 3600 --speed-limit 1024 --speed-time 60 "
+	                      "-r \"$2\" \"$3\" >> \"$4\"",
+	                      "sh", CA_BUNDLE, range, url, out, NULL};
+	pid_t pid = -1;
+	if (posix_spawnp(&pid, "sh", NULL, NULL, (char* const*)argv, environ) != 0) return -1;
+	return pid;
 }
 
 static int sha256_of(const char* path, char hex[65]) {
@@ -352,7 +396,7 @@ static void* check_thread(void* arg) {
 		system_only = parsed == 1;
 		if (strcmp(sum, sha256) != 0) {
 			// a different release than the one partly downloaded
-			unlink(PART);
+			remove_download();
 			unlink(ZIP);
 		}
 		snprintf(info.version, sizeof(info.version), "%s", m.version);
@@ -420,20 +464,84 @@ static void* download_thread(void* arg) {
 	snprintf(sum, sizeof(sum), "%s", sha256);
 	pthread_mutex_unlock(&lock);
 
+	long long size;
+	pthread_mutex_lock(&lock);
+	size = info.size;
+	pthread_mutex_unlock(&lock);
+	unlink(PART); // a single-file part from before 0.9.2; the pieces start over
+	int pieces = size < (8LL << 20) ? 1 : SEGMENTS;
+	long long span = (size + pieces - 1) / pieces;
+
 	wifi_power_save(0);
-	int rc = curl(PART, url, 1, 3600);
-	// a dropped or stalled connection resumes where it stopped, a few times, before giving up
-	for (int retry = 0; retry < 3 && rc != 0 && rc != 22 && !stopping; retry++) {
-		sleep(3);
-		rc = curl(PART, url, 1, 3600);
+	int rc = 0;
+	// every round starts the pieces that are not complete; a dropped piece resumes in the next
+	for (int round = 0; round < 4 && !stopping; round++) {
+		int running = 0;
+		rc = 0;
+		for (int i = 0; i < pieces; i++) {
+			char p[300];
+			seg_path(i, p, sizeof(p));
+			long long from = i * span, to = (i + 1) * span < size ? (i + 1) * span - 1 : size - 1;
+			long long have = file_size(p);
+			if (have > to - from + 1) { // more than asked for: the server ignored the range
+				unlink(p);
+				have = 0;
+			}
+			pid_t pid = have < to - from + 1 ? start_piece(url, from + have, to, p) : 0;
+			pthread_mutex_lock(&lock);
+			seg_pids[i] = pid;
+			pthread_mutex_unlock(&lock);
+			if (pid > 0) running++;
+		}
+		if (!running) break; // every piece is complete
+		for (int i = 0; i < pieces; i++) {
+			pthread_mutex_lock(&lock);
+			pid_t pid = seg_pids[i];
+			pthread_mutex_unlock(&lock);
+			if (pid <= 0) continue;
+			int status = 0;
+			while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+			int code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+			if (code != 0) {
+				LOG_info("bramley_update: piece %d of %s ended with %d\n", i, url, code);
+				if (rc != 22) rc = code;
+			}
+			pthread_mutex_lock(&lock);
+			seg_pids[i] = 0;
+			pthread_mutex_unlock(&lock);
+		}
+		if (rc == 22) break; // the file is not there; retrying will not help
+		if (rc != 0 && !stopping) sleep(3);
 	}
+	// complete when the pieces add up to the whole file; then joined into PART
+	if (!stopping && downloaded() == size) {
+		FILE* out = fopen(PART, "wb");
+		int ok = out != NULL;
+		static unsigned char buf[1 << 16];
+		for (int i = 0; ok && i < pieces; i++) {
+			char p[300];
+			seg_path(i, p, sizeof(p));
+			FILE* in = fopen(p, "rb");
+			if (!in) ok = 0;
+			size_t n;
+			while (ok && (n = fread(buf, 1, sizeof(buf), in)) > 0) ok = fwrite(buf, 1, n, out) == n;
+			if (in) fclose(in);
+		}
+		if (out && fclose(out) != 0) ok = 0;
+		for (int i = 0; i < pieces; i++) {
+			char p[300];
+			seg_path(i, p, sizeof(p));
+			unlink(p);
+		}
+		rc = ok ? 0 : -1;
+	} else if (!stopping && rc == 0) rc = -1;
 	wifi_power_save(1);
 	char got[65] = "";
 	pthread_mutex_lock(&lock);
 	if (stopping) {
 		// cancelled: what was downloaded goes, and the next download starts from the beginning
 		stopping = 0;
-		unlink(PART);
+		remove_download();
 		settle();
 	} else if (rc != 0) {
 		set_error("The download stopped. Check the Wi-Fi connection and try again.");
@@ -445,7 +553,7 @@ static void* download_thread(void* arg) {
 			info.state = UPDATE_READY;
 			info.error[0] = 0;
 		} else {
-			unlink(PART);
+			remove_download();
 			set_error("The download was damaged, so it was deleted. Try again.");
 		}
 	}
@@ -487,9 +595,11 @@ void update_download(void) {
 
 void update_stop(void) {
 	pthread_mutex_lock(&lock);
-	if (curl_pid > 0 && info.state == UPDATE_DOWNLOADING) {
+	if (info.state == UPDATE_DOWNLOADING) {
 		stopping = 1;
-		kill(curl_pid, SIGTERM);
+		if (curl_pid > 0) kill(curl_pid, SIGTERM);
+		for (int i = 0; i < SEGMENTS; i++)
+			if (seg_pids[i] > 0) kill(seg_pids[i], SIGTERM);
 	}
 	pthread_mutex_unlock(&lock);
 }
