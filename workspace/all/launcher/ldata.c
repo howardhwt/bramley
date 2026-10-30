@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 
 #include "defines.h"
@@ -142,6 +143,36 @@ static int load_recents(Card* cards) {
 }
 
 // Number of games in a ROM folder, or 0 if its emulator Pak is missing.
+// The shorter name people use for a console whose folder spells it out, so it fits its tile:
+// "Nintendo Entertainment System" shows as "NES". The folder's own wording keeps its region
+// ("Sega Genesis" is "Genesis", "Sega Mega Drive" is "Mega Drive"); other names stay as they are.
+static void shorten_console_name(char* name) {
+	static const char* const names[][2] = {
+		{ "Nintendo Entertainment System", "NES" },
+		{ "Super Nintendo Entertainment System", "Super NES" },
+		{ "Famicom Disk System", "Disk System" },
+		{ "Sony PlayStation", "PlayStation" },
+		{ "Sega Genesis", "Genesis" },
+		{ "Sega Mega Drive", "Mega Drive" },
+		{ "Sega Master System", "Master System" },
+		{ "Sega Game Gear", "Game Gear" },
+		{ "Sega SG-1000", "SG-1000" },
+		{ "Sega 32X", "32X" },
+		{ "Sega Mega-CD", "Mega-CD" },
+		{ "Neo Geo Pocket Color", "NGP Color" },
+		{ "Microsoft MSX", "MSX" },
+		{ "Commodore VIC20", "VIC-20" },
+		{ "Commodore PET", "PET" },
+		{ "Commodore Plus4", "Plus/4" },
+		{ "Colecovision", "ColecoVision" },
+	};
+	for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
+		if (!strcasecmp(name, names[i][0])) {
+			strcpy(name, names[i][1]);
+			return;
+		}
+}
+
 static int rom_folder_game_count(const char* folder) {
 	char emu_name[256];
 	getEmuName(folder, emu_name);
@@ -197,6 +228,7 @@ static int load_consoles(Card* cards) {
 		card->game_count = games;
 		snprintf(card->path, sizeof(card->path), "%s/%s", ROMS_PATH, dp->d_name);
 		getDisplayName(dp->d_name, card->name);
+		shorten_console_name(card->name);
 		getEmuName(dp->d_name, card->tag);
 		card->hue = hue_for(card->tag);
 
