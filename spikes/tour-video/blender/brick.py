@@ -7,7 +7,8 @@ from mathutils import Vector
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 SCREEN_IMG = argv[0] if argv else ""
 OUT = argv[1] if len(argv) > 1 else "/tmp/brick"
-BG = argv[2] if len(argv) > 2 else "grey"
+FINISH = argv[2] if len(argv) > 2 else "dark"     # dark | silver
+LED = (0.45, 0.85, 1.0)                          # the mood light's colour
 INTER = "/Users/howard/Documents/GitHub/brick-hammer-launcher/workspace/all/launcher/res/Inter-Bold.ttf"
 
 W = 0.072                       # metres; only the proportions matter
@@ -39,8 +40,9 @@ def srgb(h):
     c = [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)]
     return tuple((x / 12.92) if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c)
 
-M_BODY = mat("anodised", srgb("6b6c70"), metal=1.0, rough=0.36)
-M_BACK = mat("back", srgb("626367"), metal=1.0, rough=0.44)
+BODY_HEX = {"dark": ("55565b", "4f5055"), "silver": ("c9cacd", "bfc0c3")}[FINISH]
+M_BODY = mat("anodised", srgb(BODY_HEX[0]), metal=1.0, rough=0.36)
+M_BACK = mat("back", srgb(BODY_HEX[1]), metal=1.0, rough=0.44)
 M_BLACK = mat("button", srgb("1c1c1e"), rough=0.45)
 M_PILL = mat("pill", srgb("b9babd"), rough=0.4)
 M_GLASS = mat("glass", srgb("060607"), rough=0.08, coat=0.6)
@@ -48,9 +50,11 @@ M_HOLE = mat("hole", srgb("0a0a0a"), rough=0.8)
 M_LETTER = mat("letter", srgb("4a4a4d"), rough=0.5)
 M_ENGRAVE = mat("engrave", srgb("2e2f32"), metal=1.0, rough=0.7)
 M_TEAL = mat("teal", srgb("5fd6c8"), rough=0.35, emit=srgb("5fd6c8"), strength=0.4)
-M_LABEL = mat("label", srgb("0c0c0d"), rough=0.25)
+M_LABEL = mat("label", srgb("060607"), rough=0.08, coat=1.0)
 M_LABEL_TEXT = mat("labeltext", srgb("c8c8cc"), rough=0.5)
-M_LED = mat("led", srgb("bfe3ff"), emit=srgb("9fd2ff"), strength=6.0)
+M_LED = mat("led", LED, emit=LED, strength=6.0)
+M_PILL_LIT = mat("pill_lit", (0.85, 0.95, 1.0), rough=0.3, emit=LED, strength=3.0)
+M_ICON = mat("icon", srgb("3c3c3f"), rough=0.5)
 
 def screen_mat():
     m = bpy.data.materials.new("screen"); m.use_nodes = True
@@ -128,26 +132,42 @@ def text(s, x, z, size, material, y, rot_z=0.0, depth=0.00008, align="LEFT", fac
 x0, x1 = -W / 2, W / 2
 slab("body", outline(x0, 0, x1, H, R_TOP, R_TOP, R_BOT, R_BOT), 0, D1, M_BODY, bevel=0.0009, segs=4)
 slab("grip", outline(x0, 0, x1, GRIP_TOP, 0.0012, 0.0012, R_BOT, R_BOT), D1 - 0.0005, D2, M_BACK, bevel=0.0012, segs=4)
-# ribs across the grip's back
-for i in range(14):
-    z = GRIP_TOP * 0.12 + i * GRIP_TOP * 0.055
-    slab(f"rib{i}", outline(x0 + W * 0.09, z, x1 - W * 0.09, z + GRIP_TOP * 0.018, 0.0003, 0.0003, 0.0003, 0.0003, 3),
-         D2 - 0.0001, D2 + 0.00045, M_BACK, bevel=0.00015, segs=1)
-# screws on the back's upper plate and the grip
-for (u, v, yb) in [(0.08, 0.04, D1), (0.92, 0.04, D1), (0.08, 0.93, D2), (0.92, 0.93, D2)]:
-    cyl("screw", fx(u), fz(v), W * 0.022, yb - 0.0001, yb + 0.0003, M_LETTER, bevel=0.0002)
+# the grip's back: fine engraved lines (photos 5 and 8), its name, the marks, and four screw holes
+for i in range(26):
+    z = GRIP_TOP * 0.10 + i * GRIP_TOP * 0.028
+    left = fx(0.10) if i % 7 else fx(0.30)
+    slab(f"line{i}", outline(left, z, fx(0.86), z + GRIP_TOP * 0.0045, 0.0001, 0.0001, 0.0001, 0.0001, 2),
+         D2 - 0.00005, D2 + 0.00004, M_ENGRAVE, bevel=0)
+text("BRICK HAMMER", 0, GRIP_TOP * 0.88, W * 0.045, M_ENGRAVE, D2 + 0.00006, face="back", align="CENTER")
+text("FC  CE", fx(0.24), GRIP_TOP * 0.16, W * 0.05, M_ENGRAVE, D2 + 0.00006, face="back", align="CENTER")
+for (u, z) in [(0.07, GRIP_TOP * 0.90), (0.93, GRIP_TOP * 0.90), (0.07, GRIP_TOP * 0.07), (0.93, GRIP_TOP * 0.07)]:
+    cyl("hole", fx(u), z, W * 0.016, D2 - 0.0003, D2 + 0.00005, M_HOLE, bevel=0)
+# two screws at the top corners of the upper back
+for u in (0.08, 0.92):
+    cyl("screw", fx(u), fz(0.035), W * 0.02, D1 - 0.0001, D1 + 0.00025, M_LETTER, bevel=0.0001)
 # the black label with its light edge on the upper back (photo 7)
-slab("label", outline(fx(0.22), fz(0.17), fx(0.78), fz(0.07), 0.001, 0.001, 0.001, 0.001, 4), D1 - 0.0001, D1 + 0.00025, M_LABEL, bevel=0.0001, segs=1)
-text("BRICK HAMMER", 0, fz(0.12), W * 0.05, M_LABEL_TEXT, D1 + 0.00027, face="back", align="CENTER")
+# the black glass label at the top edge of the back, lit along its top (photo 8)
+slab("label", outline(fx(0.27), fz(0.125), fx(0.73), H - 0.0002, 0.0002, 0.0002, 0.0008, 0.0008, 4), D1 - 0.0001, D1 + 0.0004, M_LABEL, bevel=0.0001, segs=1)
+text("BRICK HAMMER", 0, fz(0.075), W * 0.042, M_LABEL_TEXT, D1 + 0.00042, face="back", align="CENTER")
+text("BRICK METAL VERSION DESIGNED BY TRIMUI", 0, fz(0.100), W * 0.016, M_LABEL_TEXT, D1 + 0.00042, face="back", align="CENTER")
+for a in (90, 210, 330):  # the three-dot mark below it
+    cyl("mark", math.cos(math.radians(a)) * W * 0.008, fz(0.30) + math.sin(math.radians(a)) * W * 0.008, W * 0.0065,
+        D1 - 0.00005, D1 + 0.00005, M_ICON, bevel=0)
 # shoulder buttons on the step, and the light under them
-for (u0, u1) in [(0.02, 0.24), (0.26, 0.42), (0.58, 0.74), (0.76, 0.98)]:
-    slab("shoulder", outline(fx(u0), GRIP_TOP - 0.0005, fx(u1), GRIP_TOP + H * 0.035, 0.0008, 0.0008, 0.0004, 0.0004, 4),
-         D1 + 0.0004, D2 - 0.0008, M_BLACK, bevel=0.0005, segs=3)
+# L1 and R1 wide and rounded at the outer corner, L2 and R2 narrow, USB-C between them (top view)
+for (u0, u1, r_out, side) in [(0.02, 0.27, W * 0.05, -1), (0.29, 0.43, 0.0008, -1), (0.57, 0.71, 0.0008, 1), (0.73, 0.98, W * 0.05, 1)]:
+    rl, rr = (r_out, 0.0008) if side < 0 else (0.0008, r_out)
+    slab("shoulder", outline(fx(u0), GRIP_TOP - 0.0005, fx(u1), GRIP_TOP + H * 0.038, rl, rr, 0.0004, 0.0004, 8),
+         D1 + 0.0004, D2 - 0.0008, M_BLACK, bevel=0.0007, segs=4)
+slab("usb_top", outline(fx(0.445), GRIP_TOP - 0.0005, fx(0.555), GRIP_TOP + H * 0.02, 0.0005, 0.0005, 0.0003, 0.0003, 4),
+     D1 + 0.0004, D2 - 0.0012, M_BACK, bevel=0.0003, segs=2)
+slab("usb_top_hole", outline(fx(0.465), GRIP_TOP + H * 0.02 - 0.0002, fx(0.535), GRIP_TOP + H * 0.02 + 0.00005, 0.0004, 0.0004, 0.0004, 0.0004, 4),
+     (D1 + D2) / 2 - 0.0012, (D1 + D2) / 2 + 0.0004, M_HOLE, bevel=0)
 slab("shoulder_led", outline(fx(0.03), GRIP_TOP - 0.0006, fx(0.97), GRIP_TOP, 0.0002, 0.0002, 0.0002, 0.0002, 2),
      D1 + 0.0002, D2 - 0.0004, M_LED, bevel=0)
 # the light bar on the top edge (photos 2 and 8)
-slab("top_led", outline(fx(0.22), H - 0.0001, fx(0.78), H + 0.00035, 0.0002, 0.0002, 0.0002, 0.0002, 2),
-     D1 * 0.45, D1 * 0.85, M_LED, bevel=0)
+slab("top_led", outline(fx(0.28), H - 0.0001, fx(0.72), H + 0.0003, 0.0002, 0.0002, 0.0002, 0.0002, 2),
+     D1 * 0.70, D1 + 0.00035, M_LED, bevel=0)
 
 # front: glass across the top 52 %, the display inside it
 slab("glass", outline(x0 + 0.0004, fz(0.517), x1 - 0.0004, H - 0.0004, R_TOP * 0.8, R_TOP * 0.8, 0.0003, 0.0003),
@@ -175,10 +195,19 @@ for l, u, v in [("X", 0.778, 0.586), ("Y", 0.675, 0.654), ("A", 0.876, 0.654), (
 # select and start
 for u in (0.426, 0.572):
     slab("pill", outline(fx(u) - W * 0.048, fz(0.579) - W * 0.012, fx(u) + W * 0.048, fz(0.579) + W * 0.012,
-                        W * 0.0119, W * 0.0119, W * 0.0119, W * 0.0119, 8), -0.0008, 0.0002, M_PILL, bevel=0.0003)
+                        W * 0.0119, W * 0.0119, W * 0.0119, W * 0.0119, 8), -0.0008, 0.0002, M_PILL_LIT, bevel=0.0003)
 # the three round buttons along the bottom, and the speaker holes
 for u in (0.364, 0.503, 0.643):
     cyl("menu", fx(u), fz(0.918), W * 0.039, -0.0012, 0.0002, M_BLACK, bevel=0.0004)
+# their marks: the three dots, a square, a play arrow
+for a in (90, 210, 330):
+    cyl("m_dot", fx(0.364) + math.cos(math.radians(a)) * W * 0.011, fz(0.918) + math.sin(math.radians(a)) * W * 0.011, W * 0.0085,
+        -0.00128, -0.00118, M_ICON, bevel=0)
+slab("m_sq", outline(fx(0.503) - W * 0.016, fz(0.918) - W * 0.011, fx(0.503) + W * 0.016, fz(0.918) + W * 0.011,
+                     0.0002, 0.0002, 0.0002, 0.0002, 2), -0.00128, -0.00118, M_ICON, bevel=0)
+tri = bpy.data.meshes.new("m_play"); c = (fx(0.643), fz(0.918)); k = W * 0.016
+tri.from_pydata([(c[0] - k * 0.6, -0.00125, c[1] - k), (c[0] - k * 0.6, -0.00125, c[1] + k), (c[0] + k, -0.00125, c[1])], [], [(0, 1, 2)])
+o = bpy.data.objects.new("m_play", tri); scene.collection.objects.link(o); o.data.materials.append(M_ICON)
 for su in (0.165, 0.851):
     for r in range(2):
         for k in range(8):
@@ -188,16 +217,31 @@ text("BRICK HAMMER", fx(0.035), fz(0.545), W * 0.03, M_ENGRAVE, -0.00002)
 # sides: the power slider and teal key on the right, two keys on the left
 def side_key(x_sign, v, length, mat_):
     x = x_sign * (W / 2)
-    slab("key", outline(-0.0012, fz(v) - length / 2, 0.0012, fz(v) + length / 2, 0.0012, 0.0012, 0.0012, 0.0012, 6),
+    slab("key", outline(-0.0007, fz(v) - length / 2, 0.0007, fz(v) + length / 2, 0.0007, 0.0007, 0.0007, 0.0007, 6),
          D1 * 0.25, D1 * 0.75, mat_, bevel=0.0003).location.x = x
-for v, L in ((0.215, H * 0.09), (0.33, H * 0.06)):
-    side_key(1, v, L, M_BLACK if v < 0.3 else M_TEAL)
-for v in (0.62, 0.70):
-    side_key(-1, v, H * 0.055, M_BLACK)
+side_key(1, 0.21, H * 0.095, M_BLACK)          # power slider
+side_key(1, 0.355, H * 0.065, M_TEAL)          # the teal key
+for v, mark in ((0.09, "+"), (0.195, "-")):    # volume, near the top of the left side
+    side_key(-1, v, H * 0.076, M_BLACK)
+    t = text(mark, -W / 2 - 0.00075, fz(v), W * 0.04, M_ICON, D1 * 0.5, align="CENTER")
+    t.rotation_euler = (math.radians(90), 0, math.radians(-90)); t.location = (-W / 2 - 0.00075, D1 * 0.5, fz(v))
+t = text("TRIMUI \u2234 BRICK", W / 2 + 0.00002, fz(0.86), W * 0.035, M_ENGRAVE, D1 * 0.5, align="CENTER")
+t.data.body = "TRIMUI ∴ BRICK"
+t.rotation_euler = (math.radians(90), math.radians(-90), math.radians(90)); t.location = (W / 2 + 0.00002, D1 * 0.55, fz(0.86))
 # bottom edge: card slot, USB-C, headphone jack
-for (u, w_, h_) in [(0.2, W * 0.16, D1 * 0.12), (0.5, W * 0.12, D1 * 0.28), (0.8, W * 0.05, W * 0.05)]:
-    slab("port", outline(fx(u) - w_ / 2, -0.0002, fx(u) + w_ / 2, 0.0004, 0.0003, 0.0003, 0.0003, 0.0003, 2),
-         D2 * 0.5 - h_ / 2, D2 * 0.5 + h_ / 2, M_HOLE, bevel=0)
+# bottom edge, measured on the bottom view: card slot, reset, USB-C, light, headphones
+def bottom_hole(u, w_, h_, r):
+    yc = D2 * 0.48
+    me_ = bpy.data.meshes.new("port"); bm = bmesh.new()
+    pts = outline(fx(u) - w_ / 2, yc - h_ / 2, fx(u) + w_ / 2, yc + h_ / 2, r, r, r, r, 8)
+    vs = [bm.verts.new((x, z, 0.00002 - 0.00004)) for x, z in pts]  # x across, the depth as y, just below z = 0
+    bm.faces.new(vs); bm.to_mesh(me_); bm.free()
+    o_ = bpy.data.objects.new("port", me_); scene.collection.objects.link(o_); o_.data.materials.append(M_HOLE)
+bottom_hole(0.22, W * 0.17, D2 * 0.08, 0.0002)
+bottom_hole(0.368, W * 0.045, W * 0.045, W * 0.0224)
+bottom_hole(0.502, W * 0.125, D2 * 0.2, D2 * 0.099)
+bottom_hole(0.642, W * 0.014, W * 0.014, W * 0.0069)
+bottom_hole(0.755, W * 0.07, W * 0.07, W * 0.0349)
 
 # light, world and camera
 world = bpy.data.worlds.new("w"); scene.world = world; world.use_nodes = True
@@ -245,7 +289,8 @@ tc = cam.constraints.new("TRACK_TO"); tc.target = target; tc.track_axis = "TRACK
 SHOTS = {
     "front34": (-0.17, -0.42, 0.20),
     "back34": (0.26, 0.36, 0.16),
-    "front": (0.0, -0.48, H * 0.5),
+    "left": (-0.45, -0.12, 0.12),
+    "bottom": (0.10, -0.30, -0.22),
 }
 if os.environ.get("BRICK_SAVE"):  # BRICK_SAVE=/path/brick.blend saves the scene to open in Blender, without rendering
     cam.location = SHOTS["front34"]; place_lights(cam.location)
