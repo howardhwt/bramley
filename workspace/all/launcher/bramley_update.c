@@ -1,5 +1,6 @@
 // Software Update (see bramley_update.h).
 #include <errno.h>
+#include <stdarg.h>
 #include <openssl/evp.h>
 #include <pthread.h>
 #include <spawn.h>
@@ -57,7 +58,8 @@ static int auto_check = 1;
 static int system_only; // the download is the system zip alone, installed as MinUI.zip
 static int loaded, busy, fake;
 static pid_t curl_pid;
-#define SEGMENTS 4
+#define CONNECTIONS 4 // pieces downloading at once
+#define SEGMENTS 16   // pieces at most, once the slow ones are split
 static pid_t seg_pids[SEGMENTS];
 static int stopping;
 static time_t last_try;
@@ -110,14 +112,34 @@ static void trim(char* s) {
 	while (n && (s[n - 1] == '\n' || s[n - 1] == '\r' || s[n - 1] == ' ')) s[--n] = 0;
 }
 
-// A download comes in SEGMENTS pieces over as many connections at once (download.part.0 to .3),
-// joined into one file at the end. On the Brick's 2.4 GHz radio a single connection was held to
-// tens of KB/s by delay and retries; several run side by side.
+// A download comes in pieces (download.part.0, .1 and so on) over four connections at once, joined
+// into one file at the end. On the Brick's 2.4 GHz radio a single connection was held to tens of
+// KB/s by delay and retries; several run side by side. When a connection finishes early, it takes
+// the second half of the piece with the most left, so the end of a download does not crawl along
+// on one connection. download.plan keeps each piece's byte range, so a download resumes after a
+// restart; download.log records every piece started, ended, split or discarded.
+#define PLAN DIR "/download.plan"
+#define DLOG DIR "/download.log"
 static void seg_path(int i, char* out, size_t size) { snprintf(out, size, "%s.%d", PART, i); }
 
 static long long file_size(const char* path) {
 	struct stat st;
 	return stat(path, &st) == 0 ? st.st_size : 0;
+}
+
+static void dlog(const char* fmt, ...) {
+	FILE* f = fopen(DLOG, "a");
+	if (!f) return;
+	time_t now = time(NULL);
+	struct tm tm;
+	localtime_r(&now, &tm);
+	fprintf(f, "%02d:%02d:%02d ", tm.tm_hour, tm.tm_min, tm.tm_sec);
+	va_list ap;
+	va_start(ap, fmt);
+	vfprintf(f, fmt, ap);
+	va_end(ap);
+	fputc('\n', f);
+	fclose(f);
 }
 
 static long long downloaded(void) {
@@ -133,6 +155,7 @@ static long long downloaded(void) {
 static void remove_download(void) {
 	char p[300];
 	unlink(PART);
+	unlink(PLAN);
 	for (int i = 0; i < SEGMENTS; i++) {
 		seg_path(i, p, sizeof(p));
 		unlink(p);
@@ -468,64 +491,156 @@ static void* download_thread(void* arg) {
 	pthread_mutex_lock(&lock);
 	size = info.size;
 	pthread_mutex_unlock(&lock);
-	unlink(PART); // a single-file part from before 0.9.2; the pieces start over
-	int pieces = size < (8LL << 20) ? 1 : SEGMENTS;
-	long long span = (size + pieces - 1) / pieces;
+
+	// the pieces: from the plan when it describes this file, else four equal ones
+	struct {
+		long long from, to;
+		int tries;
+	} piece[SEGMENTS];
+	int pieces = 0;
+	FILE* pf = fopen(PLAN, "r");
+	if (pf) {
+		long long expect = 0;
+		while (pieces < SEGMENTS && fscanf(pf, "%lld %lld", &piece[pieces].from, &piece[pieces].to) == 2) {
+			piece[pieces].tries = 0;
+			pieces++;
+		}
+		fclose(pf);
+		// valid when the pieces cover the file once, in any order
+		long long covered = 0;
+		for (int i = 0; i < pieces; i++) covered += piece[i].to - piece[i].from + 1;
+		(void)expect;
+		if (covered != size) pieces = 0;
+	}
+	if (!pieces) {
+		remove_download(); // a different file, or a single-file part from before 0.9.2
+		pieces = size < (8LL << 20) ? 1 : CONNECTIONS;
+		long long span = (size + pieces - 1) / pieces;
+		for (int i = 0; i < pieces; i++) {
+			piece[i].from = i * span;
+			piece[i].to = (i + 1) * span < size ? (i + 1) * span - 1 : size - 1;
+			piece[i].tries = 0;
+		}
+	}
+	unlink(DLOG);
+	dlog("download %s, %lld bytes, %d pieces, %lld already here", file, size, pieces, downloaded());
+#define SAVE_PLAN()                                                                  \
+	do {                                                                             \
+		FILE* w = fopen(PLAN, "w");                                                  \
+		if (w) {                                                                     \
+			for (int k = 0; k < pieces; k++) fprintf(w, "%lld %lld\n", piece[k].from, piece[k].to); \
+			fclose(w);                                                               \
+		}                                                                            \
+	} while (0)
+	SAVE_PLAN();
 
 	wifi_power_save(0);
 	int rc = 0;
-	// each piece runs until it is complete; one that drops or stalls restarts on its own, where it
-	// stopped, without waiting for the others (up to 5 tries each)
-	int tries[SEGMENTS] = {0};
+	// each piece runs until it is complete; one that drops or stalls restarts where it stopped
+	// (up to 5 tries each), and an idle connection splits the piece with the most left
 	for (;;) {
-		int running = 0, incomplete = 0;
+		int running = 0;
 		for (int i = 0; i < pieces; i++) {
 			char p[300];
 			seg_path(i, p, sizeof(p));
-			long long from = i * span, to = (i + 1) * span < size ? (i + 1) * span - 1 : size - 1;
+			long long len = piece[i].to - piece[i].from + 1;
 			long long have = file_size(p);
-			if (have > to - from + 1) { // more than asked for: the server ignored the range
-				unlink(p);
-				have = 0;
-			}
 			pthread_mutex_lock(&lock);
 			pid_t pid = seg_pids[i];
 			pthread_mutex_unlock(&lock);
 			if (pid > 0) {
 				int status = 0;
 				pid_t w = waitpid(pid, &status, WNOHANG);
-				if (w == 0) {
+				if (w == 0 && have <= len) {
 					running++;
 					continue;
 				}
-				int code = w == pid && WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-				if (code != 0) LOG_info("bramley_update: piece %d of %s ended with %d\n", i, url, code);
+				if (w == 0) { // writing past its range: stop it before deciding
+					kill(pid, SIGKILL);
+					waitpid(pid, &status, 0);
+				}
+				int code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+				have = file_size(p);
+				dlog("piece %d (%lld-%lld) ended with %d at %lld of %lld bytes", i, piece[i].from, piece[i].to, code, have, len);
 				if (code == 22) rc = 22;
 				pthread_mutex_lock(&lock);
 				seg_pids[i] = 0;
 				pthread_mutex_unlock(&lock);
+			}
+			if (have > len) {
+				// more than its range: the end is past what this piece owns, so it is cut back;
+				// the checksum at the end catches anything that is still wrong
+				dlog("piece %d has %lld bytes for %lld; cut to its range", i, have, len);
+				if (truncate(p, len) != 0) {
+					unlink(p);
+					dlog("piece %d could not be cut; started over", i);
+				}
 				have = file_size(p);
 			}
-			if (have >= to - from + 1) continue; // complete
-			incomplete++;
-			if (stopping || rc == 22 || tries[i] >= 5) continue;
-			tries[i]++;
-			pid = start_piece(url, from + have, to, p);
+			if (have >= len) continue; // complete
+			if (stopping || rc == 22 || piece[i].tries >= 5 || running >= CONNECTIONS) continue;
+			piece[i].tries++;
+			pid = start_piece(url, piece[i].from + have, piece[i].to, p);
+			dlog("piece %d starts at %lld (try %d)", i, piece[i].from + have, piece[i].tries);
 			pthread_mutex_lock(&lock);
 			seg_pids[i] = pid > 0 ? pid : 0;
 			pthread_mutex_unlock(&lock);
 			if (pid > 0) running++;
 		}
+		// a free connection takes the second half of the piece with the most left
+		if (!stopping && rc != 22 && running < CONNECTIONS && pieces < SEGMENTS) {
+			int big = -1;
+			long long most = 0;
+			for (int i = 0; i < pieces; i++) {
+				char p[300];
+				seg_path(i, p, sizeof(p));
+				long long left = piece[i].to - piece[i].from + 1 - file_size(p);
+				if (left > most) {
+					most = left;
+					big = i;
+				}
+			}
+			if (big >= 0 && most > (2LL << 20)) {
+				char p[300];
+				seg_path(big, p, sizeof(p));
+				pthread_mutex_lock(&lock);
+				pid_t pid = seg_pids[big];
+				seg_pids[big] = 0;
+				pthread_mutex_unlock(&lock);
+				if (pid > 0) { // stopped first, so it cannot write past the new end
+					int status;
+					kill(pid, SIGKILL);
+					waitpid(pid, &status, 0);
+				}
+				long long at = piece[big].from + file_size(p);
+				long long mid = at + (piece[big].to - at + 1) / 2;
+				piece[pieces].from = mid;
+				piece[pieces].to = piece[big].to;
+				piece[pieces].tries = 0;
+				piece[big].to = mid - 1;
+				piece[big].tries = 0; // a split is not a failure
+				dlog("piece %d split at %lld; piece %d takes %lld-%lld", big, mid, pieces, mid, piece[pieces].to);
+				pieces++;
+				SAVE_PLAN();
+				continue; // both halves start on the next pass
+			}
+		}
 		if (!running) break; // complete, cancelled, or out of tries
 		usleep(500000);
 	}
 	rc = rc == 22 ? 22 : 0;
-	// complete when the pieces add up to the whole file; then joined into PART
+	// complete when the pieces add up to the whole file; then joined in byte order into PART
 	if (!stopping && downloaded() == size) {
 		FILE* out = fopen(PART, "wb");
 		int ok = out != NULL;
 		static unsigned char buf[1 << 16];
-		for (int i = 0; ok && i < pieces; i++) {
+		for (long long at = 0; ok && at < size;) {
+			int i = 0;
+			while (i < pieces && piece[i].from != at) i++;
+			if (i == pieces) {
+				ok = 0;
+				break;
+			}
 			char p[300];
 			seg_path(i, p, sizeof(p));
 			FILE* in = fopen(p, "rb");
@@ -533,6 +648,7 @@ static void* download_thread(void* arg) {
 			size_t n;
 			while (ok && (n = fread(buf, 1, sizeof(buf), in)) > 0) ok = fwrite(buf, 1, n, out) == n;
 			if (in) fclose(in);
+			at = piece[i].to + 1;
 		}
 		if (out && fclose(out) != 0) ok = 0;
 		for (int i = 0; i < pieces; i++) {
@@ -540,8 +656,14 @@ static void* download_thread(void* arg) {
 			seg_path(i, p, sizeof(p));
 			unlink(p);
 		}
+		unlink(PLAN);
+		dlog("joined: %s", ok ? "ok" : "failed");
 		rc = ok ? 0 : -1;
-	} else if (!stopping && rc == 0) rc = -1;
+	} else if (!stopping && rc == 0) {
+		rc = -1;
+		dlog("stopped with %lld of %lld bytes", downloaded(), size);
+	}
+#undef SAVE_PLAN
 	wifi_power_save(1);
 	char got[65] = "";
 	pthread_mutex_lock(&lock);
@@ -555,6 +677,7 @@ static void* download_thread(void* arg) {
 	} else {
 		pthread_mutex_unlock(&lock);
 		int ok = sha256_of(PART, got) == 0 && !strcmp(got, sum);
+		dlog("checksum %s", ok ? "matches" : "does not match");
 		pthread_mutex_lock(&lock);
 		if (ok && rename(PART, ZIP) == 0) {
 			info.state = UPDATE_READY;
