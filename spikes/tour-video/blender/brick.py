@@ -8,7 +8,7 @@ argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 SCREEN_IMG = argv[0] if argv else ""
 OUT = argv[1] if len(argv) > 1 else "/tmp/brick"
 FINISH = argv[2] if len(argv) > 2 else "dark"     # dark | silver
-LED = (0.45, 0.85, 1.0)                          # the mood light's colour
+LED = (0.86, 0.93, 1.0)                          # the mood light: cool white (Howard, 2026-10-30)
 INTER = "/Users/howard/Documents/GitHub/brick-hammer-launcher/workspace/all/launcher/res/Inter-Bold.ttf"
 
 W = 0.072                       # metres; only the proportions matter
@@ -157,17 +157,21 @@ for a in (90, 210, 330):  # the three-dot mark below it
 # L1 and R1 wide and rounded at the outer corner, L2 and R2 narrow, USB-C between them (top view)
 for (u0, u1, r_out, side) in [(0.02, 0.27, W * 0.05, -1), (0.29, 0.43, 0.0008, -1), (0.57, 0.71, 0.0008, 1), (0.73, 0.98, W * 0.05, 1)]:
     rl, rr = (r_out, 0.0008) if side < 0 else (0.0008, r_out)
-    slab("shoulder", outline(fx(u0), GRIP_TOP - 0.0005, fx(u1), GRIP_TOP + H * 0.038, rl, rr, 0.0004, 0.0004, 8),
+    slab("shoulder", outline(fx(u0), GRIP_TOP + 0.0012, fx(u1), GRIP_TOP + 0.0012 + H * 0.036, rl, rr, 0.0004, 0.0004, 8),
          D1 + 0.0004, D2 - 0.0008, M_BLACK, bevel=0.0007, segs=4)
-slab("usb_top", outline(fx(0.445), GRIP_TOP - 0.0005, fx(0.555), GRIP_TOP + H * 0.02, 0.0005, 0.0005, 0.0003, 0.0003, 4),
+slab("usb_top", outline(fx(0.445), GRIP_TOP + 0.0010, fx(0.555), GRIP_TOP + H * 0.02, 0.0005, 0.0005, 0.0003, 0.0003, 4),
      D1 + 0.0004, D2 - 0.0012, M_BACK, bevel=0.0003, segs=2)
 slab("usb_top_hole", outline(fx(0.465), GRIP_TOP + H * 0.02 - 0.0002, fx(0.535), GRIP_TOP + H * 0.02 + 0.00005, 0.0004, 0.0004, 0.0004, 0.0004, 4),
      (D1 + D2) / 2 - 0.0012, (D1 + D2) / 2 + 0.0004, M_HOLE, bevel=0)
-slab("shoulder_led", outline(fx(0.03), GRIP_TOP - 0.0006, fx(0.97), GRIP_TOP, 0.0002, 0.0002, 0.0002, 0.0002, 2),
-     D1 + 0.0002, D2 - 0.0004, M_LED, bevel=0)
+# the light under the shoulder buttons, in the gap above the grip, seen from behind and above (photos 4, 5, 8)
+slab("shoulder_led", outline(fx(0.03), GRIP_TOP - 0.0002, fx(0.97), GRIP_TOP + 0.0012, 0.0003, 0.0003, 0.0003, 0.0003, 2),
+     D1 + 0.0002, D2 - 0.0002, M_LED, bevel=0)
 # the light bar on the top edge (photos 2 and 8)
 slab("top_led", outline(fx(0.28), H - 0.0001, fx(0.72), H + 0.0003, 0.0002, 0.0002, 0.0002, 0.0002, 2),
      D1 * 0.70, D1 + 0.00035, M_LED, bevel=0)
+# and its glow along the top of the label on the back
+slab("label_led", outline(fx(0.27), H - 0.0016, fx(0.73), H - 0.0002, 0.0002, 0.0002, 0.0002, 0.0002, 2),
+     D1 + 0.0002, D1 + 0.00048, M_LED, bevel=0)
 
 # front: glass across the top 52 %, the display inside it
 slab("glass", outline(x0 + 0.0004, fz(0.517), x1 - 0.0004, H - 0.0004, R_TOP * 0.8, R_TOP * 0.8, 0.0003, 0.0003),
