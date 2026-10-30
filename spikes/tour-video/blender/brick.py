@@ -40,10 +40,10 @@ def srgb(h):
     c = [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)]
     return tuple((x / 12.92) if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c)
 
-BODY_HEX = {"dark": ("55565b", "55565b"), "silver": ("c9cacd", "bfc0c3")}[FINISH]
+BODY_HEX = {"dark": ("5d5e63", "5d5e63"), "silver": ("c9cacd", "bfc0c3")}[FINISH]
 M_BODY = mat("anodised", srgb(BODY_HEX[0]), metal=1.0, rough=0.36)
 M_BACK = mat("back", srgb(BODY_HEX[1]), metal=1.0, rough=0.44)
-M_BLACK = mat("button", srgb("1c1c1e"), rough=0.45)
+M_BLACK = mat("button", srgb("141416"), rough=0.62)
 M_PILL = mat("pill", srgb("b9babd"), rough=0.4)
 M_GLASS = mat("glass", srgb("060607"), rough=0.08, coat=0.6)
 M_HOLE = mat("hole", srgb("0a0a0a"), rough=0.8)
@@ -155,43 +155,47 @@ def text(s, x, z, size, material, y, rot_z=0.0, depth=0.00008, align="LEFT", fac
 # body: the upper slab and the grip behind its lower half
 x0, x1 = -W / 2, W / 2
 slab("body", outline(x0, 0, x1, H, R_TOP, R_TOP, R_BOT, R_BOT), 0, D1, M_BODY, bevel=0.0009, segs=4)
-# --- the back, from Howard's own photo (2026-10-30), straight on ---
-# The grip's back panel starts 56.5 % down. Above it, between 44.6 % and 54.5 %, the shoulder buttons
-# sit in a row inside the grip's top, over frosted light strips; the grip's sides are flat and only
-# its back edges round off (photo 12). Positions are fractions of the width seen from the back,
-# mirrored to the front's fractions with bu().
+# --- the back: layout from TrimUI's flat views, details from Howard's photo (2026-10-30) ---
+# Howard's photo looks down at the back from above and behind, so it shows top surfaces too: the
+# light pipe on the top edge, the tops of the shoulder buttons with their names, and the ledge where
+# the grip steps out, which carries frosted light strips and the USB-C port facing up. Each surface
+# is foreshortened differently, so pv() maps a height on the photo (a fraction of 885 px from its
+# top, y = 205 in the 787 x 1400 view) to the device, surface by surface.
 def bu(u): return fx(1 - u)
 def pv(v):
-    """A height measured on Howard's photo, mapped to TrimUI's flat back view: the phone's close, low
-    angle stretched the shoulder row (photo 44.6-56.5 %, true 36.5-45.5 %)."""
-    if v <= 0.446: return v * 0.365 / 0.446
-    if v >= 0.565: return 0.455 + (v - 0.565) * (1 - 0.455) / (1 - 0.565)
-    return 0.365 + (v - 0.446) * (0.455 - 0.365) / (0.565 - 0.446)
-PANEL_TOP, BAY_TOP, BAY_BOT = fz(0.455), fz(0.365), fz(0.44)
-slab("grip", outline(x0, 0, x1, PANEL_TOP, 0.0025, 0.0025, R_BOT, R_BOT), D1 - 0.0005, D2, M_BACK, bevel=0.0038, segs=10, back_only=True)
-# the bay behind the buttons, flush with the body's sides
-slab("bay", outline(x0, PANEL_TOP - 0.001, x1, BAY_TOP, 0.0008, 0.0008, 0.0003, 0.0003, 4), D1 - 0.0005, D1 + 0.0012, M_BACK, bevel=0.0004, segs=2)
-# shoulder buttons R1 R2 | USB-C | L2 L1 (as seen from behind), labelled on their backs
+    img = 205 + v * 885
+    if img <= 600: return max(0.0, (img - 235) / 912.5)            # upper back plate
+    if img >= 715: return 0.454 + (img - 715) * 0.546 / 375        # grip panel
+    return 0.40 + (img - 600) / 115 * 0.054                         # the ledge, seen from above
+LEDGE = fz(0.454)                      # the grip's top: the ledge
+PANEL_TOP = LEDGE
+BTN_H = H * 0.062                      # the shoulder buttons stand this high on the ledge
+LED_Y0, LED_Y1 = D2 - 0.0024, D2 - 0.0004   # frosted strips along the ledge's back edge
+slab("grip", outline(x0, 0, x1, LEDGE, 0.0025, 0.0025, R_BOT, R_BOT), D1 - 0.0005, D2, M_BACK, bevel=0.0038, segs=10, back_only=True)
+# shoulder buttons standing on the ledge, R1 R2 | USB-C | L2 L1 as seen from behind, named on top
 for (a, b, lab, outer) in [(0.07, 0.305, "R1", True), (0.315, 0.44, "R2", False), (0.575, 0.70, "L2", False), (0.71, 0.93, "L1", True)]:
     u0, u1 = bu(b), bu(a)
     r_out = W * 0.03 if outer else 0.0008
     rl, rr = (0.0008, r_out) if lab.startswith("R") else (r_out, 0.0008)
-    slab("shoulder_" + lab, outline(u0, BAY_BOT, u1, BAY_TOP, rl, rr, 0.0004, 0.0004, 10),
-         D1 + 0.0008, D2 - 0.0002, M_BLACK, bevel=0.0018 if outer else 0.0010, segs=8)
-    t = text(lab, (u0 + u1) / 2, BAY_TOP - H * 0.018, W * 0.04, M_LABEL_BTN, D2 - 0.00015, face="back", align="CENTER")
-    # its frosted light strip underneath
-    slab("led_" + lab, outline(u0 + 0.0004, PANEL_TOP, u1 - 0.0004, BAY_BOT, 0.0002, 0.0002, 0.0002, 0.0002, 2),
-         D1 + 0.0010, D2 - 0.0012, M_LED, bevel=0.0002, segs=1)
-# USB-C in the middle, on a light ribbed tab
-slab("usb_tab", outline(bu(0.565), PANEL_TOP, bu(0.45), BAY_BOT + H * 0.012, 0.0006, 0.0006, 0.0002, 0.0002, 4),
-     D1 + 0.0008, D2 - 0.0016, M_PILL, bevel=0.0003, segs=2)
+    slab("shoulder_" + lab, outline(u0, LEDGE - 0.0003, u1, LEDGE + BTN_H, rl, rr, 0.0004, 0.0004, 10),
+         D1 + 0.0003, LED_Y0 - 0.0002, M_BLACK, bevel=0.0016 if outer else 0.0010, segs=8)
+    t = text(lab, (u0 + u1) / 2, LEDGE + BTN_H + 0.00002, W * 0.045, M_LABEL_BTN, (D1 + LED_Y0) / 2, align="CENTER")
+    t.rotation_euler = (0, 0, math.radians(180)); t.location = ((u0 + u1) / 2, (D1 + LED_Y0) / 2, LEDGE + BTN_H + 0.00002)
+    slab("led_" + lab, outline(u0 + 0.0003, LEDGE - 0.0002, u1 - 0.0003, LEDGE + 0.0009, 0.0002, 0.0002, 0.0002, 0.0002, 2),
+         LED_Y0, LED_Y1, M_LED, bevel=0.0002, segs=1)
+# USB-C facing up between R2 and L2, in a raised block, with a light ribbed tab behind it
+slab("usb_block", outline(bu(0.565), LEDGE - 0.0003, bu(0.45), LEDGE + BTN_H * 0.55, 0.0008, 0.0008, 0.0003, 0.0003, 6),
+     D1 + 0.0003, LED_Y0 - 0.0002, M_BODY, bevel=0.0005, segs=3)
+me_ = bpy.data.meshes.new("usb_hole"); bm = bmesh.new()
+cx_, cy_ = (bu(0.565) + bu(0.45)) / 2, (D1 + LED_Y0) / 2
+pts = outline(cx_ - W * 0.042, cy_ - 0.0012, cx_ + W * 0.042, cy_ + 0.0012, 0.0011, 0.0011, 0.0011, 0.0011, 8)
+vs = [bm.verts.new((x, y, LEDGE + BTN_H * 0.55 + 0.00003)) for x, y in pts]; bm.faces.new(vs); bm.to_mesh(me_); bm.free()
+o_ = bpy.data.objects.new("usb_hole", me_); scene.collection.objects.link(o_); o_.data.materials.append(M_HOLE)
+slab("usb_tab", outline(bu(0.56), LEDGE - 0.0002, bu(0.455), LEDGE + 0.0010, 0.0002, 0.0002, 0.0002, 0.0002, 2),
+     LED_Y0, LED_Y1, M_PILL, bevel=0.0002, segs=1)
 for k in range(5):
-    slab("usb_rib", outline(bu(0.555), PANEL_TOP + H * (0.002 + k * 0.0036), bu(0.46), PANEL_TOP + H * (0.0032 + k * 0.0036),
-                            0.0001, 0.0001, 0.0001, 0.0001, 1), D2 - 0.0017, D2 - 0.0013, M_ENGRAVE, bevel=0)
-slab("usb_port", outline(bu(0.56), BAY_BOT + H * 0.012, bu(0.455), BAY_TOP - H * 0.03, 0.0012, 0.0012, 0.0012, 0.0012, 8),
-     D1 + 0.0008, D2 - 0.0010, M_BODY, bevel=0.0003, segs=2)
-slab("usb_hole", outline(bu(0.545), BAY_BOT + H * 0.022, bu(0.47), BAY_TOP - H * 0.042, 0.0009, 0.0009, 0.0009, 0.0009, 8),
-     D2 - 0.0012, D2 - 0.0009, M_HOLE, bevel=0)
+    slab("usb_rib", outline(bu(0.56), LEDGE + 0.0010, bu(0.455), LEDGE + 0.0013, 0.0001, 0.0001, 0.0001, 0.0001, 1),
+         LED_Y0 + 0.0002 + k * 0.0004, LED_Y0 + 0.0004 + k * 0.0004, M_ENGRAVE, bevel=0)
 # the grip panel: "BRICK HAMMER" spaced wide, raised ribs, the marks in a band, four screw holes
 t = text("BRICK HAMMER", 0, fz(pv(0.635)), W * 0.04, M_ETCH, D2 + 0.00006, face="back", align="CENTER")
 t.data.font = bpy.data.fonts.load(INTER.replace("Bold", "Regular")); t.data.space_character = 1.7
@@ -206,20 +210,18 @@ for (u, v) in [(0.155, 0.68), (0.86, 0.675), (0.155, 0.962), (0.85, 0.965)]:
     cyl("hole", bu(u), fz(v), W * 0.02, D2 - 0.0003, D2 + 0.00005, M_HOLE, bevel=0)
 # upper back: two silver Phillips screws, the three-dot mark
 for u in (0.09, 0.91):
-    cyl("screw", bu(u), fz(pv(0.045)), W * 0.02, D1 - 0.0001, D1 + 0.00022, M_SCREW, bevel=0.00012)
+    cyl("screw", bu(u), fz(pv(0.09)), W * 0.02, D1 - 0.0001, D1 + 0.00022, M_SCREW, bevel=0.00012)
     for horiz in (True, False):
         w_, h_ = (W * 0.022, W * 0.004) if horiz else (W * 0.004, W * 0.022)
-        slab("slot", outline(bu(u) - w_ / 2, fz(pv(0.045)) - h_ / 2, bu(u) + w_ / 2, fz(pv(0.045)) + h_ / 2, 0.00005, 0.00005, 0.00005, 0.00005, 1),
+        slab("slot", outline(bu(u) - w_ / 2, fz(pv(0.09)) - h_ / 2, bu(u) + w_ / 2, fz(pv(0.09)) + h_ / 2, 0.00005, 0.00005, 0.00005, 0.00005, 1),
              D1 + 0.00018, D1 + 0.00024, M_HOLE, bevel=0)
 for a in (90, 210, 330):
     cyl("mark", math.cos(math.radians(a)) * W * 0.014, fz(pv(0.37)) + math.sin(math.radians(a)) * W * 0.014, W * 0.011,
         D1 - 0.00005, D1 + 0.00005, M_HOLE, bevel=0)
-# the label: a frosted light band at the top edge, then black glass with the name spaced wide
-slab("label_led", outline(bu(0.77), fz(pv(0.034)), bu(0.23), H - 0.0001, 0.0002, 0.0002, 0.0002, 0.0002, 2),
-     D1 - 0.0004, D1 + 0.0004, M_LED, bevel=0.0001, segs=1)
-slab("top_led", outline(bu(0.77), H - 0.0002, bu(0.23), H + 0.00015, 0.0002, 0.0002, 0.0002, 0.0002, 2),
-     D1 - 0.0010, D1 + 0.0004, M_LED, bevel=0)
-slab("label", outline(bu(0.77), fz(pv(0.175)), bu(0.23), fz(pv(0.034)), 0.0003, 0.0003, W * 0.03, W * 0.03, 8), D1 - 0.0001, D1 + 0.0004, M_LABEL, bevel=0.0001, segs=1)
+# the label: black glass from the back's top edge, its light pipe set into the top edge above it
+slab("top_led", outline(bu(0.77), H - 0.0003, bu(0.23), H + 0.00015, 0.0002, 0.0002, 0.0002, 0.0002, 2),
+     D1 - 0.0028, D1 + 0.0004, M_LED, bevel=0)
+slab("label", outline(bu(0.77), fz(pv(0.175)), bu(0.23), H - 0.0003, 0.0003, 0.0003, W * 0.03, W * 0.03, 8), D1 - 0.0001, D1 + 0.0004, M_LABEL, bevel=0.0001, segs=1)
 t = text("BRICK HAMMER", 0, fz(pv(0.095)), W * 0.05, M_LABEL_TEXT, D1 + 0.00042, face="back", align="CENTER")
 t.data.font = bpy.data.fonts.load(INTER.replace("Bold", "Regular")); t.data.space_character = 1.5
 text("BRICK METAL VERSION DESIGNED BY TRIMUI", 0, fz(pv(0.135)), W * 0.016, M_LABEL_TEXT, D1 + 0.00042, face="back", align="CENTER")
@@ -353,7 +355,8 @@ SHOTS = {
     "left": (-0.45, -0.12, 0.12),
     "bottom": (0.10, -0.30, -0.22),
     "backtop": (0.05, 0.30, 0.42),
-    "back": (0.0, 0.46, 0.06),        # straight on, as Howard's photo   # the angle of reference photo 8
+    "back": (0.0, 0.46, 0.06),
+    "mine": (0.0, 0.36, 0.30),        # above and behind, as Howard's photo        # straight on, as Howard's photo   # the angle of reference photo 8
     "rside": (0.48, 0.02, 0.05),      # the teal-key side, as photo 12
 }
 if os.environ.get("BRICK_SAVE"):  # BRICK_SAVE=/path/brick.blend saves the scene to open in Blender, without rendering
