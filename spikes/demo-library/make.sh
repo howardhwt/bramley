@@ -14,6 +14,7 @@ if [ "$1" = restore ]; then
 	rm -rf "$S/Roms"
 	mv "$S/Roms.test" "$S/Roms"
 	mv "$S/.userdata/shared/.minui/recent.txt.test" "$S/.userdata/shared/.minui/recent.txt"
+	[ -d "$S/Music.test" ] && rm -rf "$S/Music" && mv "$S/Music.test" "$S/Music"
 	echo "restored"
 	exit 0
 fi
@@ -56,4 +57,14 @@ cat > "$S/.userdata/shared/.minui/recent.txt" <<'LIST'
 /Roms/Nintendo Entertainment System (FC)/Thwaite.nes
 /Roms/Game Boy (GB)/Libbet and the Magic Floor.gb
 LIST
+# music: Kimiko Ishizaka's Open Goldberg Variations (CC BY 4.0), two tracks and the cover
+[ -d "$S/Music.test" ] || mv "$S/Music" "$S/Music.test"
+rm -rf "$S/Music"
+A="$S/Music/Kimiko Ishizaka/Open Goldberg Variations"
+mkdir -p "$A"
+BASE="https://archive.org/download/OpenGoldbergVariations/Kimiko%20Ishizaka%20-%20J.S.%20Bach-%20-Open-%20Goldberg%20Variations%2C%20BWV%20988%20%28Piano%29%20-%20"
+curl -fsSL -o "$A/01 Aria.mp3" "${BASE}01%20Aria.mp3"
+curl -fsSL -o "$A/02 Variatio 1 a 1 Clav.mp3" "${BASE}02%20Variatio%201%20a%201%20Clav..mp3"
+curl -fsSL -o "$A/cover.jpg" "https://f4.bcbits.com/img/a1886980162_10.jpg"
+
 echo "demo library ready in $S"

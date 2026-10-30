@@ -18,3 +18,11 @@ images in `art/` are kept here: title screens and screenshots published by each 
 Freedoom's BSD licence forbids using its contributors' names to endorse Bramley: credit them, never
 imply they endorse it. Tobu Tobu Girl Deluxe (CC BY 4.0) and µCity (CC BY-SA 4.0) need this credit
 wherever their images appear, such as a video's description.
+
+## Music
+
+| Album | Artist | Licence | Source |
+|---|---|---|---|
+| J.S. Bach: Open Goldberg Variations, BWV 988 (2012), the Aria and Variation 1, with the album cover | Kimiko Ishizaka, piano | CC BY 4.0 | kimikoishizaka.bandcamp.com (licence on the release page); tracks from archive.org/details/OpenGoldbergVariations |
+
+Credit wherever the album appears: "J.S. Bach, Goldberg Variations, Kimiko Ishizaka (piano), CC BY 4.0, kimikoishizaka.bandcamp.com". The cover's licence is the release's; Bandcamp states one licence for the whole release.

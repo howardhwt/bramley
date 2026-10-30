@@ -138,7 +138,7 @@ Bramley is free and not for sale, under the [PolyForm Noncommercial License 1.0.
 - The emulator cores keep their own licences, mostly the GNU GPL. Each card lists the exact source of every core in `CORES-SOURCE.md` and includes each core's licence in `Licenses/`. See [docs/plans/cores-licenses.md](docs/plans/cores-licenses.md).
 - The music player is based on Muse from [TortOS](https://github.com/ericreinsmidt/TortOS) (MIT).
 - The interface font is [Inter](https://github.com/rsms/inter) (SIL Open Font License).
-- Screenshots show free homebrew games, credited in [spikes/demo-library/CREDITS.md](spikes/demo-library/CREDITS.md).
+- Screenshots show free homebrew games, and J.S. Bach's Goldberg Variations played by Kimiko Ishizaka ([Open Goldberg Variations](https://kimikoishizaka.bandcamp.com/album/j-s-bach-open-goldberg-variations-bwv-988-piano), CC BY 4.0), credited in [spikes/demo-library/CREDITS.md](spikes/demo-library/CREDITS.md).
 
 Full third-party notices are in [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md).
 
