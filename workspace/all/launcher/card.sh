@@ -130,6 +130,11 @@ rm -f "$CARD/nextui.pak_store.pakz" "$CARD/nextui.updater.pakz"   # NextUI's sto
 cp "$HERE/card/README.txt" "$CARD/README.txt"
 cp "$ROOT/THIRD-PARTY-LICENSES.md" "$ROOT/LICENSE" "$HERE/res/Inter-LICENSE.txt" "$CARD/"
 
+# a fingerprint of the card outside MinUI.zip: when a card's matches a release's, Software Update
+# downloads only the system zip (bramley_update.c)
+(cd "$CARD" && find Emus Licenses CORES-SOURCE.md README.txt LICENSE THIRD-PARTY-LICENSES.md Inter-LICENSE.txt -type f -print0 |
+	LC_ALL=C sort -z | xargs -0 shasum -a 256) | shasum -a 256 | cut -c1-16 > "$CARD/.bramley-extras-id"
+
 echo "== zipping"
 (cd "$SYS" && rm -f "$OUT/MinUI.zip" && zip -q -r -X "$OUT/MinUI.zip" .system .tmp_update Tools)
 cp "$OUT/MinUI.zip" "$CARD/MinUI.zip"
@@ -144,6 +149,10 @@ ZIPF="Bramley-$VERSION-card.zip"
 	echo "file $ZIPF"
 	echo "size $(stat -f%z "$ROOT/releases/$ZIPF")"
 	echo "sha256 $(shasum -a 256 "$ROOT/releases/$ZIPF" | cut -d' ' -f1)"
+	echo "system Bramley-$VERSION-update.zip"
+	echo "system_size $(stat -f%z "$ROOT/releases/Bramley-$VERSION-update.zip")"
+	echo "system_sha256 $(shasum -a 256 "$ROOT/releases/Bramley-$VERSION-update.zip" | cut -d' ' -f1)"
+	echo "extras $(cat "$CARD/.bramley-extras-id")"
 	echo "notes"
 	cat "$HERE/release-notes.txt"
 } > "$ROOT/releases/bramley-update.txt"

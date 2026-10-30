@@ -42,13 +42,19 @@ extern char** environ;
 // Paks, and the notices at the top of the card. Nothing else in the zip is touched.
 static const char* const allowed[] = {
 	"MinUI.zip", "Emus/" PLATFORM "/*", "Tools/" PLATFORM "/*", "Licenses/*",
-	"CORES-SOURCE.md", "README.txt", "LICENSE", "THIRD-PARTY-LICENSES.md", "Inter-LICENSE.txt",
+	"CORES-SOURCE.md", "README.txt", "LICENSE", "THIRD-PARTY-LICENSES.md", "Inter-LICENSE.txt", ".bramley-extras-id",
 };
+
+// A fingerprint of everything on the card outside MinUI.zip (the cores, licences, readme), written
+// by card.sh. When the card's matches the release's, only the system zip (MinUI.zip, about a quarter
+// of the card zip) is downloaded.
+#define EXTRAS_ID SDCARD_PATH "/.bramley-extras-id"
 
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static UpdateInfo info;
 static char sha256[65];
 static int auto_check = 1;
+static int system_only; // the download is the system zip alone, installed as MinUI.zip
 static int loaded, busy, fake;
 static pid_t curl_pid;
 static int stopping;
@@ -78,8 +84,8 @@ static void save_state(void) {
 	mkdir(DIR, 0755);
 	FILE* f = fopen(STATE_FILE, "w");
 	if (!f) return;
-	fprintf(f, "checked %lld\nauto %d\nversion %s\nfile %s\nsize %lld\nsha256 %s\n", info.checked, auto_check,
-	        info.version, info.file, info.size, sha256);
+	fprintf(f, "checked %lld\nauto %d\nversion %s\nfile %s\nsize %lld\nsha256 %s\nsystem %d\n", info.checked, auto_check,
+	        info.version, info.file, info.size, sha256, system_only);
 	fclose(f);
 	f = fopen(NOTES_FILE, "w");
 	if (f) {
@@ -172,6 +178,7 @@ void update_init(void) {
 			else if (!strcmp(line, "file")) snprintf(info.file, sizeof(info.file), "%s", v);
 			else if (!strcmp(line, "size")) info.size = atoll(v);
 			else if (!strcmp(line, "sha256")) snprintf(sha256, sizeof(sha256), "%s", v);
+			else if (!strcmp(line, "system")) system_only = atoi(v);
 		}
 		fclose(s);
 	}
@@ -257,6 +264,12 @@ static int sha256_of(const char* path, char hex[65]) {
 }
 
 // The manifest: "key value" lines, then "notes" and the notes to the end.
+// The system zip and the extras fingerprint, when the release lists them (from 0.9.2).
+static struct {
+	char file[128], sha256[65], extras[65];
+	long long size;
+} sys;
+
 static int parse_manifest(const char* path, UpdateInfo* m, char sum[65]) {
 	FILE* f = fopen(path, "r");
 	if (!f) return -1;
@@ -265,6 +278,7 @@ static int parse_manifest(const char* path, UpdateInfo* m, char sum[65]) {
 	m->version[0] = m->file[0] = m->notes[0] = 0;
 	m->size = 0;
 	sum[0] = 0;
+	memset(&sys, 0, sizeof(sys));
 	while (fgets(line, sizeof(line), f)) {
 		if (in_notes) {
 			strncat(m->notes, line, sizeof(m->notes) - strlen(m->notes) - 1);
@@ -283,12 +297,27 @@ static int parse_manifest(const char* path, UpdateInfo* m, char sum[65]) {
 		else if (!strcmp(line, "file")) snprintf(m->file, sizeof(m->file), "%s", v);
 		else if (!strcmp(line, "size")) m->size = atoll(v);
 		else if (!strcmp(line, "sha256")) snprintf(sum, 65, "%s", v);
+		else if (!strcmp(line, "system")) snprintf(sys.file, sizeof(sys.file), "%s", v);
+		else if (!strcmp(line, "system_size")) sys.size = atoll(v);
+		else if (!strcmp(line, "system_sha256")) snprintf(sys.sha256, sizeof(sys.sha256), "%s", v);
+		else if (!strcmp(line, "extras")) snprintf(sys.extras, sizeof(sys.extras), "%s", v);
 	}
 	fclose(f);
 	trim(m->notes);
 	// a name with a slash could point outside the release
 	if (format != 1 || !m->version[0] || !m->file[0] || strchr(m->file, '/') || m->size <= 0 || strlen(sum) != 64)
 		return -1;
+	// the system zip alone, when the card already has this release's cores and licences
+	char have[80];
+	read_file(EXTRAS_ID, have, sizeof(have));
+	trim(have);
+	int usable = sys.file[0] && !strchr(sys.file, '/') && sys.size > 0 && strlen(sys.sha256) == 64 && sys.extras[0];
+	if (usable && !strcmp(have, sys.extras)) {
+		snprintf(m->file, sizeof(m->file), "%s", sys.file);
+		m->size = sys.size;
+		snprintf(sum, 65, "%s", sys.sha256);
+		return 1;
+	}
 	return 0;
 }
 
@@ -311,12 +340,14 @@ static void* check_thread(void* arg) {
 	int rc = curl(MANIFEST_TMP, url, 0, 30);
 	UpdateInfo m = {0};
 	char sum[65];
+	int parsed;
 	pthread_mutex_lock(&lock);
 	if (rc != 0)
 		set_error(rc == 22 ? "No update information was found for this version." : "Bramley couldn't reach the update server. Check the Wi-Fi connection.");
-	else if (parse_manifest(MANIFEST_TMP, &m, sum) != 0)
+	else if ((parsed = parse_manifest(MANIFEST_TMP, &m, sum)) < 0)
 		set_error("The update information could not be read.");
 	else {
+		system_only = parsed == 1;
 		if (strcmp(sum, sha256) != 0) {
 			// a different release than the one partly downloaded
 			unlink(PART);
@@ -474,6 +505,15 @@ int update_install(void) {
 		set_error("The downloaded update was damaged, so it was deleted. Download it again.");
 		pthread_mutex_unlock(&lock);
 		return -1;
+	}
+	if (system_only) {
+		// the install screen unpacks MinUI.zip on the next start; same card, so a rename
+		int ok = rename(ZIP, SDCARD_PATH "/MinUI.zip") == 0;
+		sync();
+		pthread_mutex_lock(&lock);
+		if (!ok) set_error("The update could not be put in place. Nothing was changed; try again.");
+		pthread_mutex_unlock(&lock);
+		return ok ? 0 : -1;
 	}
 	char cmd[1024];
 	int n = snprintf(cmd, sizeof(cmd), "'%s' -o -q '%s'", UNZIP, ZIP);
