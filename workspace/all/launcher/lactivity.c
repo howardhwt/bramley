@@ -587,3 +587,30 @@ void lactivity_draw(void) {
 	if (act.detail) draw_detail();
 	else draw_overview();
 }
+
+void lactivity_last_played(const char* rom_dir, char* out, size_t n) {
+	out[0] = '\0';
+	const char* base = strrchr(rom_dir, '/');
+	char prefix[300];
+	snprintf(prefix, sizeof(prefix), "%s/", base ? base + 1 : rom_dir);
+	sqlite3* db;
+	if (sqlite3_open_v2(GAMETIME_LOG_FILE, &db, SQLITE_OPEN_READONLY, NULL) != SQLITE_OK) {
+		sqlite3_close(db);
+		return;
+	}
+	sqlite3_stmt* st;
+	time_t last = 0;
+	if (sqlite3_prepare_v2(db, "SELECT MAX(a.created_at + a.play_time) FROM play_activity a JOIN rom r ON r.id = a.rom_id "
+	                           "WHERE a.play_time IS NOT NULL AND substr(r.file_path, 1, ?2) = ?1;", -1, &st, NULL) == SQLITE_OK) {
+		sqlite3_bind_text(st, 1, prefix, -1, SQLITE_STATIC);
+		sqlite3_bind_int(st, 2, (int)strlen(prefix));
+		if (sqlite3_step(st) == SQLITE_ROW) last = (time_t)sqlite3_column_int64(st, 0);
+		sqlite3_finalize(st);
+	}
+	sqlite3_close(db);
+	if (!last) return;
+	char day[32];
+	when(last, day, sizeof(day));
+	if (!strcmp(day, "Today") || !strcmp(day, "Yesterday")) day[0] += 'a' - 'A';
+	snprintf(out, n, "played %s", day);
+}

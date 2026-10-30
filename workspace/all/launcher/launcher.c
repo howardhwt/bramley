@@ -62,6 +62,8 @@ typedef struct {
 // A large Top Shelf, one row in full view with the next one peeking in at the bottom edge, and
 // Apps wrapping into lines of GRID_COLS like the tvOS app grid.
 static const float rows_top = 500.0f, shelf_art_h = 340.0f, shelf_art_max_w = 500.0f;
+// a tile without art is shown large as the Top Shelf, without the text beside it
+static const float shelf_tile_w = 600.0f;
 
 static Row rows[MAX_ROWS];
 static RowView views[MAX_ROWS];
@@ -426,11 +428,35 @@ static void move_focus(int dx, int dy) {
 	else if (dy < 0 && r > 0) focus_row--;
 }
 
-// Bramley's app icon for a console without one of its own (tools/console-glyphs.py), by its
-// folder's tag, or the default icon for a folder Bramley does not know.
-static void console_icon_path(const char* tag, int size, char* out, size_t n) {
-	snprintf(out, n, BRAMLEY_RES_DIR "/brand/consoles/%s-%d.png", tag, size);
-	if (!exists(out)) snprintf(out, n, BRAMLEY_RES_DIR "/brand/consoles/default-%d.png", size);
+// The look of each tile without art, as an iOS Shortcuts tile (tools/console-glyphs.py writes
+// tiles.txt): a colour as a gradient from top to bottom and a white symbol.
+typedef struct {
+	char key[24], symbol[16];
+	float top[3], bottom[3];
+} TileStyle;
+static TileStyle tile_styles[64];
+static int tile_style_count = -1;
+
+static const TileStyle* tile_style(const char* key) {
+	if (tile_style_count < 0) {
+		tile_style_count = 0;
+		FILE* f = fopen(BRAMLEY_RES_DIR "/brand/consoles/tiles.txt", "r");
+		char line[128];
+		while (f && tile_style_count < 64 && fgets(line, sizeof(line), f)) {
+			TileStyle* t = &tile_styles[tile_style_count];
+			int c[6];
+			if (sscanf(line, "%23s %15s %d %d %d %d %d %d", t->key, t->symbol, &c[0], &c[1], &c[2], &c[3], &c[4], &c[5]) != 8) continue;
+			for (int i = 0; i < 3; i++) {
+				t->top[i] = c[i] / 255.0f;
+				t->bottom[i] = c[i + 3] / 255.0f;
+			}
+			tile_style_count++;
+		}
+		if (f) fclose(f);
+	}
+	for (int i = 0; i < tile_style_count; i++)
+		if (!strcmp(tile_styles[i].key, key)) return &tile_styles[i];
+	return NULL;
 }
 
 static int is_settings(const Card* card);
@@ -442,17 +468,29 @@ static int is_widget(const Card* card) {
 	return card->kind == CARD_CONSOLE || card->kind == CARD_COLLECTION || card->kind == CARD_MUSIC || card->kind == CARD_TOOL;
 }
 
-// A widget's app icon, and the line under its name.
-static void widget_icon_path(const Card* card, int size, char* out, size_t n) {
+// A widget's colour and symbol: a console's by its folder's tag, or the default for a folder
+// Bramley does not know; an app's by what it is.
+static const TileStyle* widget_style(const Card* card) {
 	if (card->kind == CARD_CONSOLE) {
-		console_icon_path(card->tag, size, out, n);
-		return;
+		const TileStyle* t = tile_style(card->tag);
+		return t ? t : tile_style("default");
 	}
-	const char* app = card->kind == CARD_MUSIC ? "music"
-	                : card->kind == CARD_COLLECTION ? (strcasecmp(card->name, "Favorites") ? "collection" : "favorites")
-	                : is_settings(card) ? "settings" : is_files(card) ? "files" : is_activity(card) ? "activity" : "default";
-	snprintf(out, n, BRAMLEY_RES_DIR "/brand/consoles/app-%s-%d.png", app, size);
+	const char* app = card->kind == CARD_MUSIC ? "app-music"
+	                : card->kind == CARD_COLLECTION ? (strcasecmp(card->name, "Favorites") ? "app-collection" : "app-favorites")
+	                : is_settings(card) ? "app-settings" : is_files(card) ? "app-files" : is_activity(card) ? "app-activity" : "app-default";
+	return tile_style(app);
 }
+
+// A widget's white symbol, 64 or 128 pixels.
+static LTex* widget_symbol(const Card* card, int size) {
+	const TileStyle* t = widget_style(card);
+	if (!t) return NULL;
+	char path[512];
+	snprintf(path, sizeof(path), BRAMLEY_RES_DIR "/brand/consoles/sym-%s-%d.png", t->symbol, size);
+	return ltex_load(path, 0);
+}
+
+// The line under a widget's name.
 
 static void widget_subtitle(const Card* card, char* out, size_t n) {
 	if (card->kind == CARD_CONSOLE) snprintf(out, n, "%d %s", card->game_count, card->game_count == 1 ? "game" : "games");
@@ -466,10 +504,16 @@ static void widget_subtitle(const Card* card, char* out, size_t n) {
 	else snprintf(out, n, "Pak");
 }
 
-// The glass behind a console tile without art, as an iOS widget: dark, translucent, a hairline rim.
-static void draw_glass(float x, float y, float w, float h, float radius, float alpha) {
-	lgfx_draw_fill(x, y, w, h, radius, 0.11f, 0.11f, 0.14f, 0.62f * alpha);
-	lgfx_draw_ring(x, y, w, h, radius, 1, 1, 1, 1, 0.13f * alpha);
+// A widget's colour, as a Shortcuts tile: a gradient from top to bottom and a hairline rim.
+static void draw_tile_colour(const Card* card, float x, float y, float w, float h, float radius, float alpha) {
+	const TileStyle* t = widget_style(card);
+	float top[4] = { 0.56f, 0.56f, 0.58f, alpha }, bottom[4] = { 0.33f, 0.33f, 0.35f, alpha };
+	if (t) {
+		memcpy(top, t->top, sizeof(t->top));
+		memcpy(bottom, t->bottom, sizeof(t->bottom));
+	}
+	lgfx_draw_gradient(x, y, w, h, radius, top, bottom);
+	lgfx_draw_ring(x, y, w, h, radius, 1, 1, 1, 1, 0.2f * alpha);
 }
 
 static void card_colors(const Card* card, float top[4], float bottom[4]) {
@@ -501,10 +545,9 @@ static int load_next_art(void) {
 			}
 			if (!card->label && !card->art) {
 				if (is_widget(card)) {
-					// no art of its own: Bramley's tile, an app icon with the name and a line under it
-					char path[512], line[64];
-					widget_icon_path(card, 80, path, sizeof(path));
-					card->glyph = ltex_load(path, 0);
+					// no art of its own: Bramley's tile, a symbol with the name and a line under it
+					char line[64];
+					card->glyph = widget_symbol(card, 64);
 					card->label = ltex_text(LFONT_LABEL, card->name, (int)ICON_W - 32);
 					widget_subtitle(card, line, sizeof(line));
 					card->sublabel = ltex_text(LFONT_SMALL, line, (int)ICON_W - 32);
@@ -550,7 +593,10 @@ static int update_shelf(void) {
 		pill_a = "Play";
 	} else if (card->kind == CARD_CONSOLE) {
 		snprintf(kicker, sizeof(kicker), "Console");
-		snprintf(detail, sizeof(detail), "%d %s", card->game_count, card->game_count == 1 ? "game" : "games");
+		char played[64];
+		lactivity_last_played(card->path, played, sizeof(played));
+		snprintf(detail, sizeof(detail), "%d %s%s%s", card->game_count, card->game_count == 1 ? "game" : "games",
+		         played[0] ? "  ·  " : "", played);
 	} else if (card->kind == CARD_COLLECTION) {
 		snprintf(kicker, sizeof(kicker), "Collection");
 		snprintf(detail, sizeof(detail), "%d %s", card->game_count, card->game_count == 1 ? "item" : "items");
@@ -576,10 +622,10 @@ static int update_shelf(void) {
 	shelf.pill_a = ltex_text(LFONT_LABEL, text, 0);
 	if (card->kind == CARD_RECENT && card->can_resume) shelf.pill_x = ltex_text(LFONT_LABEL, "X   Resume save", 0);
 	if (is_widget(card)) {
-		// without art, the preview shows its large app icon on glass
-		char path[512];
-		widget_icon_path(card, 200, path, sizeof(path));
-		shelf.art_icon = ltex_load(path, 0);
+		// without art, the preview is the tile itself, large, with the name and detail inside it
+		shelf.art_icon = widget_symbol(card, 128);
+		ltex_free(shelf.title);
+		shelf.title = ltex_text_wrapped(LFONT_HERO, card->name, (int)shelf_tile_w - 60, 2, 0);
 	} else shelf.art_label = ltex_text(LFONT_TITLE, card->name, (int)shelf_art_max_w - 40);
 	shine_t = 0.0f;
 	shelf_fade.x = 0.0f;
@@ -635,16 +681,16 @@ static void draw_icon(int r, int c, float row_alpha) {
 	if (card->art) {
 		lgfx_draw_art(card->art, x, y, w, h, radius, row_alpha);
 	} else if (is_widget(card) && card->glyph) {
-		// app icon top left, the name and the game count bottom left (design: spikes/console-tiles)
-		draw_glass(x, y, w, h, radius, row_alpha);
-		if (lift > 0.01f) lgfx_draw_fill(x, y, w, h, radius, 1, 1, 1, 0.12f * lift * row_alpha); // focus brightens it
-		float g = 40 * s, pad = 14 * s;
-		lgfx_draw_tex(card->glyph, x + pad, y + pad, g, g, 0, row_alpha);
+		// a Shortcuts tile: colour, a white symbol top left, the name and the game count bottom
+		// left (design: spikes/shortcuts-tiles)
+		draw_tile_colour(card, x, y, w, h, radius, row_alpha);
+		float k = 40.0f * s / fmaxf(card->glyph->w, card->glyph->h), pad = 16 * s;
+		lgfx_draw_tex(card->glyph, x + pad, y + pad, card->glyph->w * k, card->glyph->h * k, 0, row_alpha);
 		float by = y + h - pad;
 		if (card->sublabel) {
 			float sw = card->sublabel->w * s, sh = card->sublabel->h * s;
 			by -= sh;
-			lgfx_draw_tex(card->sublabel, x + 16 * s, by, sw, sh, 0, 0.6f * row_alpha);
+			lgfx_draw_tex(card->sublabel, x + 16 * s, by, sw, sh, 0, 0.8f * row_alpha);
 		}
 		if (card->label) {
 			float lw = card->label->w * s, lh = card->label->h * s;
@@ -679,7 +725,7 @@ static void draw_shelf(void) {
 	float a = shelf_fade.x;
 
 	// Art box: landscape for screenshots and wide art, narrower for square or tall box art.
-	float art_w = shelf_art_max_w;
+	float art_w = is_widget(card) && !card->art ? shelf_tile_w : shelf_art_max_w;
 	if (card->art) {
 		float aspect = (float)card->art->w / card->art->h;
 		art_w = fminf(fmaxf(shelf_art_h * aspect, 180), shelf_art_max_w);
@@ -688,10 +734,20 @@ static void draw_shelf(void) {
 	lgfx_draw_shadow(art_x, art_y, art_w, shelf_art_h, 14, 0.7f * a);
 	if (card->art) {
 		lgfx_draw_tex(card->art, art_x, art_y, art_w, shelf_art_h, 22, a);
-	} else if (shelf.art_icon) {
-		draw_glass(art_x, art_y, art_w, shelf_art_h, 22, a);
-		float g = fminf(150, shelf_art_h - 60);
-		lgfx_draw_tex(shelf.art_icon, art_x + (art_w - g) * 0.5f, art_y + (shelf_art_h - g) * 0.5f, g, g, 0, a);
+	} else if (is_widget(card)) {
+		// the tile, large: its symbol top left, the name and the detail bottom left, nothing beside
+		draw_tile_colour(card, art_x, art_y, art_w, shelf_art_h, 28, a);
+		if (shelf.art_icon) {
+			float k = 70.0f / fmaxf(shelf.art_icon->w, shelf.art_icon->h);
+			lgfx_draw_tex(shelf.art_icon, art_x + 30, art_y + 28, shelf.art_icon->w * k, shelf.art_icon->h * k, 0, a);
+		}
+		float by = art_y + shelf_art_h - 26;
+		if (shelf.detail) {
+			by -= shelf.detail->h;
+			lgfx_draw_tex(shelf.detail, art_x + 31, by, shelf.detail->w, shelf.detail->h, 0, 0.82f * a);
+		}
+		if (shelf.title) lgfx_draw_tex(shelf.title, art_x + 30, by - shelf.title->h + 4, shelf.title->w, shelf.title->h, 0, a);
+		return;
 	} else {
 		float top[4], bottom[4];
 		card_colors(card, top, bottom);

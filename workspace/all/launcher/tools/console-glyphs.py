@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""Renders Bramley's console and app icons for Home into res/brand/consoles/ as PNGs.
+"""Renders the symbols and colours of Bramley's Home tiles into res/brand/consoles/.
 
-Each system without an icon of its own shows a tile in the style of an iOS widget: an app icon
-(the Settings icon style, from tools/settings-icons.py) with a white symbol on one of Apple's
-dark-mode system colours, then the system's name and game count, drawn by the launcher.
+Each system without an icon of its own shows a tile in the style of an iOS Shortcuts tile: one of
+Apple's dark-mode system colours as a gradient, a white symbol top left, and the system's name and
+game count bottom left, drawn by the launcher.
 
 The symbols are generic, never a company's logo: a controller, a disc, a joystick and a keyboard
 from Material Symbols Rounded (Apache 2.0, Google, downloaded at a pinned commit and checked), and
-a handheld drawn here. Design: spikes/console-tiles (V1 widget, handheld D4 widest).
+a handheld drawn here. Design: spikes/shortcuts-tiles (S1 tiles, H6 large tile, Game Boy indigo).
 
 Needs Pillow and numpy:  python3 tools/console-glyphs.py
-Writes <TAG>-80.png (the tile) and <TAG>-200.png (the large preview) for every system below,
-plus default-80.png and default-200.png for any other folder, and app-<name>-80.png and -200.png
-for Favorites, other collections, Music, Activity, Files, Settings and any other Pak (a star, a
-list, a note, a chart, a folder and an apps grid from Material Symbols; Settings' gear is the one
-tools/settings-icons.py draws).
+Writes sym-<symbol>-<size>.png, a white symbol on transparency, and tiles.txt, one line per tile:
+"<TAG or app-name> <symbol> <top r g b> <bottom r g b>", the gradient from the top to the bottom.
+The apps are Favorites, other collections, Music, Activity, Files, Settings and any other Pak (a
+star, a list, a note, a chart, a folder and an apps grid from Material Symbols; Settings' gear is
+the one tools/settings-icons.py draws). "default" is any console folder Bramley does not know.
 """
 import hashlib
 import importlib.util
@@ -30,7 +30,7 @@ MATERIAL_COMMIT = "10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7"
 MATERIAL_URL = ("https://raw.githubusercontent.com/google/material-design-icons/" + MATERIAL_COMMIT +
                 "/variablefont/MaterialSymbolsRounded%5BFILL%2CGRAD%2Copsz%2Cwght%5D.ttf")
 MATERIAL_SHA256 = "7e74e36533ccee12c2b81e75bfcf3ccf123d3bb7e7e46d65d94445f23db0c97c"
-SIZES = (80, 200)
+SIZES = (64, 128)
 
 spec = importlib.util.spec_from_file_location("settings_icons", os.path.join(HERE, "settings-icons.py"))
 si = importlib.util.module_from_spec(spec)
@@ -43,8 +43,8 @@ PINK, BROWN, GRAY = (255, 55, 95), (172, 142, 104), (142, 142, 147)
 
 # folder tag: kind of device, colour
 SYSTEMS = {
-    "FC": ("console", RED), "FDS": ("disc", RED), "SFC": ("console", INDIGO), "SUPA": ("console", INDIGO),
-    "GB": ("handheld", GREEN), "GBC": ("handheld", TEAL), "GBA": ("handheld", PURPLE), "MGBA": ("handheld", PURPLE),
+    "FC": ("console", RED), "FDS": ("disc", RED), "SFC": ("console", PURPLE), "SUPA": ("console", PURPLE),
+    "GB": ("handheld", INDIGO), "GBC": ("handheld", TEAL), "GBA": ("handheld", PURPLE), "MGBA": ("handheld", PURPLE),
     "SGB": ("handheld", MINT), "VB": ("handheld", RED), "PKM": ("handheld", YELLOW),
     "MD": ("console", BLUE), "SMS": ("console", BLUE), "SG1000": ("console", BLUE), "32X": ("console", BLUE),
     "GG": ("handheld", CYAN), "SEGACD": ("disc", BLUE), "PS": ("disc", GRAY), "PCE": ("console", ORANGE),
@@ -105,6 +105,29 @@ def handheld(S):
     return si.soften(m, S)
 
 
+def lum(c):
+    f = lambda v: (v / 255) / 12.92 if v / 255 <= 0.04045 else ((v / 255 + 0.055) / 1.055) ** 2.4
+    return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2])
+
+
+def gradient(colour):
+    """The tile's top and bottom colours. Light colours (yellow, mint, cyan) are deepened until white
+    text keeps a contrast of 2.2:1 at the middle of the tile, as Shortcuts does with its pale colours."""
+    if colour == YELLOW:  # deepening yellow turns it olive; Shortcuts runs it into orange instead
+        return (255, 196, 10), (232, 134, 0)
+    c = colour
+    while (1.05) / (lum(c) + 0.05) < 2.2:
+        c = si.dark(c, 0.04)
+    return si.light(c, 0.16), si.dark(c, 0.24)
+
+
+def symbol_mask(draw, size):
+    m = draw(size * 4)
+    m = m.crop(m.getbbox())
+    k = size / max(m.size)
+    return m.resize((max(1, round(m.width * k)), max(1, round(m.height * k))), Image.LANCZOS)
+
+
 def main():
     si.FONT_BYTES = si.phosphor_fill_font()
     font = material_font()
@@ -114,25 +137,36 @@ def main():
         "disc": material(font, 0xE019),      # album
         "arcade": material(font, 0xF5EE),    # joystick
         "computer": material(font, 0xE312),  # keyboard
+        "star": material(font, 0xF09A),
+        "list": material(font, 0xE241),      # format_list_bulleted
+        "music": material(font, 0xE405),     # music_note
+        "chart": material(font, 0xE26B),     # bar_chart
+        "folder": material(font, 0xE2C7),
+        "gear": si.gear,                     # Settings' own gear
+        "apps": material(font, 0xE5C3),
     }
     os.makedirs(OUT, exist_ok=True)
-    for tag, (kind, colour) in list(SYSTEMS.items()) + [("default", ("console", GRAY))]:
+    for name in os.listdir(OUT):
+        if name.endswith(".png") or name == "tiles.txt":
+            os.remove(os.path.join(OUT, name))
+    for name, draw in symbols.items():
         for size in SIZES:
-            path = os.path.join(OUT, f"{tag}-{size}.png")
-            si.tile(colour, symbols[kind], size).save(path, optimize=True)
+            m = symbol_mask(draw, size)
+            out = Image.new("RGBA", m.size, (255, 255, 255, 255))
+            out.putalpha(m)
+            out.save(os.path.join(OUT, f"sym-{name}-{size}.png"), optimize=True)
     apps = {
-        "favorites": (YELLOW, material(font, 0xF09A)),   # star
-        "collection": (BLUE, material(font, 0xE241)),    # format_list_bulleted
-        "music": (PINK, material(font, 0xE405)),         # music_note
-        "activity": (ORANGE, material(font, 0xE26B)),    # bar_chart
-        "files": (BLUE, material(font, 0xE2C7)),         # folder
-        "settings": (GRAY, si.gear),                     # Settings' own gear
-        "default": (GRAY, material(font, 0xE5C3)),       # apps
+        "app-favorites": ("star", YELLOW), "app-collection": ("list", BLUE), "app-music": ("music", PINK),
+        "app-activity": ("chart", ORANGE), "app-files": ("folder", BLUE), "app-settings": ("gear", GRAY),
+        "app-default": ("apps", GRAY),
     }
-    for name, (colour, symbol) in apps.items():
-        for size in SIZES:
-            si.tile(colour, symbol, size).save(os.path.join(OUT, f"app-{name}-{size}.png"), optimize=True)
-    print(f"wrote {len(SYSTEMS) + 1} console and {len(apps)} app icons in {len(SIZES)} sizes to {OUT}")
+    lines = []
+    for tag, (kind, colour) in list(SYSTEMS.items()) + [("default", ("console", GRAY))] + list(apps.items()):
+        top, bottom = gradient(colour)
+        lines.append(f"{tag} {kind} {' '.join(map(str, top))} {' '.join(map(str, bottom))}")
+    with open(os.path.join(OUT, "tiles.txt"), "w") as f:
+        f.write("\n".join(lines) + "\n")
+    print(f"wrote {len(symbols)} symbols in {len(SIZES)} sizes and {len(lines)} tiles to {OUT}")
 
 
 if __name__ == "__main__":

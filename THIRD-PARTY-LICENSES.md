@@ -87,4 +87,4 @@ SOFTWARE.
 - **Source:** https://github.com/google/material-design-icons, commit 10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7, the variable font `MaterialSymbolsRounded`.
 - **License:** Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0).
 - **Copyright:** Google LLC.
-- **Used in:** ten symbols (stadia_controller, album, joystick, keyboard, star, format_list_bulleted, music_note, bar_chart, folder, apps), rendered by `workspace/all/launcher/tools/console-glyphs.py` into the console and app icons in `workspace/all/launcher/res/brand/consoles/`. The symbols are drawn white on Bramley's coloured tiles; no other change is made to them.
+- **Used in:** ten symbols (stadia_controller, album, joystick, keyboard, star, format_list_bulleted, music_note, bar_chart, folder, apps), rendered by `workspace/all/launcher/tools/console-glyphs.py` as white symbols in `workspace/all/launcher/res/brand/consoles/`, which the launcher draws on coloured tiles; no other change is made to them.

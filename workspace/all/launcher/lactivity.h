@@ -19,5 +19,8 @@ int lactivity_input(Card* play);
 int lactivity_update(void);
 // Draws Activity over the whole screen, except the status in the top right corner.
 void lactivity_draw(void);
+// When a game in this ROM folder was last played, as "played today", "played yesterday" or
+// "played 3 Oct 2026"; empty if the log has none.
+void lactivity_last_played(const char* rom_dir, char* out, size_t n);
 
 #endif
