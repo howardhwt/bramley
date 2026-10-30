@@ -474,10 +474,11 @@ static void* download_thread(void* arg) {
 
 	wifi_power_save(0);
 	int rc = 0;
-	// every round starts the pieces that are not complete; a dropped piece resumes in the next
-	for (int round = 0; round < 4 && !stopping; round++) {
-		int running = 0;
-		rc = 0;
+	// each piece runs until it is complete; one that drops or stalls restarts on its own, where it
+	// stopped, without waiting for the others (up to 5 tries each)
+	int tries[SEGMENTS] = {0};
+	for (;;) {
+		int running = 0, incomplete = 0;
 		for (int i = 0; i < pieces; i++) {
 			char p[300];
 			seg_path(i, p, sizeof(p));
@@ -487,32 +488,38 @@ static void* download_thread(void* arg) {
 				unlink(p);
 				have = 0;
 			}
-			pid_t pid = have < to - from + 1 ? start_piece(url, from + have, to, p) : 0;
-			pthread_mutex_lock(&lock);
-			seg_pids[i] = pid;
-			pthread_mutex_unlock(&lock);
-			if (pid > 0) running++;
-		}
-		if (!running) break; // every piece is complete
-		for (int i = 0; i < pieces; i++) {
 			pthread_mutex_lock(&lock);
 			pid_t pid = seg_pids[i];
 			pthread_mutex_unlock(&lock);
-			if (pid <= 0) continue;
-			int status = 0;
-			while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
-			int code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-			if (code != 0) {
-				LOG_info("bramley_update: piece %d of %s ended with %d\n", i, url, code);
-				if (rc != 22) rc = code;
+			if (pid > 0) {
+				int status = 0;
+				pid_t w = waitpid(pid, &status, WNOHANG);
+				if (w == 0) {
+					running++;
+					continue;
+				}
+				int code = w == pid && WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+				if (code != 0) LOG_info("bramley_update: piece %d of %s ended with %d\n", i, url, code);
+				if (code == 22) rc = 22;
+				pthread_mutex_lock(&lock);
+				seg_pids[i] = 0;
+				pthread_mutex_unlock(&lock);
+				have = file_size(p);
 			}
+			if (have >= to - from + 1) continue; // complete
+			incomplete++;
+			if (stopping || rc == 22 || tries[i] >= 5) continue;
+			tries[i]++;
+			pid = start_piece(url, from + have, to, p);
 			pthread_mutex_lock(&lock);
-			seg_pids[i] = 0;
+			seg_pids[i] = pid > 0 ? pid : 0;
 			pthread_mutex_unlock(&lock);
+			if (pid > 0) running++;
 		}
-		if (rc == 22) break; // the file is not there; retrying will not help
-		if (rc != 0 && !stopping) sleep(3);
+		if (!running) break; // complete, cancelled, or out of tries
+		usleep(500000);
 	}
+	rc = rc == 22 ? 22 : 0;
 	// complete when the pieces add up to the whole file; then joined into PART
 	if (!stopping && downloaded() == size) {
 		FILE* out = fopen(PART, "wb");
