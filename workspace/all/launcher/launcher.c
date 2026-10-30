@@ -1861,6 +1861,9 @@ static void draw_splash(void) {
 	lgfx_draw_fill(bx, by, fmaxf(6, bw * splash.progress), 6, 3, 0.92f, 0.92f, 0.92f, a);
 }
 
+static void debug_record(void);
+static FILE* record_pipe;
+
 // How much of the boot splash still shows, 1 to 0.
 static float splash_alpha(void) {
 	if (!splash.on) return 0;
@@ -1888,7 +1891,40 @@ static void draw_frame(int show_setting) {
 	debug_drawing = 1;
 	debug_step();
 	debug_drawing = 0;
+	debug_record();
 	lgfx_end_frame();
+}
+
+// Development aid: LAUNCHER_RECORD=out.mp4 streams every frame into a 60 fps video through ffmpeg,
+// timed by the clock,
+// for the README and release notes; frames keep coming while it records. Unused on the device.
+static void debug_record(void) {
+	static int checked;
+	if (!checked) {
+		checked = 1;
+		const char* out = getenv("LAUNCHER_RECORD");
+		if (out) {
+			int w, h;
+			SDL_GL_GetDrawableSize(SDL_GL_GetCurrentWindow(), &w, &h);
+			char cmd[1024];
+			snprintf(cmd, sizeof(cmd), "ffmpeg -y -loglevel error -use_wallclock_as_timestamps 1 -f rawvideo -pix_fmt rgba -s %dx%d -i - "
+			         "-vf vflip,scale=%d:%d -fps_mode cfr -r 60 -c:v libx264 -pix_fmt yuv420p -crf 16 '%s'", w, h, SCREEN_W, SCREEN_H, out);
+			record_pipe = popen(cmd, "w");
+		}
+	}
+	if (!record_pipe) return;
+	int w, h;
+	SDL_GL_GetDrawableSize(SDL_GL_GetCurrentWindow(), &w, &h);
+	static Uint8* px;
+	static int size;
+	if (size != w * h * 4) {
+		free(px);
+		size = w * h * 4;
+		px = malloc(size);
+	}
+	glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, px);
+	fwrite(px, 1, size, record_pipe);
+	fflush(record_pipe);
 }
 
 // For screens that run their own loop (Files' keyboard): keeps the development key script going.
@@ -2257,7 +2293,7 @@ int main(int argc, char* argv[]) {
 		if (!animating && lmusic_playing() && !np.open && SDL_GetTicks() - last_draw >= 100) animating = 1;
 
 		// Draw only while something moves, so the GPU and battery rest on a still screen.
-		if (animating || dirty || show_setting || debug_shot_wanted) {
+		if (animating || dirty || show_setting || debug_shot_wanted || record_pipe) {
 			last_draw = SDL_GetTicks();
 			draw_frame(show_setting);
 			static int first_frame = 1;
