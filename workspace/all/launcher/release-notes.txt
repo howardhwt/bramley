@@ -1,1 +1,1 @@
-Bramley is now its own system: copy it to a card and it starts on its own, with no NextUI needed. A short setup asks for Wi-Fi and your time zone, and Software Update in Settings keeps it current. Every emulator core is built by Bramley, with its source and licence on the card.
+Settings fixes: resetting System no longer changes how saves are named, Appearance shows only what works, 24-hour time applies everywhere, a time zone change shows at once, and the FN switch no longer leaves turbo on.
