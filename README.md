@@ -49,7 +49,7 @@ Cards over 32 GB: macOS formats them as FAT32 in Disk Utility (MS-DOS (FAT)). Wi
   <img width="49%" src="docs/screenshots/welcome.png" alt="Welcome to Bramley">
   <img width="49%" src="docs/screenshots/quickmenu.png" alt="The quick menu">
   <img width="49%" src="docs/screenshots/files.png" alt="Files">
-  <img width="49%" src="docs/screenshots/home.png" alt="Home">
+  <img width="49%" src="docs/screenshots/home.png" alt="Home, with the Consoles row">
 </p>
 </details>
 
@@ -88,7 +88,7 @@ Put games in `Roms/<System> (<TAG>)/`, for example `Roms/Game Boy (GB)/`, and BI
 | What | Where |
 |---|---|
 | Box art | `Roms/<System>/.media/<game name>.png` |
-| Console icons | `.media/consoles/<TAG>.png` at the top of the card |
+| Console icons | `.media/consoles/<TAG>.png` at the top of the card, to use your own instead of Bramley's |
 | Music | `Music/<Artist>/<Album>/` or `Music/<Album>/`, with an optional `cover.jpg` |
 | Audiobooks | `Audiobooks/<Author>/<Book>/` or `Audiobooks/<Book>/` |
 | Wallpapers | `Wallpapers/` |
@@ -111,7 +111,6 @@ Put games in `Roms/<System> (<TAG>)/`, for example `Roms/Game Boy (GB)/`, and BI
 - **Wi-Fi on a busy 2.4 GHz network can be slow,** which makes the first update take a while. Software Update keeps the device awake and resumes a dropped download by itself.
 - **The first update** on a card from 0.9.1 or earlier downloads the whole 58 MB card. Later updates are usually about 14 MB.
 - **RetroAchievements sign-in** can freeze the screen for a few seconds while it connects.
-- **Console tiles** show the short tag (GB, MD) until you add console icons.
 
 ## FAQ
 
