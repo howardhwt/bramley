@@ -93,7 +93,7 @@ def outline(x0, z0, x1, z1, rtl, rtr, rbr, rbl, seg=14):
             pts.append((cx + r * math.cos(a), cz + r * math.sin(a)))
     return pts
 
-def slab(name, pts, y0, y1, material, bevel=0.0006, segs=3):
+def slab(name, pts, y0, y1, material, bevel=0.0006, segs=3, back_only=False):
     """The outline extruded from y0 (front) to y1 (back)."""
     me = bpy.data.meshes.new(name); bm = bmesh.new()
     vf = [bm.verts.new((x, y0, z)) for x, z in pts]
@@ -104,12 +104,21 @@ def slab(name, pts, y0, y1, material, bevel=0.0006, segs=3):
         j = (i + 1) % n
         bm.faces.new((vf[i], vf[j], vb[j], vb[i]))
     bm.normal_update(); bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    back_edges = set()
+    if back_only:
+        bm.edges.ensure_lookup_table()
+        back = set(vb)
+        back_edges = {e.index for e in bm.edges if all(v in back for v in e.verts)}
     bm.to_mesh(me); bm.free()
+    if back_only:
+        a = me.attributes.new("bevel_weight_edge", "FLOAT", "EDGE")
+        for i in range(len(me.edges)): a.data[i].value = 1.0 if i in back_edges else 0.0
     ob = bpy.data.objects.new(name, me); scene.collection.objects.link(ob)
     ob.data.materials.append(material)
     if bevel:
-        m = ob.modifiers.new("bevel", "BEVEL"); m.width = bevel; m.segments = segs; m.limit_method = "ANGLE"
-        m.angle_limit = math.radians(40)
+        m = ob.modifiers.new("bevel", "BEVEL"); m.width = bevel; m.segments = segs
+        if back_only: m.limit_method = "WEIGHT"
+        else: m.limit_method = "ANGLE"; m.angle_limit = math.radians(40)
     for p in ob.data.polygons: p.use_smooth = True
     ob.modifiers.new("ws", "WEIGHTED_NORMAL") if bevel else None
     return ob
@@ -133,7 +142,7 @@ def text(s, x, z, size, material, y, rot_z=0.0, depth=0.00008, align="LEFT", fac
 # body: the upper slab and the grip behind its lower half
 x0, x1 = -W / 2, W / 2
 slab("body", outline(x0, 0, x1, H, R_TOP, R_TOP, R_BOT, R_BOT), 0, D1, M_BODY, bevel=0.0009, segs=4)
-slab("grip", outline(x0, 0, x1, GRIP_TOP, 0.0025, 0.0025, R_BOT, R_BOT), D1 - 0.0005, D2, M_BACK, bevel=0.0032, segs=8)
+slab("grip", outline(x0, 0, x1, GRIP_TOP, 0.0025, 0.0025, R_BOT, R_BOT), D1 - 0.0005, D2, M_BACK, bevel=0.0038, segs=10, back_only=True)
 # the grip's back: fine engraved lines (photos 5 and 8), its name, the marks, and four screw holes
 for i in range(26):
     z = GRIP_TOP * 0.10 + i * GRIP_TOP * 0.028
@@ -166,9 +175,9 @@ for a in (90, 210, 330):  # the three-dot mark below it
 for (u0, u1, tall, side) in [(0.03, 0.27, 0.042, -1), (0.285, 0.42, 0.030, -1), (0.58, 0.715, 0.030, 1), (0.73, 0.97, 0.042, 1)]:
     r_out = W * 0.035 if tall > 0.04 else 0.0008
     rl, rr = (r_out, 0.0012) if side < 0 else (0.0012, r_out)
-    slab("shoulder", outline(fx(u0), GRIP_TOP - 0.002, fx(u1), GRIP_TOP + H * tall, rl, rr, 0.0004, 0.0004, 10),
+    slab("shoulder", outline(fx(u0), GRIP_TOP + 0.0006, fx(u1), GRIP_TOP + H * tall, rl, rr, 0.0004, 0.0004, 10),
          D1 + 0.0006, D2 - 0.0006, M_BLACK, bevel=0.0022 if tall > 0.04 else 0.0012, segs=8)
-slab("usb_top", outline(fx(0.435), GRIP_TOP - 0.002, fx(0.565), GRIP_TOP + H * 0.018, 0.0005, 0.0005, 0.0003, 0.0003, 4),
+slab("usb_top", outline(fx(0.435), GRIP_TOP + 0.0006, fx(0.565), GRIP_TOP + H * 0.018, 0.0005, 0.0005, 0.0003, 0.0003, 4),
      D1 + 0.0006, D2 - 0.0014, M_BACK, bevel=0.0003, segs=2)
 for k in range(6):  # its ribs
     slab("usb_rib", outline(fx(0.445), GRIP_TOP + H * (0.002 + k * 0.0028), fx(0.555), GRIP_TOP + H * (0.003 + k * 0.0028), 0.0001, 0.0001, 0.0001, 0.0001, 1),
@@ -176,8 +185,8 @@ for k in range(6):  # its ribs
 slab("usb_top_hole", outline(fx(0.465), GRIP_TOP + H * 0.02 - 0.0002, fx(0.535), GRIP_TOP + H * 0.02 + 0.00005, 0.0004, 0.0004, 0.0004, 0.0004, 4),
      (D1 + D2) / 2 - 0.0012, (D1 + D2) / 2 + 0.0004, M_HOLE, bevel=0)
 # the light under the shoulder buttons, in the gap above the grip, seen from behind and above (photos 4, 5, 8)
-slab("shoulder_led", outline(fx(0.03), GRIP_TOP - 0.0022, fx(0.97), GRIP_TOP - 0.0012, 0.0002, 0.0002, 0.0002, 0.0002, 2),
-     D2 - 0.0012, D2 - 0.0002, M_LED, bevel=0)
+slab("shoulder_led", outline(fx(0.03), GRIP_TOP - 0.0002, fx(0.97), GRIP_TOP + 0.0006, 0.0002, 0.0002, 0.0002, 0.0002, 2),
+     D1 + 0.0004, D2 - 0.0012, M_LED, bevel=0)
 # the light bar on the top edge (photos 2 and 8)
 slab("top_led", outline(fx(0.28), H - 0.0001, fx(0.72), H + 0.0002, 0.0002, 0.0002, 0.0002, 0.0002, 2),
      D1 - 0.0005, D1 + 0.0004, M_LED, bevel=0)
@@ -242,12 +251,13 @@ for v, mark in ((0.09, "+"), (0.195, "-")):    # volume, near the top of the lef
     t = text(mark, -W / 2 - 0.00075, fz(v), W * 0.04, M_ICON, D1 * 0.5, align="CENTER")
     t.rotation_euler = (math.radians(90), 0, math.radians(-90)); t.location = (-W / 2 - 0.00075, D1 * 0.5, fz(v))
 # "TRIMUI", the three-dot mark as three discs (no font needed), "BRICK", running up the right side
-for word, v in (("TRIMUI", 0.93), ("BRICK", 0.80)):
-    t = text(word, W / 2 + 0.00002, fz(v), W * 0.035, M_ENGRAVE, D1 * 0.5, align="CENTER")
-    t.rotation_euler = (math.radians(90), math.radians(-90), math.radians(90)); t.location = (W / 2 + 0.00002, D1 * 0.55, fz(v))
+YS = D1 + 0.0016  # on the grip's flat side, ahead of its rounded back edge
+for word, v in (("TRIMUI", 0.89), ("BRICK", 0.755)):
+    t = text(word, W / 2 + 0.00002, fz(v), W * 0.03, M_ENGRAVE, YS, align="CENTER")
+    t.rotation_euler = (math.radians(90), math.radians(-90), math.radians(90)); t.location = (W / 2 + 0.00002, YS, fz(v))
 for a in (0, 120, 240):
-    bpy.ops.mesh.primitive_cylinder_add(vertices=24, radius=W * 0.0045, depth=0.00004,
-        location=(W / 2 + 0.00002, D1 * 0.55 + math.cos(math.radians(a)) * W * 0.006, fz(0.865) + math.sin(math.radians(a)) * W * 0.006),
+    bpy.ops.mesh.primitive_cylinder_add(vertices=24, radius=W * 0.0035, depth=0.00004,
+        location=(W / 2 + 0.00002, YS + math.cos(math.radians(a)) * W * 0.0045, fz(0.822) + math.sin(math.radians(a)) * W * 0.0045),
         rotation=(0, math.radians(90), 0))
     bpy.context.object.data.materials.append(M_ENGRAVE)
 # bottom edge: card slot, USB-C, headphone jack
@@ -281,14 +291,14 @@ LIGHTS = [  # (name, offset from the camera's side: azimuth degrees, height, dis
     ("side", (-110, 0.10, 0.40), 0.5, 4),
 ]
 for name, _, size, power in LIGHTS:
-    bpy.ops.object.light_add(type="AREA"); l = bpy.context.object; l.name = name
+    bpy.ops.object.light_add(type="AREA"); l = bpy.context.object; l.name = "light_" + name  # own names: "key" is also a side key
     l.data.size = size; l.data.energy = power
 def place_lights(cam_loc):
     """Lights keep their places around the camera, so each angle is lit like a product photo."""
     az = math.degrees(math.atan2(cam_loc[0], -cam_loc[1]))
     centre = Vector((0, D1, H * 0.5))
     for name, (da, h, dist), _, _ in LIGHTS:
-        l = bpy.data.objects[name]; a = math.radians(az + da)
+        l = bpy.data.objects["light_" + name]; a = math.radians(az + da)
         l.location = centre + Vector((math.sin(a) * dist, -math.cos(a) * dist, h))
         l.rotation_euler = (centre - l.location).to_track_quat("-Z", "Y").to_euler()
 
@@ -314,6 +324,7 @@ SHOTS = {
     "left": (-0.45, -0.12, 0.12),
     "bottom": (0.10, -0.30, -0.22),
     "backtop": (0.05, 0.30, 0.42),   # the angle of reference photo 8
+    "rside": (0.48, 0.02, 0.05),      # the teal-key side, as photo 12
 }
 if os.environ.get("BRICK_SAVE"):  # BRICK_SAVE=/path/brick.blend saves the scene to open in Blender, without rendering
     cam.location = SHOTS["front34"]; place_lights(cam.location)
