@@ -155,7 +155,8 @@ def text(s, x, z, size, material, y, rot_z=0.0, depth=0.00008, align="LEFT", fac
 
 # body: the upper slab and the grip behind its lower half
 x0, x1 = -W / 2, W / 2
-slab("body", outline(x0, 0, x1, H, R_TOP, R_TOP, R_BOT, R_BOT), 0, D1, M_BODY, bevel=0.0009, segs=4)
+body = slab("body", outline(x0, 0, x1, H, R_TOP, R_TOP, R_BOT, R_BOT), 0, D1, M_BODY, bevel=0.0007, segs=1)
+body.modifiers["bevel"].angle_limit = math.radians(60)
 # --- the back: layout from TrimUI's flat views, details from Howard's photo (2026-10-30) ---
 # Howard's photo looks down at the back from above and behind, so it shows top surfaces too: the
 # light pipe on the top edge, the tops of the shoulder buttons with their names, and the ledge where
@@ -178,12 +179,12 @@ for (a, b, lab, outer) in [(0.07, 0.305, "R1", True), (0.315, 0.44, "R2", False)
     u0, u1 = bu(b), bu(a)
     r_out = W * 0.03 if outer else 0.0008
     rl, rr = (0.0008, r_out) if lab.startswith("R") else (r_out, 0.0008)
-    slab("shoulder_" + lab, outline(u0, LEDGE - 0.0003, u1, LEDGE + BTN_H, rl, rr, 0.0004, 0.0004, 10),
-         D1 + 0.0003, LED_Y0 - 0.0002, M_SHOULDER, bevel=0.0016 if outer else 0.0010, segs=8)
+    slab("shoulder_" + lab, outline(u0, LEDGE + 0.0012, u1, LEDGE + BTN_H, rl, rr, 0.0004, 0.0004, 10),  # on its light strip
+         D1 + 0.0003, D2 - 0.0002, M_SHOULDER, bevel=0.0016 if outer else 0.0010, segs=8)
     t = text(lab, (u0 + u1) / 2, LEDGE + BTN_H + 0.00002, W * 0.045, M_LABEL_BTN, (D1 + LED_Y0) / 2, align="CENTER")
     t.rotation_euler = (0, 0, math.radians(180)); t.location = ((u0 + u1) / 2, (D1 + LED_Y0) / 2, LEDGE + BTN_H + 0.00002)
-    slab("led_" + lab, outline(u0 + 0.0003, LEDGE - 0.0002, u1 - 0.0003, LEDGE + 0.0009, 0.0002, 0.0002, 0.0002, 0.0002, 2),
-         LED_Y0, LED_Y1, M_LED, bevel=0.0002, segs=1)
+    slab("led_" + lab, outline(u0 + 0.0003, LEDGE - 0.0002, u1 - 0.0003, LEDGE + 0.0012, 0.0002, 0.0002, 0.0002, 0.0002, 2),
+         LED_Y0, D2 + 0.0001, M_LED, bevel=0.0002, segs=1)
 # USB-C facing up between R2 and L2, in a raised block, with a light ribbed tab behind it
 slab("usb_block", outline(bu(0.565), LEDGE - 0.0003, bu(0.45), LEDGE + BTN_H * 0.55, 0.0008, 0.0008, 0.0003, 0.0003, 6),
      D1 + 0.0003, LED_Y0 - 0.0002, M_BODY, bevel=0.0005, segs=3)
@@ -363,6 +364,19 @@ SHOTS = {
 if os.environ.get("BRICK_SAVE"):  # BRICK_SAVE=/path/brick.blend saves the scene to open in Blender, without rendering
     cam.location = SHOTS["front34"]; place_lights(cam.location)
     bpy.ops.wm.save_as_mainfile(filepath=os.environ["BRICK_SAVE"])
+    sys.exit(0)
+if os.environ.get("BRICK_ORTHO"):  # flat views with no perspective, to line up against TrimUI's drawings
+    cam.constraints.clear(); cam.data.type = "ORTHO"; cam.data.ortho_scale = H * 1.25
+    scene.render.resolution_x = scene.render.resolution_y = 1400
+    c = Vector((0, D2 / 2, H / 2)); far = 0.5
+    VIEWS = {"front": ((0, -far, 0), (90, 0, 0)), "back": ((0, far, 0), (90, 0, 180)),
+             "right": ((far, 0, 0), (90, 0, 90)), "left": ((-far, 0, 0), (90, 0, -90)),
+             "top": ((0, 0, far), (0, 0, 0)), "bottom": ((0, 0, -far), (180, 0, 0))}
+    for name, (off, rot) in VIEWS.items():
+        cam.location = c + Vector(off); cam.rotation_euler = tuple(math.radians(r) for r in rot)
+        place_lights(cam.location if name not in ("top", "bottom") else Vector((0.001, -0.3, 0.2)))
+        scene.render.filepath = f"{OUT}-ortho-{name}.png"
+        bpy.ops.render.render(write_still=True)
     sys.exit(0)
 ONLY = os.environ.get("BRICK_SHOTS")  # a comma list of shot names to render only those
 for name, loc in SHOTS.items():
