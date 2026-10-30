@@ -213,7 +213,9 @@ static int curl(const char* out, const char* url, int resume, int max_seconds) {
 	snprintf(timeout, sizeof(timeout), "%d", max_seconds);
 	const char* argv[20];
 	int n = 0;
-	const char* fixed[] = {"curl", "-s", "-f", "-L", "--cacert", CA_BUNDLE, "--connect-timeout", "15", "-m", timeout};
+	// a transfer under 1 KB/s for a minute gives up, so a connection lost in sleep does not hang
+	const char* fixed[] = {"curl", "-s", "-f", "-L", "--cacert", CA_BUNDLE, "--connect-timeout", "15", "-m", timeout,
+	                       "--speed-limit", "1024", "--speed-time", "60"};
 	for (size_t i = 0; i < sizeof(fixed) / sizeof(fixed[0]); i++) argv[n++] = fixed[i];
 	if (resume) {
 		argv[n++] = "-C";
@@ -420,6 +422,11 @@ static void* download_thread(void* arg) {
 
 	wifi_power_save(0);
 	int rc = curl(PART, url, 1, 3600);
+	// a dropped or stalled connection resumes where it stopped, a few times, before giving up
+	for (int retry = 0; retry < 3 && rc != 0 && rc != 22 && !stopping; retry++) {
+		sleep(3);
+		rc = curl(PART, url, 1, 3600);
+	}
 	wifi_power_save(1);
 	char got[65] = "";
 	pthread_mutex_lock(&lock);
@@ -534,6 +541,13 @@ int update_install(void) {
 	sync();
 	pthread_mutex_unlock(&lock);
 	return 0;
+}
+
+int update_downloading(void) {
+	pthread_mutex_lock(&lock);
+	int d = info.state == UPDATE_DOWNLOADING;
+	pthread_mutex_unlock(&lock);
+	return d;
 }
 
 int update_auto(void) {

@@ -1572,8 +1572,17 @@ static LTex* lock_hint;
 static int lock_clock_minute = -1;
 
 // Holds NextUI's sleep and auto-sleep off while music plays or the screen is locked, and gives
-// them back otherwise.
+// them back otherwise. An update downloading holds auto-sleep only: the screen still turns off and
+// the power button still sleeps, but the device does not doze off mid-download by itself.
+static int download_held;
+
 static void update_sleep_hold(void) {
+	int downloading = update_downloading();
+	if (downloading != download_held) {
+		download_held = downloading;
+		if (downloading) PWR_disableAutosleep();
+		else if (!sleep_held) PWR_enableAutosleep();
+	}
 	int hold = lmusic_playing() || lock_state != LOCK_NONE;
 	if (hold == sleep_held) return;
 	sleep_held = hold;
@@ -1582,7 +1591,7 @@ static void update_sleep_hold(void) {
 		PWR_disableAutosleep();
 	} else {
 		if (HAS_POWER_BUTTON) PWR_enableSleep();
-		PWR_enableAutosleep();
+		if (!download_held) PWR_enableAutosleep();
 	}
 }
 

@@ -59,6 +59,8 @@ void update_set_auto(int on);
 void update_tick(void);
 // True while an update waits for the user (available or downloaded): the dot on Settings.
 int update_badge(void);
+// True while an update downloads; the launcher keeps the device from sleeping by itself meanwhile.
+int update_downloading(void);
 
 #ifdef __cplusplus
 }
