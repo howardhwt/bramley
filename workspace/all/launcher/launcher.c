@@ -38,9 +38,9 @@
 #define SHELF_ART_Y 74.0f
 
 // Rows of icons
-#define ROW_TITLE_H 38.0f
+#define ROW_TITLE_H 50.0f
 #define ROW_BOTTOM 36.0f
-#define GRID_GAP_Y 26.0f
+#define GRID_GAP_Y 34.0f
 #define GRID_COLS 4
 #define ICON_W 200.0f
 #define ICON_H 120.0f
@@ -548,9 +548,9 @@ static int load_next_art(void) {
 					// no art of its own: Bramley's tile, a symbol with the name and a line under it
 					char line[64];
 					card->glyph = widget_symbol(card, 64);
-					card->label = ltex_text(LFONT_LABEL, card->name, (int)ICON_W - 32);
+					card->label = ltex_text(LFONT_LABEL, card->name, (int)ICON_W - 36);
 					widget_subtitle(card, line, sizeof(line));
-					card->sublabel = ltex_text(LFONT_SMALL, line, (int)ICON_W - 32);
+					card->sublabel = ltex_text(LFONT_SMALL, line, (int)ICON_W - 36);
 				} else card->label = ltex_text(LFONT_LABEL, card->name, (int)ICON_W - 24);
 				return 1;
 			}
@@ -684,17 +684,17 @@ static void draw_icon(int r, int c, float row_alpha) {
 		// a Shortcuts tile: colour, a white symbol top left, the name and the game count bottom
 		// left (design: spikes/shortcuts-tiles)
 		draw_tile_colour(card, x, y, w, h, radius, row_alpha);
-		float k = 40.0f * s / fmaxf(card->glyph->w, card->glyph->h), pad = 16 * s;
+		float k = 38.0f * s / fmaxf(card->glyph->w, card->glyph->h), pad = 18 * s;
 		lgfx_draw_tex(card->glyph, x + pad, y + pad, card->glyph->w * k, card->glyph->h * k, 0, row_alpha);
 		float by = y + h - pad;
 		if (card->sublabel) {
 			float sw = card->sublabel->w * s, sh = card->sublabel->h * s;
 			by -= sh;
-			lgfx_draw_tex(card->sublabel, x + 16 * s, by, sw, sh, 0, 0.8f * row_alpha);
+			lgfx_draw_tex(card->sublabel, x + pad, by, sw, sh, 0, 0.8f * row_alpha);
 		}
 		if (card->label) {
 			float lw = card->label->w * s, lh = card->label->h * s;
-			lgfx_draw_tex(card->label, x + 16 * s, by - lh + 2 * s, lw, lh, 0, 0.96f * row_alpha);
+			lgfx_draw_tex(card->label, x + pad, by - lh + 2 * s, lw, lh, 0, 0.96f * row_alpha);
 		}
 	} else {
 		float top[4], bottom[4];
@@ -741,7 +741,7 @@ static void draw_shelf(void) {
 			float k = 70.0f / fmaxf(shelf.art_icon->w, shelf.art_icon->h);
 			lgfx_draw_tex(shelf.art_icon, art_x + 30, art_y + 28, shelf.art_icon->w * k, shelf.art_icon->h * k, 0, a);
 		}
-		float by = art_y + shelf_art_h - 26;
+		float by = art_y + shelf_art_h - 30;
 		if (shelf.detail) {
 			by -= shelf.detail->h;
 			lgfx_draw_tex(shelf.detail, art_x + 31, by, shelf.detail->w, shelf.detail->h, 0, 0.82f * a);
