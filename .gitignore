@@ -46,3 +46,6 @@ workspace/.container_runtime
 AGENTS.md
 CLAUDE.md
 .worktrees/
+
+# Claude Code working notes, kept local
+CLAUDE.md
