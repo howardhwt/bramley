@@ -247,6 +247,10 @@ SHOTS = {
     "back34": (0.26, 0.36, 0.16),
     "front": (0.0, -0.48, H * 0.5),
 }
+if os.environ.get("BRICK_SAVE"):  # BRICK_SAVE=/path/brick.blend saves the scene to open in Blender, without rendering
+    cam.location = SHOTS["front34"]; place_lights(cam.location)
+    bpy.ops.wm.save_as_mainfile(filepath=os.environ["BRICK_SAVE"])
+    sys.exit(0)
 for name, loc in SHOTS.items():
     cam.location = loc
     place_lights(loc)
