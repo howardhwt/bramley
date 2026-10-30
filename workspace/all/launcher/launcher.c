@@ -433,6 +433,39 @@ static void console_icon_path(const char* tag, int size, char* out, size_t n) {
 	if (!exists(out)) snprintf(out, n, BRAMLEY_RES_DIR "/brand/consoles/default-%d.png", size);
 }
 
+static int is_settings(const Card* card);
+static int is_files(const Card* card);
+static int is_activity(const Card* card);
+
+// The tiles drawn as iOS widgets: consoles, collections and apps without art of their own.
+static int is_widget(const Card* card) {
+	return card->kind == CARD_CONSOLE || card->kind == CARD_COLLECTION || card->kind == CARD_MUSIC || card->kind == CARD_TOOL;
+}
+
+// A widget's app icon, and the line under its name.
+static void widget_icon_path(const Card* card, int size, char* out, size_t n) {
+	if (card->kind == CARD_CONSOLE) {
+		console_icon_path(card->tag, size, out, n);
+		return;
+	}
+	const char* app = card->kind == CARD_MUSIC ? "music"
+	                : card->kind == CARD_COLLECTION ? (strcasecmp(card->name, "Favorites") ? "collection" : "favorites")
+	                : is_settings(card) ? "settings" : is_files(card) ? "files" : is_activity(card) ? "activity" : "default";
+	snprintf(out, n, BRAMLEY_RES_DIR "/brand/consoles/app-%s-%d.png", app, size);
+}
+
+static void widget_subtitle(const Card* card, char* out, size_t n) {
+	if (card->kind == CARD_CONSOLE) snprintf(out, n, "%d %s", card->game_count, card->game_count == 1 ? "game" : "games");
+	else if (card->kind == CARD_COLLECTION) snprintf(out, n, "%d %s", card->game_count, card->game_count == 1 ? "item" : "items");
+	else if (card->kind == CARD_MUSIC) {
+		int albums = lmusic_shelf_count(0);
+		snprintf(out, n, "%d %s", albums, albums == 1 ? "album" : "albums");
+	} else if (is_settings(card)) snprintf(out, n, "Bramley %s", LAUNCHER_VERSION);
+	else if (is_files(card)) snprintf(out, n, "Your card");
+	else if (is_activity(card)) snprintf(out, n, "Time played");
+	else snprintf(out, n, "Pak");
+}
+
 // The glass behind a console tile without art, as an iOS widget: dark, translucent, a hairline rim.
 static void draw_glass(float x, float y, float w, float h, float radius, float alpha) {
 	lgfx_draw_fill(x, y, w, h, radius, 0.11f, 0.11f, 0.14f, 0.62f * alpha);
@@ -467,14 +500,14 @@ static int load_next_art(void) {
 				return 1;
 			}
 			if (!card->label && !card->art) {
-				if (card->kind == CARD_CONSOLE) {
-					// a console without an icon: Bramley's tile, an app icon with the name and count
-					char path[512], count[32];
-					console_icon_path(card->tag, 80, path, sizeof(path));
+				if (is_widget(card)) {
+					// no art of its own: Bramley's tile, an app icon with the name and a line under it
+					char path[512], line[64];
+					widget_icon_path(card, 80, path, sizeof(path));
 					card->glyph = ltex_load(path, 0);
 					card->label = ltex_text(LFONT_LABEL, card->name, (int)ICON_W - 32);
-					snprintf(count, sizeof(count), "%d %s", card->game_count, card->game_count == 1 ? "game" : "games");
-					card->sublabel = ltex_text(LFONT_SMALL, count, (int)ICON_W - 32);
+					widget_subtitle(card, line, sizeof(line));
+					card->sublabel = ltex_text(LFONT_SMALL, line, (int)ICON_W - 32);
 				} else card->label = ltex_text(LFONT_LABEL, card->name, (int)ICON_W - 24);
 				return 1;
 			}
@@ -542,10 +575,10 @@ static int update_shelf(void) {
 	snprintf(text, sizeof(text), "A   %s", pill_a);
 	shelf.pill_a = ltex_text(LFONT_LABEL, text, 0);
 	if (card->kind == CARD_RECENT && card->can_resume) shelf.pill_x = ltex_text(LFONT_LABEL, "X   Resume save", 0);
-	if (card->kind == CARD_CONSOLE) {
-		// a console without art shows its large app icon on glass
+	if (is_widget(card)) {
+		// without art, the preview shows its large app icon on glass
 		char path[512];
-		console_icon_path(card->tag, 200, path, sizeof(path));
+		widget_icon_path(card, 200, path, sizeof(path));
 		shelf.art_icon = ltex_load(path, 0);
 	} else shelf.art_label = ltex_text(LFONT_TITLE, card->name, (int)shelf_art_max_w - 40);
 	shine_t = 0.0f;
@@ -601,7 +634,7 @@ static void draw_icon(int r, int c, float row_alpha) {
 	lgfx_draw_shadow(x, y, w, h, lift * 12, (0.45f + lift * 0.4f) * row_alpha);
 	if (card->art) {
 		lgfx_draw_art(card->art, x, y, w, h, radius, row_alpha);
-	} else if (card->kind == CARD_CONSOLE && card->glyph) {
+	} else if (is_widget(card) && card->glyph) {
 		// app icon top left, the name and the game count bottom left (design: spikes/console-tiles)
 		draw_glass(x, y, w, h, radius, row_alpha);
 		if (lift > 0.01f) lgfx_draw_fill(x, y, w, h, radius, 1, 1, 1, 0.12f * lift * row_alpha); // focus brightens it

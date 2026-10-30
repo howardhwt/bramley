@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Renders Bramley's console icons into res/brand/consoles/ as PNGs.
+"""Renders Bramley's console and app icons for Home into res/brand/consoles/ as PNGs.
 
 Each system without an icon of its own shows a tile in the style of an iOS widget: an app icon
 (the Settings icon style, from tools/settings-icons.py) with a white symbol on one of Apple's
@@ -11,7 +11,10 @@ a handheld drawn here. Design: spikes/console-tiles (V1 widget, handheld D4 wide
 
 Needs Pillow and numpy:  python3 tools/console-glyphs.py
 Writes <TAG>-80.png (the tile) and <TAG>-200.png (the large preview) for every system below,
-plus default-80.png and default-200.png for any other folder.
+plus default-80.png and default-200.png for any other folder, and app-<name>-80.png and -200.png
+for Favorites, other collections, Music, Activity, Files, Settings and any other Pak (a star, a
+list, a note, a chart, a folder and an apps grid from Material Symbols; Settings' gear is the one
+tools/settings-icons.py draws).
 """
 import hashlib
 import importlib.util
@@ -117,7 +120,19 @@ def main():
         for size in SIZES:
             path = os.path.join(OUT, f"{tag}-{size}.png")
             si.tile(colour, symbols[kind], size).save(path, optimize=True)
-    print(f"wrote {len(SYSTEMS) + 1} icons in {len(SIZES)} sizes to {OUT}")
+    apps = {
+        "favorites": (YELLOW, material(font, 0xF09A)),   # star
+        "collection": (BLUE, material(font, 0xE241)),    # format_list_bulleted
+        "music": (PINK, material(font, 0xE405)),         # music_note
+        "activity": (ORANGE, material(font, 0xE26B)),    # bar_chart
+        "files": (BLUE, material(font, 0xE2C7)),         # folder
+        "settings": (GRAY, si.gear),                     # Settings' own gear
+        "default": (GRAY, material(font, 0xE5C3)),       # apps
+    }
+    for name, (colour, symbol) in apps.items():
+        for size in SIZES:
+            si.tile(colour, symbol, size).save(os.path.join(OUT, f"app-{name}-{size}.png"), optimize=True)
+    print(f"wrote {len(SYSTEMS) + 1} console and {len(apps)} app icons in {len(SIZES)} sizes to {OUT}")
 
 
 if __name__ == "__main__":
