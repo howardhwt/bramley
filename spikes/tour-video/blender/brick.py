@@ -68,7 +68,9 @@ def sparkle(m, lo=0.22, hi=0.50):
     nt.links.new(noise.outputs["Fac"], bump.inputs["Height"]); nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
 sparkle(M_BODY); sparkle(M_BACK)
 M_FACE = mat("facebutton", srgb("1e1e21"), rough=0.4)   # the face buttons: dark grey, a soft sheen (photo 6)
-M_SHOULDER = mat("shoulder", srgb("0e0e10"), rough=0.85)   # matte black rubber
+M_SHOULDER = mat("shoulder", srgb("0e0e10"), rough=0.7)   # matte black rubber, little sheen
+M_SHOULDER.node_tree.nodes["Principled BSDF"].inputs["Specular IOR Level"].default_value = 0.12
+M_FACE.node_tree.nodes["Principled BSDF"].inputs["Specular IOR Level"].default_value = 0.3
 M_LABEL_BTN = mat("btnlabel", srgb("232326"), rough=0.7)
 M_SCREW = mat("screw", srgb("c4c5c8"), metal=1.0, rough=0.25)
 M_ETCH = mat("etch", srgb("8a8b90"), metal=1.0, rough=0.55)   # light, thin markings on the grip
@@ -216,12 +218,28 @@ t.data.font = bpy.data.fonts.load(INTER.replace("Bold", "Regular")); t.data.spac
 for i in range(18):
     v = 0.675 + i * 0.0155
     if 0.868 < v < 0.902: continue            # the band with the marks
-    slab(f"rib{i}", outline(bu(0.87), fz(pv(v + 0.0085)), bu(0.13), fz(pv(v)), 0.0003, 0.0003, 0.0003, 0.0003, 2),
+    slab(f"rib{i}", outline(bu(0.905), fz(pv(v + 0.0085)), bu(0.095), fz(pv(v)), 0.0003, 0.0003, 0.0003, 0.0003, 2),
          D2 - 0.0001, D2 + 0.00028, M_BACK, bevel=0.00012, segs=2)
+# the zigzag engraved across the grip, seen only in the grooves between the ribs (Howard's photo)
+def zigzag(v_top, v_bot, period, name):
+    me_ = bpy.data.meshes.new(name); verts, faces = [], []
+    z_top, z_bot = fz(pv(v_top)), fz(pv(v_bot)); x = bu(0.89); up = True; w_ = 0.00012
+    while x < bu(0.11) - 0.0001:
+        x2 = min(x + period / 2, bu(0.11))
+        za, zb = (z_bot, z_top) if up else (z_top, z_bot)
+        dx, dz = x2 - x, zb - za; L = math.hypot(dx, dz); nx, nz = -dz / L * w_, dx / L * w_
+        i = len(verts)
+        for (px, pz) in ((x + nx, za + nz), (x2 + nx, zb + nz), (x2 - nx, zb - nz), (x - nx, za - nz)):
+            verts.append((px, D2 + 0.00003, pz))
+        faces.append((i, i + 1, i + 2, i + 3)); x = x2; up = not up
+    me_.from_pydata(verts, [], faces)
+    o_ = bpy.data.objects.new(name, me_); scene.collection.objects.link(o_); o_.data.materials.append(M_ETCH)
+zigzag(0.712, 0.772, W * 0.24, "zigzag_upper")
+zigzag(0.912, 0.945, W * 0.24, "zigzag_lower")
 t = text("FC   CE", bu(0.62), fz(pv(0.885)), W * 0.042, M_ETCH, D2 + 0.00006, face="back", align="CENTER")
 t.data.font = bpy.data.fonts.load(INTER.replace("Bold", "Regular"))
-for (u, v) in [(0.155, 0.68), (0.86, 0.675), (0.155, 0.962), (0.85, 0.965)]:
-    cyl("hole", bu(u), fz(v), W * 0.02, D2 - 0.0003, D2 + 0.00005, M_HOLE, bevel=0)
+for (u, v) in [(0.065, 0.68), (0.935, 0.68), (0.085, 0.962), (0.915, 0.962)]:
+    cyl("hole", bu(u), fz(pv(v)), W * 0.02, D2 - 0.0003, D2 + 0.00005, M_HOLE, bevel=0)
 # upper back: two silver Phillips screws, the three-dot mark
 for u in (0.09, 0.91):
     cyl("screw", bu(u), fz(pv(0.09)), W * 0.02, D1 - 0.0001, D1 + 0.00022, M_SCREW, bevel=0.00012)
@@ -383,6 +401,7 @@ SHOTS = {
     "mine": (0.0, 0.36, 0.30),         # above and behind, as Howard's photo
     "photo6": (0.26, -0.30, -0.05),    # low at the front right, as TrimUI's close-up
     "rside": (0.48, 0.02, 0.05),       # the teal-key side, as photo 12
+    "lclose": (-0.20, -0.02, 0.12),    # close on the volume keys
 }
 if os.environ.get("BRICK_SAVE"):  # BRICK_SAVE=/path/brick.blend saves the scene to open in Blender, without rendering
     cam.location = SHOTS["front34"]; place_lights(cam.location)
