@@ -424,8 +424,10 @@ static void* download_thread(void* arg) {
 	char got[65] = "";
 	pthread_mutex_lock(&lock);
 	if (stopping) {
+		// cancelled: what was downloaded goes, and the next download starts from the beginning
 		stopping = 0;
-		settle(); // keeps the part for next time
+		unlink(PART);
+		settle();
 	} else if (rc != 0) {
 		set_error("The download stopped. Check the Wi-Fi connection and try again.");
 	} else {

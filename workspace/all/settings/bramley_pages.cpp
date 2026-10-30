@@ -610,7 +610,7 @@ void SoftwareUpdateMenu::refresh()
         action->rename("Checking\xE2\x80\xA6", "");
         break;
     case UPDATE_DOWNLOADING:
-        action->rename("Stop Download", "The part already downloaded is kept for next time.");
+        action->rename("Cancel Download", "Stops the download and deletes what was downloaded.");
         break;
     case UPDATE_READY:
         action->rename("Restart and Install", "The device restarts, installs the update and comes back to Home. "
@@ -620,7 +620,14 @@ void SoftwareUpdateMenu::refresh()
         action->rename("Installing\xE2\x80\xA6", "");
         break;
     default:
-        if (u.newer)
+        if (u.newer && u.done > 0 && u.done < u.size)
+        {
+            // a download that was stopped: it carries on where it left off
+            char d[96];
+            snprintf(d, sizeof(d), "%lld of %lld MB is already downloaded.", u.done >> 20, u.size >> 20);
+            action->rename("Resume Download", d);
+        }
+        else if (u.newer)
             action->rename("Download", "Downloads over Wi-Fi. You choose when to install.");
         else
             action->rename("Check Now", "");
@@ -639,9 +646,9 @@ InputReactionHint SoftwareUpdateMenu::handleInput(int &dirty, int &quit)
         const std::string &n = items[0]->getName();
         if (n == "Check Now")
             update_check();
-        else if (n == "Download")
+        else if (n == "Download" || n == "Resume Download")
             update_download();
-        else if (n == "Stop Download")
+        else if (n == "Cancel Download")
             update_stop();
         else if (n == "Restart and Install")
         {

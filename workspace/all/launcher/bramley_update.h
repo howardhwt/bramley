@@ -46,6 +46,8 @@ void update_get(UpdateInfo* info);
 // Each runs on its own thread and returns at once; update_get shows the progress.
 void update_check(void);
 void update_download(void);
+// Cancels a download and deletes what was downloaded. (A download that breaks off by itself keeps
+// its part, and the next download resumes it.)
 void update_stop(void);
 // Unpacks the downloaded release onto the card (a few seconds). Returns 0 when the device
 // should restart to finish, or -1 with the error in update_get.

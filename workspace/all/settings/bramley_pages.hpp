@@ -86,7 +86,7 @@ public:
 AbstractMenuItem *bramley_test_buttons_item();
 
 // Software Update: what is installed and what is new, then one action row that follows the state
-// (Check Now, Download, Stop Download, Restart and Install) and the automatic check switch. The
+// (Check Now, Download or Resume Download, Cancel Download, Restart and Install) and the automatic check switch. The
 // work happens in bramley_update.c; this page only shows it. Opening the page checks again when
 // the last check is over an hour old.
 class SoftwareUpdateMenu : public MenuList
