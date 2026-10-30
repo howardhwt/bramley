@@ -46,9 +46,9 @@ static const char* const allowed[] = {
 	"CORES-SOURCE.md", "README.txt", "LICENSE", "THIRD-PARTY-LICENSES.md", "Inter-LICENSE.txt", ".bramley-extras-id",
 };
 
-// A fingerprint of everything on the card outside MinUI.zip (the cores, licences, readme), written
-// by card.sh. When the card's matches the release's, only the system zip (MinUI.zip, about a quarter
-// of the card zip) is downloaded.
+// A fingerprint of the cores and their licences, the part of the card outside MinUI.zip, written by
+// card.sh. When the card's matches one the release lists, only the system zip (MinUI.zip, about a
+// quarter of the card zip) is downloaded.
 #define EXTRAS_ID SDCARD_PATH "/.bramley-extras-id"
 
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
@@ -333,9 +333,12 @@ static int sha256_of(const char* path, char hex[65]) {
 }
 
 // The manifest: "key value" lines, then "notes" and the notes to the end.
-// The system zip and the extras fingerprint, when the release lists them (from 0.9.2).
+// The system zip and the extras fingerprints, when the release lists them (from 0.9.2). A release
+// can list several "extras" lines: its own fingerprint and earlier ones with the same cores.
+#define MAX_EXTRAS 8
 static struct {
-	char file[128], sha256[65], extras[65];
+	char file[128], sha256[65], extras[MAX_EXTRAS][65];
+	int n_extras;
 	long long size;
 } sys;
 
@@ -369,7 +372,7 @@ static int parse_manifest(const char* path, UpdateInfo* m, char sum[65]) {
 		else if (!strcmp(line, "system")) snprintf(sys.file, sizeof(sys.file), "%s", v);
 		else if (!strcmp(line, "system_size")) sys.size = atoll(v);
 		else if (!strcmp(line, "system_sha256")) snprintf(sys.sha256, sizeof(sys.sha256), "%s", v);
-		else if (!strcmp(line, "extras")) snprintf(sys.extras, sizeof(sys.extras), "%s", v);
+		else if (!strcmp(line, "extras") && sys.n_extras < MAX_EXTRAS) snprintf(sys.extras[sys.n_extras++], 65, "%s", v);
 	}
 	fclose(f);
 	trim(m->notes);
@@ -380,8 +383,10 @@ static int parse_manifest(const char* path, UpdateInfo* m, char sum[65]) {
 	char have[80];
 	read_file(EXTRAS_ID, have, sizeof(have));
 	trim(have);
-	int usable = sys.file[0] && !strchr(sys.file, '/') && sys.size > 0 && strlen(sys.sha256) == 64 && sys.extras[0];
-	if (usable && !strcmp(have, sys.extras)) {
+	int usable = sys.file[0] && !strchr(sys.file, '/') && sys.size > 0 && strlen(sys.sha256) == 64 && have[0];
+	int match = 0;
+	for (int i = 0; usable && i < sys.n_extras; i++) match |= !strcmp(have, sys.extras[i]);
+	if (match) {
 		snprintf(m->file, sizeof(m->file), "%s", sys.file);
 		m->size = sys.size;
 		snprintf(sum, 65, "%s", sys.sha256);

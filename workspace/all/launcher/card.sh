@@ -130,13 +130,17 @@ rm -f "$CARD/nextui.pak_store.pakz" "$CARD/nextui.updater.pakz"   # NextUI's sto
 cp "$HERE/card/README.txt" "$CARD/README.txt"
 cp "$ROOT/THIRD-PARTY-LICENSES.md" "$ROOT/LICENSE" "$HERE/res/Inter-LICENSE.txt" "$CARD/"
 
-# a fingerprint of the card outside MinUI.zip: when a card's matches a release's, Software Update
-# downloads only the system zip (bramley_update.c)
-(cd "$CARD" && find Emus Licenses CORES-SOURCE.md README.txt LICENSE THIRD-PARTY-LICENSES.md Inter-LICENSE.txt -type f -print0 |
+# a fingerprint of the cores and their licences, the part of the card outside MinUI.zip: when a
+# card's matches a release's, Software Update downloads only the system zip (bramley_update.c)
+(cd "$CARD" && find Emus Licenses CORES-SOURCE.md -type f -print0 |
 	LC_ALL=C sort -z | xargs -0 shasum -a 256) | shasum -a 256 | cut -c1-16 > "$CARD/.bramley-extras-id"
+# the notices and the fingerprint also ride in MinUI.zip, which the install screen unpacks at the
+# top of the card, so an update of the system alone keeps them current
+NOTICES="README.txt LICENSE THIRD-PARTY-LICENSES.md Inter-LICENSE.txt .bramley-extras-id"
+for f in $NOTICES; do cp "$CARD/$f" "$SYS/$f"; done
 
 echo "== zipping"
-(cd "$SYS" && rm -f "$OUT/MinUI.zip" && zip -q -r -X "$OUT/MinUI.zip" .system .tmp_update Tools)
+(cd "$SYS" && rm -f "$OUT/MinUI.zip" && zip -q -r -X "$OUT/MinUI.zip" .system .tmp_update Tools $NOTICES)
 cp "$OUT/MinUI.zip" "$CARD/MinUI.zip"
 mkdir -p "$ROOT/releases"
 rm -f "$ROOT/releases/Bramley-$VERSION-card.zip" "$ROOT/releases/Bramley-$VERSION-update.zip"
@@ -153,6 +157,9 @@ ZIPF="Bramley-$VERSION-card.zip"
 	echo "system_size $(stat -f%z "$ROOT/releases/Bramley-$VERSION-update.zip")"
 	echo "system_sha256 $(shasum -a 256 "$ROOT/releases/Bramley-$VERSION-update.zip" | cut -d' ' -f1)"
 	echo "extras $(cat "$CARD/.bramley-extras-id")"
+	# earlier fingerprints whose cores and licences match this release's (extras-also.txt). Each is
+	# its own line; 0.9.2 reads only the last one.
+	grep -v '^#' "$HERE/extras-also.txt" | awk 'NF { print "extras " $1 }'
 	echo "notes"
 	cat "$HERE/release-notes.txt"
 } > "$ROOT/releases/bramley-update.txt"

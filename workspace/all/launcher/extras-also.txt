@@ -1,0 +1,5 @@
+# Earlier .bramley-extras-id values whose cores, core licences and CORES-SOURCE.md are the same as
+# this release's, checked against that release's card zip. A card with one of these downloads only
+# the system zip. Clear the list when a core, a pin or a core licence changes.
+#   <id>              <release>
+fd594673007b1fa2  0.9.2 (its fingerprint also covered the notices, which now ride in MinUI.zip)

@@ -1,1 +1,1 @@
-Faster, steadier updates: downloads come in four pieces at once, the device stays awake while downloading, a dropped download resumes by itself, and later updates are usually 14 MB instead of 55 MB. Cancel Download deletes the partial file, and Installing now shows instead of a frozen screen.
+A new look for Home: every console, collection and app gets a widget tile with an icon, its name and a count, and consoles use the short names people know, such as NES, Super NES and Genesis. Downloads also hold up better on a weak connection.

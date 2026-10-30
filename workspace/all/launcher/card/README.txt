@@ -1,7 +1,7 @@
 Bramley
 =======
 
-An Apple-inspired OS for the TrimUI Brick Hammer and Brick, forked from NextUI. It is free and
+A calm, refined system for the TrimUI Brick and Brick Hammer, forked from NextUI. It is free and
 not for sale.
 
 Install
