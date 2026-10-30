@@ -40,7 +40,7 @@ def srgb(h):
     c = [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)]
     return tuple((x / 12.92) if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c)
 
-BODY_HEX = {"dark": ("5d5e63", "5d5e63"), "silver": ("c9cacd", "bfc0c3")}[FINISH]
+BODY_HEX = {"dark": ("64656a", "64656a"), "silver": ("c9cacd", "bfc0c3")}[FINISH]
 M_BODY = mat("anodised", srgb(BODY_HEX[0]), metal=1.0, rough=0.36)
 M_BACK = mat("back", srgb(BODY_HEX[1]), metal=1.0, rough=0.44)
 M_BLACK = mat("button", srgb("141416"), rough=0.62)
@@ -56,7 +56,7 @@ M_LED = mat("led", LED, emit=LED, strength=4.0)
 M_PILL_LIT = mat("pill_lit", (0.85, 0.95, 1.0), rough=0.3, emit=LED, strength=3.0)
 M_ICON = mat("icon", srgb("3c3c3f"), rough=0.5)
 
-def sparkle(m, lo=0.26, hi=0.46):
+def sparkle(m, lo=0.22, hi=0.50):
     """The fine sparkle of the Hammer's finish: tiny flecks vary the roughness and the normal."""
     nt = m.node_tree; n = nt.nodes; bsdf = n["Principled BSDF"]
     tc = n.new("ShaderNodeTexCoord")
@@ -67,6 +67,7 @@ def sparkle(m, lo=0.26, hi=0.46):
     bump = n.new("ShaderNodeBump"); bump.inputs["Strength"].default_value = 0.05
     nt.links.new(noise.outputs["Fac"], bump.inputs["Height"]); nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
 sparkle(M_BODY); sparkle(M_BACK)
+M_FACE = mat("facebutton", srgb("1e1e21"), rough=0.4)   # the face buttons: dark grey, a soft sheen (photo 6)
 M_SHOULDER = mat("shoulder", srgb("0e0e10"), rough=0.85)   # matte black rubber
 M_LABEL_BTN = mat("btnlabel", srgb("232326"), rough=0.7)
 M_SCREW = mat("screw", srgb("c4c5c8"), metal=1.0, rough=0.25)
@@ -143,6 +144,17 @@ def cyl(name, x, z, r, y0, y1, material, bevel=0.0004):
     ob = bpy.context.object; ob.name = name; ob.data.materials.append(material)
     m = ob.modifiers.new("bevel", "BEVEL"); m.width = bevel; m.segments = 3
     bpy.ops.object.shade_smooth()
+    return ob
+
+def dome(x, z, r, y_face, height, material):
+    """A shallow convex cap on a round button's face."""
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=48, ring_count=24, radius=r, location=(x, y_face, z))
+    ob = bpy.context.object; ob.scale = (1, height / r, 1); ob.data.materials.append(material)
+    bpy.ops.object.shade_smooth()
+    # keep only the front half
+    bpy.ops.object.mode_set(mode="EDIT"); bpy.ops.mesh.select_all(action="DESELECT"); bpy.ops.object.mode_set(mode="OBJECT")
+    for v in ob.data.vertices: v.select = v.co.y > 0.00001
+    bpy.ops.object.mode_set(mode="EDIT"); bpy.ops.mesh.delete(type="VERT"); bpy.ops.object.mode_set(mode="OBJECT")
     return ob
 
 def text(s, x, z, size, material, y, rot_z=0.0, depth=0.00008, align="LEFT", face="front"):
@@ -241,46 +253,56 @@ disp = bpy.data.objects.new("display", me); scene.collection.objects.link(disp);
 cx, cz = fx(0.222), fz(0.653); arm, th = W * 0.135, W * 0.046
 slab("dpad_well", outline(cx - arm - 0.0008, cz - th - 0.0008, cx + arm + 0.0008, cz + th + 0.0008, 0.0012, 0.0012, 0.0012, 0.0012, 4),
      -0.00005, 0.0003, M_HOLE, bevel=0.0002, segs=1)
-slab("dpad_h", outline(cx - arm, cz - th, cx + arm, cz + th, 0.0009, 0.0009, 0.0009, 0.0009, 4), -0.0016, 0.0002, M_BLACK, bevel=0.0004)
-slab("dpad_v", outline(cx - th, cz - arm, cx + th, cz + arm, 0.0009, 0.0009, 0.0009, 0.0009, 4), -0.0016, 0.0002, M_BLACK, bevel=0.0004)
+slab("dpad_h", outline(cx - arm, cz - th, cx + arm, cz + th, 0.0009, 0.0009, 0.0009, 0.0009, 4), -0.0016, 0.0002, M_FACE, bevel=0.0004)
+slab("dpad_v", outline(cx - th, cz - arm, cx + th, cz + arm, 0.0009, 0.0009, 0.0009, 0.0009, 4), -0.0016, 0.0002, M_FACE, bevel=0.0004)
 for a in (90, 210, 330):  # the three-dot mark in the middle
     cyl("dot", cx + math.cos(math.radians(a)) * W * 0.014, cz + math.sin(math.radians(a)) * W * 0.014, W * 0.011,
         -0.00168, -0.00158, M_LETTER, bevel=0.00003)
 # face buttons with their letters
 for l, u, v in [("X", 0.778, 0.586), ("Y", 0.675, 0.654), ("A", 0.876, 0.654), ("B", 0.778, 0.722)]:
-    cyl("btn_" + l, fx(u), fz(v), W * 0.05, -0.0017, 0.0002, M_BLACK, bevel=0.0005)
-    text(l, fx(u), fz(v), W * 0.055, M_LETTER, -0.00172, align="CENTER")
+    cyl("btn_" + l, fx(u), fz(v), W * 0.05, -0.0013, 0.0002, M_FACE, bevel=0.0004)
+    dome(fx(u), fz(v), W * 0.049, -0.0013, 0.0006, M_FACE)
+    text(l, fx(u), fz(v), W * 0.05, M_LETTER, -0.00192, align="CENTER")
 # select and start
 for u in (0.426, 0.572):
     slab("pill", outline(fx(u) - W * 0.048, fz(0.579) - W * 0.012, fx(u) + W * 0.048, fz(0.579) + W * 0.012,
                         W * 0.0119, W * 0.0119, W * 0.0119, W * 0.0119, 8), -0.0008, 0.0002, M_PILL_LIT, bevel=0.0003)
 # the three round buttons along the bottom, and the speaker holes
 for u in (0.364, 0.503, 0.643):
-    cyl("menu", fx(u), fz(0.918), W * 0.039, -0.0012, 0.0002, M_BLACK, bevel=0.0004)
+    cyl("menu", fx(u), fz(0.918), W * 0.039, -0.0009, 0.0002, M_FACE, bevel=0.0003)
+    dome(fx(u), fz(0.918), W * 0.038, -0.0009, 0.0004, M_FACE)
 # their marks: the three dots, a square, a play arrow
 for a in (90, 210, 330):
     cyl("m_dot", fx(0.364) + math.cos(math.radians(a)) * W * 0.011, fz(0.918) + math.sin(math.radians(a)) * W * 0.011, W * 0.0085,
-        -0.00128, -0.00118, M_ICON, bevel=0)
+        -0.00138, -0.00128, M_ICON, bevel=0)
 slab("m_sq", outline(fx(0.503) - W * 0.016, fz(0.918) - W * 0.011, fx(0.503) + W * 0.016, fz(0.918) + W * 0.011,
-                     0.0002, 0.0002, 0.0002, 0.0002, 2), -0.00128, -0.00118, M_ICON, bevel=0)
+                     0.0002, 0.0002, 0.0002, 0.0002, 2), -0.00138, -0.00128, M_ICON, bevel=0)
 tri = bpy.data.meshes.new("m_play"); c = (fx(0.643), fz(0.918)); k = W * 0.016
-tri.from_pydata([(c[0] - k * 0.6, -0.00125, c[1] - k), (c[0] - k * 0.6, -0.00125, c[1] + k), (c[0] + k, -0.00125, c[1])], [], [(0, 1, 2)])
+tri.from_pydata([(c[0] - k * 0.6, -0.00135, c[1] - k), (c[0] - k * 0.6, -0.00135, c[1] + k), (c[0] + k, -0.00135, c[1])], [], [(0, 1, 2)])
 o = bpy.data.objects.new("m_play", tri); scene.collection.objects.link(o); o.data.materials.append(M_ICON)
 for su in (0.165, 0.851):
-    for r in range(2):
-        for k in range(8):
-            cyl("spk", fx(su) + (k - 3.5) * W * 0.0125 + (r * W * 0.006), fz(0.900) + r * W * 0.012, W * 0.0028,
+    for r, n in ((0, 6), (1, 5)):  # two staggered rows, 6 over 5 (photo 6)
+        for k in range(n):
+            cyl("spk", fx(su) + (k - (n - 1) / 2) * W * 0.015, fz(0.898) + r * W * 0.012, W * 0.003,
                 -0.00005, 0.0003, M_HOLE, bevel=0)
 text("BRICK HAMMER", fx(0.035), fz(0.545), W * 0.03, M_ENGRAVE, -0.00002)
 # sides: the power slider and teal key on the right, two keys on the left
-def side_key(x_sign, v, length, mat_):
-    x = x_sign * (W / 2)
-    slab("key", outline(-0.0007, fz(v) - length / 2, 0.0007, fz(v) + length / 2, 0.0007, 0.0007, 0.0007, 0.0007, 6),
-         D1 * 0.25, D1 * 0.75, mat_, bevel=0.0003).location.x = x
-side_key(1, 0.21, H * 0.095, M_BLACK)          # power slider
-side_key(1, 0.355, H * 0.065, M_TEAL)          # the teal key
-for v, mark in ((0.09, "+"), (0.195, "-")):    # volume, near the top of the left side
-    side_key(-1, v, H * 0.076, M_BLACK)
+def side_pill(x_sign, v, length, depth, material, out=0.0007, name="key"):
+    """A pill on a side face: rounded fully in its own plane (depth x length), standing out by `out`."""
+    r = min(length, depth) / 2 * 0.98
+    pts = outline(D1 * 0.5 - depth / 2, fz(v) - length / 2, D1 * 0.5 + depth / 2, fz(v) + length / 2, r, r, r, r, 10)
+    # slab() draws the outline in its x and z and extrudes along y; turning it 90 degrees about z puts the
+    # outline's x on the device's depth and the extrusion across the side
+    ob = slab(name, pts, -out, out, material, bevel=0.00025, segs=3)
+    ob.rotation_euler = (0, 0, math.radians(90))  # outline x -> depth (y), extrusion -> across the side
+    ob.location = (x_sign * W / 2, 0, 0)
+    return ob
+# right side: the power switch in a recessed slot, then the teal key; left side: volume + and -
+side_pill(1, 0.21, H * 0.095, D1 * 0.42, M_HOLE, out=0.00004, name="slot")
+side_pill(1, 0.19, H * 0.040, D1 * 0.30, M_FACE, out=0.0005, name="switch")
+side_pill(1, 0.355, H * 0.065, D1 * 0.42, M_TEAL, out=0.0007, name="teal")
+for v, mark in ((0.09, "+"), (0.195, "-")):
+    side_pill(-1, v, H * 0.076, D1 * 0.42, M_FACE, out=0.0007, name="vol")
     t = text(mark, -W / 2 - 0.00075, fz(v), W * 0.04, M_ICON, D1 * 0.5, align="CENTER")
     t.rotation_euler = (math.radians(90), 0, math.radians(-90)); t.location = (-W / 2 - 0.00075, D1 * 0.5, fz(v))
 # "TRIMUI", the three-dot mark as three discs (no font needed), "BRICK", running up the right side
@@ -356,10 +378,11 @@ SHOTS = {
     "back34": (0.26, 0.36, 0.16),
     "left": (-0.45, -0.12, 0.12),
     "bottom": (0.10, -0.30, -0.22),
-    "backtop": (0.05, 0.30, 0.42),
-    "back": (0.0, 0.46, 0.06),
-    "mine": (0.0, 0.36, 0.30),        # above and behind, as Howard's photo        # straight on, as Howard's photo   # the angle of reference photo 8
-    "rside": (0.48, 0.02, 0.05),      # the teal-key side, as photo 12
+    "backtop": (0.05, 0.30, 0.42),     # the angle of reference photo 8
+    "back": (0.0, 0.46, 0.06),         # straight on
+    "mine": (0.0, 0.36, 0.30),         # above and behind, as Howard's photo
+    "photo6": (0.26, -0.30, -0.05),    # low at the front right, as TrimUI's close-up
+    "rside": (0.48, 0.02, 0.05),       # the teal-key side, as photo 12
 }
 if os.environ.get("BRICK_SAVE"):  # BRICK_SAVE=/path/brick.blend saves the scene to open in Blender, without rendering
     cam.location = SHOTS["front34"]; place_lights(cam.location)
