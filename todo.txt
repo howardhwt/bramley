@@ -152,7 +152,6 @@ next
 		my355
 	
 	slow buildroot evtest
-		https://discord.com/channels/741895796315914271/1232969624417730630/1284606079614849084
 	
 	mgba (at least on the mm+) doesn't like zipped roms
 		try to reproduce on something with adb or ssh
@@ -547,7 +546,7 @@ rg35xx
 					echo 0xF > /sys/devices/system/cpu/autoplug/plug_mask
 					though I'm not sure I'm observing a difference...(at least when applying over adb)
 		
-	charging screen isn't working for someone on RH discord
+	charging screen isn't working for one user
 		charging.png isn't being copied to MISC during install (it should only be omitted during update)
 	how to handle updating on mini and missing TF1 updates as a result?
 		could I write the version to the .minstalled file
