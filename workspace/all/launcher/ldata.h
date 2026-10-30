@@ -20,6 +20,8 @@ typedef struct {
 	float hue;           // colour of the title card
 	LTex* art;
 	LTex* label;
+	LTex* glyph;    // consoles without an icon of their own: Bramley's app icon for the system
+	LTex* sublabel; // under the name on those tiles: the game count
 	int art_tried;
 	int resume_checked;  // games: can_resume is looked up only when the game is focused
 } Card;

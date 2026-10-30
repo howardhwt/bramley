@@ -82,6 +82,7 @@ static struct {
 	LTex* pill_a;
 	LTex* pill_x;
 	LTex* art_label; // shown in the art box when the item has no art
+	LTex* art_icon;  // or, for a console, its app icon
 } shelf = { -1, -1 };
 
 // Status, rebuilt when the minute or battery level changes.
@@ -425,6 +426,19 @@ static void move_focus(int dx, int dy) {
 	else if (dy < 0 && r > 0) focus_row--;
 }
 
+// Bramley's app icon for a console without one of its own (tools/console-glyphs.py), by its
+// folder's tag, or the default icon for a folder Bramley does not know.
+static void console_icon_path(const char* tag, int size, char* out, size_t n) {
+	snprintf(out, n, BRAMLEY_RES_DIR "/brand/consoles/%s-%d.png", tag, size);
+	if (!exists(out)) snprintf(out, n, BRAMLEY_RES_DIR "/brand/consoles/default-%d.png", size);
+}
+
+// The glass behind a console tile without art, as an iOS widget: dark, translucent, a hairline rim.
+static void draw_glass(float x, float y, float w, float h, float radius, float alpha) {
+	lgfx_draw_fill(x, y, w, h, radius, 0.11f, 0.11f, 0.14f, 0.62f * alpha);
+	lgfx_draw_ring(x, y, w, h, radius, 1, 1, 1, 1, 0.13f * alpha);
+}
+
 static void card_colors(const Card* card, float top[4], float bottom[4]) {
 	hsv_to_rgb(card->hue, 0.42f, 0.78f, &top[0], &top[1], &top[2]);
 	hsv_to_rgb(fmodf(card->hue + 0.04f, 1.0f), 0.58f, 0.48f, &bottom[0], &bottom[1], &bottom[2]);
@@ -453,9 +467,15 @@ static int load_next_art(void) {
 				return 1;
 			}
 			if (!card->label && !card->art) {
-				int console = card->kind == CARD_CONSOLE;
-				card->label = ltex_text(console ? LFONT_TITLE : LFONT_LABEL, console ? card->tag : card->name,
-				                        (int)ICON_W - 24);
+				if (card->kind == CARD_CONSOLE) {
+					// a console without an icon: Bramley's tile, an app icon with the name and count
+					char path[512], count[32];
+					console_icon_path(card->tag, 80, path, sizeof(path));
+					card->glyph = ltex_load(path, 0);
+					card->label = ltex_text(LFONT_LABEL, card->name, (int)ICON_W - 32);
+					snprintf(count, sizeof(count), "%d %s", card->game_count, card->game_count == 1 ? "game" : "games");
+					card->sublabel = ltex_text(LFONT_SMALL, count, (int)ICON_W - 32);
+				} else card->label = ltex_text(LFONT_LABEL, card->name, (int)ICON_W - 24);
 				return 1;
 			}
 		}
@@ -477,6 +497,8 @@ static void free_shelf(void) {
 	ltex_free(shelf.pill_a);
 	ltex_free(shelf.pill_x);
 	ltex_free(shelf.art_label);
+	ltex_free(shelf.art_icon);
+	shelf.art_icon = NULL;
 	shelf.kicker = shelf.title = shelf.detail = shelf.pill_a = shelf.pill_x = shelf.art_label = NULL;
 }
 
@@ -520,8 +542,12 @@ static int update_shelf(void) {
 	snprintf(text, sizeof(text), "A   %s", pill_a);
 	shelf.pill_a = ltex_text(LFONT_LABEL, text, 0);
 	if (card->kind == CARD_RECENT && card->can_resume) shelf.pill_x = ltex_text(LFONT_LABEL, "X   Resume save", 0);
-	shelf.art_label = ltex_text(card->kind == CARD_CONSOLE ? LFONT_HERO : LFONT_TITLE,
-	                            card->kind == CARD_CONSOLE ? card->tag : card->name, (int)shelf_art_max_w - 40);
+	if (card->kind == CARD_CONSOLE) {
+		// a console without art shows its large app icon on glass
+		char path[512];
+		console_icon_path(card->tag, 200, path, sizeof(path));
+		shelf.art_icon = ltex_load(path, 0);
+	} else shelf.art_label = ltex_text(LFONT_TITLE, card->name, (int)shelf_art_max_w - 40);
 	shine_t = 0.0f;
 	shelf_fade.x = 0.0f;
 	shelf_fade.v = 0.0f;
@@ -575,6 +601,22 @@ static void draw_icon(int r, int c, float row_alpha) {
 	lgfx_draw_shadow(x, y, w, h, lift * 12, (0.45f + lift * 0.4f) * row_alpha);
 	if (card->art) {
 		lgfx_draw_art(card->art, x, y, w, h, radius, row_alpha);
+	} else if (card->kind == CARD_CONSOLE && card->glyph) {
+		// app icon top left, the name and the game count bottom left (design: spikes/console-tiles)
+		draw_glass(x, y, w, h, radius, row_alpha);
+		if (lift > 0.01f) lgfx_draw_fill(x, y, w, h, radius, 1, 1, 1, 0.12f * lift * row_alpha); // focus brightens it
+		float g = 40 * s, pad = 14 * s;
+		lgfx_draw_tex(card->glyph, x + pad, y + pad, g, g, 0, row_alpha);
+		float by = y + h - pad;
+		if (card->sublabel) {
+			float sw = card->sublabel->w * s, sh = card->sublabel->h * s;
+			by -= sh;
+			lgfx_draw_tex(card->sublabel, x + 16 * s, by, sw, sh, 0, 0.6f * row_alpha);
+		}
+		if (card->label) {
+			float lw = card->label->w * s, lh = card->label->h * s;
+			lgfx_draw_tex(card->label, x + 16 * s, by - lh + 2 * s, lw, lh, 0, 0.96f * row_alpha);
+		}
 	} else {
 		float top[4], bottom[4];
 		card_colors(card, top, bottom);
@@ -613,6 +655,10 @@ static void draw_shelf(void) {
 	lgfx_draw_shadow(art_x, art_y, art_w, shelf_art_h, 14, 0.7f * a);
 	if (card->art) {
 		lgfx_draw_tex(card->art, art_x, art_y, art_w, shelf_art_h, 22, a);
+	} else if (shelf.art_icon) {
+		draw_glass(art_x, art_y, art_w, shelf_art_h, 22, a);
+		float g = fminf(150, shelf_art_h - 60);
+		lgfx_draw_tex(shelf.art_icon, art_x + (art_w - g) * 0.5f, art_y + (shelf_art_h - g) * 0.5f, g, g, 0, a);
 	} else {
 		float top[4], bottom[4];
 		card_colors(card, top, bottom);

@@ -471,6 +471,8 @@ void ldata_free_rows(Row* rows, int count) {
 	for (int r = 0; r < count; r++) {
 		for (int c = 0; c < rows[r].count; c++) {
 			ltex_free(rows[r].cards[c].art);
+			ltex_free(rows[r].cards[c].glyph);
+			ltex_free(rows[r].cards[c].sublabel);
 			ltex_free(rows[r].cards[c].label);
 		}
 		free(rows[r].cards);
