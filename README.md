@@ -110,7 +110,7 @@ Put games in `Roms/<System> (<TAG>)/`, for example `Roms/Game Boy (GB)/`, and BI
 ## Known issues
 
 - **Wi-Fi on a busy 2.4 GHz network can be slow,** which makes the first update take a while. Software Update keeps the device awake and resumes a dropped download by itself.
-- **The first update** on a card from 0.9.1 or earlier downloads the whole 58 MB card. Later updates are usually about 14 MB.
+- **The first update** on a card from 0.9.1 or earlier downloads the whole 60 MB card. Later updates are usually about 15 MB.
 - **RetroAchievements sign-in** can freeze the screen for a few seconds while it connects.
 
 ## FAQ
