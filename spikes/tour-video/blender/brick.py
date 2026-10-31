@@ -209,69 +209,51 @@ def prism_z(name, pts_xy, z0, z1, material):
     bm.normal_update(); bmesh.ops.recalc_face_normals(bm, faces=bm.faces); bm.to_mesh(me_); bm.free()
     o_ = bpy.data.objects.new(name, me_); scene.collection.objects.link(o_); o_.data.materials.append(material)
     return o_
-def shoulder(name, x0_, x1_, base, h_in, h_out, outer_sign, material):
-    """A shoulder button, seen from behind (Howard's close-up, TrimUI's back-buttons close-up): R2 and L2
-    are blocks with a chamfered top; R1 and L1 rise in a curve toward the device's edge and round over
-    at the end. The profile is drawn across the width (x) and height (z) and run through the depth; the
-    top part then overhangs the back face as a lip."""
-    y0, y1, lip = D1 + 0.0003, D2 - 0.0002, 0.0009
-    prof = []
-    if outer_sign == 0:                                   # R2 / L2: a block, chamfered along the top
-        c = 0.0007
-        prof = [(x0_, base), (x1_, base), (x1_, base + h_in - c), (x1_ - c, base + h_in), (x0_ + c, base + h_in), (x0_, base + h_in - c)]
-    else:
-        # R1 / L1 (Howard's close-up): a flat top that turns down over the outer end in a long rounded
-        # corner, wide across and about half the height down, like a thumb rest
-        xi, xo = (x0_, x1_) if outer_sign > 0 else (x1_, x0_)   # inner and outer ends
-        rx, rz = abs(x1_ - x0_) * 0.24, h_out * 0.55
-        prof.append((xi, base)); prof.append((xo, base))
-        prof.append((xo, base + h_out - rz))
-        for i in range(1, 17):                                   # the corner, from the end up to the top
-            a = i / 16 * math.pi / 2
-            prof.append((xo - outer_sign * rx * (1 - math.cos(a)), base + h_out - rz + rz * math.sin(a)))
-        prof.append((xi + outer_sign * 0.0007, base + h_out)); prof.append((xi, base + h_out - 0.0007))
-        if outer_sign < 0: prof = prof[::-1]
-    me_ = bpy.data.meshes.new(name); bm = bmesh.new()
-    F = [bm.verts.new((x, y0, z)) for x, z in prof]; B = [bm.verts.new((x, y1 + lip, z)) for x, z in prof]
-    bm.faces.new(F); bm.faces.new(B[::-1])
-    for i in range(len(prof)):
-        j = (i + 1) % len(prof); bm.faces.new((F[i], F[j], B[j], B[i]))
-    bm.normal_update(); bmesh.ops.recalc_face_normals(bm, faces=bm.faces); bm.to_mesh(me_); bm.free()
-    o_ = bpy.data.objects.new(name, me_); scene.collection.objects.link(o_); o_.data.materials.append(material)
-    # the lip: the lower part of the back steps in, so only the top overhangs
-    step = slab("step", outline(x0_ - 0.002, base - 0.001, x1_ + 0.002, base + h_in * 0.62, 0, 0, 0, 0, 1), y1, y1 + 0.003, material, bevel=0)
-    m = o_.modifiers.new("step", "BOOLEAN"); m.operation = "DIFFERENCE"; m.object = step; m.solver = "EXACT"
-    bpy.context.view_layer.objects.active = o_; bpy.ops.object.modifier_apply(modifier="step")
-    bpy.data.objects.remove(step, do_unlink=True)
-    return o_, (y0 + y1) / 2 + 0.0006
-HB = H * 0.089                          # the outer ends' height above the ledge, from TrimUI's flat back view
+def shoulder(name, x0_, x1_, base, h, outer_sign, material):
+    """A shoulder button as two parts (Howard's close-ups, TrimUI's top view and back-buttons render): a
+    cap whose top rolls over the back in a large radius and ends in a lip that overhangs the body below,
+    and the narrower body under it. R1 and L1 (outer_sign +1 or -1) round off at their outer end in
+    plan like a bullet, the cap's lip running round that end too. Returns the cap, for carving."""
+    y0, yb, lip = D1 + 0.0003, D2 - 0.0002, 0.0008
+    r_end = W * 0.07 if outer_sign else 0.0008                   # the outer end in plan
+    def plan(inset):
+        xa, xb = x0_, x1_
+        if outer_sign > 0: xb -= inset
+        if outer_sign < 0: xa += inset
+        rb = max(0.0005, r_end - inset)
+        # outline() corners: (left, front), (right, front), (right, back), (left, back) in x and y here
+        rlf, rrf = 0.0004, 0.0004
+        rrb = rb if outer_sign > 0 else 0.0006
+        rlb = rb if outer_sign < 0 else 0.0006
+        return outline(xa, y0, xb, yb + lip - inset, rlb, rrb, rrf, rlf, 14)
+    z_lip = base + h * 0.58
+    body = prism_z(name + "_body", plan(lip), base, z_lip + 0.0004, material)
+    cap = prism_z(name, plan(0), z_lip, base + h, material)
+    bv = cap.modifiers.new("roll", "BEVEL"); bv.width = 0.0019; bv.segments = 10; bv.limit_method = "ANGLE"; bv.angle_limit = math.radians(50)
+    bv.profile = 0.55
+    bb = body.modifiers.new("bevel", "BEVEL"); bb.width = 0.0005; bb.segments = 4; bb.limit_method = "ANGLE"; bb.angle_limit = math.radians(50)
+    return cap, (y0 + yb) / 2 - 0.0002
 for (a, b, lab, outer) in [(0.0, 0.236, "R1", True), (0.240, 0.388, "R2", False), (0.590, 0.733, "L2", False), (0.738, 1.0, "L1", True)]:
     u0, u1 = bu(b), bu(a)
     sign = 0 if not outer else (1 if lab == "R1" else -1)
-    h_in = H * 0.084                    # R2 / L2
-    btn, yc = shoulder("shoulder_" + lab, u0, u1, LEDGE + LED_H, h_in, H * 0.080, sign, M_SHOULDER)
-    # the name carved into the top, over its flatter inner part
+    h = H * (0.080 if outer else 0.084)
+    btn, yc = shoulder("shoulder_" + lab, u0, u1, LEDGE + LED_H, h, sign, M_SHOULDER)
+    # the name carved into the cap's flat top, on its inner part
     lx = (u0 + u1) / 2 if not outer else ((u0 + u1) / 2 - sign * (u1 - u0) * 0.10)
-    top = H * 0.080 if outer else h_in
-    lz = LEDGE + LED_H + top - 0.00015
+    lz = LEDGE + LED_H + h - 0.00015
     t = text(lab, lx, lz, W * 0.06, M_SHOULDER, yc, align="CENTER", depth=0.0003)
     t.data.font = bpy.data.fonts.load(font_file("Avenir-Medium.ttf", "SemiBold"))
     t.rotation_euler = (0, 0, math.radians(180)); t.location = (lx, yc, lz)
     bpy.context.view_layer.objects.active = t; t.select_set(True); bpy.ops.object.convert(target="MESH")
+    bpy.context.view_layer.objects.active = btn
+    bpy.ops.object.modifier_apply(modifier="roll")
     m = btn.modifiers.new("carve", "BOOLEAN"); m.operation = "DIFFERENCE"; m.object = t; m.solver = "EXACT"
-    bpy.context.view_layer.objects.active = btn; bpy.ops.object.modifier_apply(modifier="carve")
+    bpy.ops.object.modifier_apply(modifier="carve")
     bpy.data.objects.remove(t, do_unlink=True)
-    if outer:  # R1 and L1: the outer end rounds off in plan too, as in TrimUI's top view
-        r = W * 0.045; yb, yf = D2 + 0.0011, D1 + 0.0003
-        rl_, rr_ = (r, 0.0001) if lab == "L1" else (0.0001, r)
-        keep = prism_z("keep", outline(u0, yf - 0.001, u1, yb, rl_, rr_, 0.0001, 0.0001, 12), LEDGE - 0.001, LEDGE + HB * 1.5, M_SHOULDER)
-        m = btn.modifiers.new("round", "BOOLEAN"); m.operation = "INTERSECT"; m.object = keep; m.solver = "EXACT"
-        bpy.context.view_layer.objects.active = btn; bpy.ops.object.modifier_apply(modifier="round")
-        bpy.data.objects.remove(keep, do_unlink=True)
-    bv = btn.modifiers.new("bevel", "BEVEL"); bv.width = 0.0005; bv.segments = 4
-    bv.limit_method = "ANGLE"; bv.angle_limit = math.radians(50)
-    for poly in btn.data.polygons: poly.use_smooth = True
-    btn.modifiers.new("wn", "WEIGHTED_NORMAL")
+    for o_ in (btn, bpy.data.objects["shoulder_" + lab + "_body"]):  # smooth only across the rounded edges
+        bpy.ops.object.select_all(action="DESELECT"); o_.select_set(True); bpy.context.view_layer.objects.active = o_
+        bpy.ops.object.shade_auto_smooth(angle=math.radians(35))
+    bpy.ops.object.select_all(action="DESELECT")
     slab("led_" + lab, outline(u0 + 0.0004, LEDGE - 0.0002, u1 - 0.0004, LEDGE + LED_H, 0.0002, 0.0002, 0.0002, 0.0002, 2),
          D1 + 0.0006, D2 + 0.0001, M_LED, bevel=0.0002, segs=1)
 # USB-C, read in 3D from TrimUI's top view, its back-buttons close-up, photo 8 and Howard's notes: one
