@@ -202,7 +202,7 @@ _k = 15                                # outline(): after the top-left corner's 
 _tab = [(UB0, LEDGE), (UB0, UTOP - 0.0006), (UB0 + 0.0006, UTOP), (UB1 - 0.0006, UTOP), (UB1, UTOP - 0.0006), (UB1, LEDGE)]
 # the USB-C piece is not a part of its own: the grip's outline rises into it (Howard), so the grip's back
 # face runs straight up into the piece and the same rounding runs round both
-grip = slab("grip", _pts[:_k] + _tab + _pts[_k:], D1 - 0.0005, D2, M_BACK, bevel=0.0038, segs=10, back_only=True)
+grip = slab("grip", _pts[:_k] + _tab + _pts[_k:], D1 - 0.0005, D2, M_BACK, bevel=0.0052, segs=12, back_only=True)   # a broad round (IMG_8457-8459)
 bpy.context.view_layer.objects.active = grip
 for mod in list(grip.modifiers): bpy.ops.object.modifier_apply(modifier=mod.name)   # baked, so the USB-C piece can join it
 # shoulder buttons standing on the ledge, R1 R2 | USB-C | L2 L1 as seen from behind (Howard's close-up):
@@ -334,8 +334,12 @@ prism_z("port_tongue", outline(ucx - 0.0033, ucy - 0.00035, ucx + 0.0033, ucy + 
 # the grip panel, measured on Howard's straight-on photo in units of the width W, down from its top:
 # the name at 0.12, Torx screws at the corners, rounded grooves every 0.02 from 0.165, and an engraved
 # house-like outline in the middle: a roof 0.24 wide rising to 0.19, two posts down from 0.26
-t = text("BRICK HAMMER", 0, LEDGE - 0.09 * W, W * 0.052, M_ETCH, D2 + 0.00006, face="back", align="CENTER")
+# the name is cut into the grip (Howard: countersunk, not raised)
+t = text("BRICK HAMMER", 0, LEDGE - 0.09 * W, W * 0.052, M_ENGRAVE, D2, face="back", align="CENTER", depth=0.00016)
 t.data.font = bpy.data.fonts.load(font_file("Avenir-Heavy.ttf", "Bold")); t.data.space_character = 1.25
+bpy.ops.object.select_all(action="DESELECT"); t.select_set(True); bpy.context.view_layer.objects.active = t
+bpy.ops.object.convert(target="MESH")
+cut(grip, t)
 RIB0, PITCH, RIB_END = LEDGE - 0.165 * W, 0.028 * W, 0.075 * W
 z = RIB0; i = 0; grooves = []
 while z - 0.012 * W > RIB_END:
@@ -360,28 +364,22 @@ def groove_line(name, pts, w_=0.00014, depth=0.00018):
         bm.normal_update(); bmesh.ops.recalc_face_normals(bm, faces=bm.faces); bm.to_mesh(me_); bm.free()
         o_ = bpy.data.objects.new(f"{name}{i}", me_); scene.collection.objects.link(o_); parts.append(o_)
     return parts
-# the diamond on the grip (IMG_8457): a six-sided shape about 0.23 W wide and 0.25 W tall, its top at the
-# first rib. It is a shallow pocket, so its edges show only as steps across the ribs, not in the grooves.
-hx, apex = 0.113 * W, RIB0 - 0.005 * W
+# the diamond on the grip (IMG_8457): a six-sided outline, a fine line cut into the metal, about 0.23 W
+# wide and 0.25 W tall, its top at the first rib (Howard: a shape, not a sunken area)
+hx, apex = 0.113 * W, RIB0 - 0.009 * W   # not on a groove's edge: coplanar faces break the boolean
 eave = apex - 0.062 * W; bot_eave = eave - 0.126 * W; bot_pt = bot_eave - 0.062 * W
-hexa = [(0, apex), (hx, eave), (hx, bot_eave), (0, bot_pt), (-hx, bot_eave), (-hx, eave)]
-me_ = bpy.data.meshes.new("diamond"); bm = bmesh.new()
-F = [bm.verts.new((x, D2 - 0.00009, z)) for x, z in hexa]; B = [bm.verts.new((x, D2 + 0.001, z)) for x, z in hexa]
-bm.faces.new(F); bm.faces.new(B[::-1])
-for j in range(6):
-    k = (j + 1) % 6; bm.faces.new((F[j], F[k], B[k], B[j]))
-bm.normal_update(); bmesh.ops.recalc_face_normals(bm, faces=bm.faces); bm.to_mesh(me_); bm.free()
-pocket = bpy.data.objects.new("diamond", me_); scene.collection.objects.link(pocket)
-cut(grip, pocket)
+hexa = [(hx, eave), (hx, bot_eave), (0, bot_pt), (-hx, bot_eave), (-hx, eave), (0, apex), (hx, eave)]
+for part in groove_line("diamond", hexa, w_=0.00022, depth=0.00012):
+    cut(grip, part)   # one at a time: joined, the overlapping corners confuse the boolean
 # Torx screws at the four corners of the panel
 for (sx, zc) in [(-1, LEDGE - 0.15 * W), (1, LEDGE - 0.15 * W), (-1, 0.06 * W), (1, 0.06 * W)]:
     xc = sx * (W / 2 - 0.065 * W)
-    hole = cyl("hole", xc, zc, W * 0.032, D2 - 0.0035, D2 + 0.001, M_HOLE, bevel=0)
+    hole = cyl("hole", xc, zc, W * 0.035, D2 - 0.0045, D2 + 0.001, M_HOLE, bevel=0)
     m = grip.modifiers.new("hole", "BOOLEAN"); m.operation = "DIFFERENCE"; m.object = hole; m.solver = "EXACT"
     bpy.context.view_layer.objects.active = grip; bpy.ops.object.modifier_apply(modifier="hole")
     bpy.data.objects.remove(hole, do_unlink=True)
-    cyl("hole_floor", xc, zc, W * 0.032, D2 - 0.0036, D2 - 0.0034, M_HOLE, bevel=0)
-    cyl("grip_screw", xc, zc, W * 0.024, D2 - 0.0034, D2 - 0.0028, M_SCREW, bevel=0.0001)   # sunk deep (IMG_8458)
+    cyl("hole_floor", xc, zc, W * 0.035, D2 - 0.0046, D2 - 0.0044, M_HOLE, bevel=0)
+    cyl("grip_screw", xc, zc, W * 0.024, D2 - 0.0044, D2 - 0.0039, M_PORT, bevel=0.0001)   # sunk deep, in shadow (IMG_8458)
 # upper back: two silver Phillips screws, the three-dot mark
 for u in (0.09, 0.91):
     cyl("screw", bu(u), fz(pv(0.09)), W * 0.02, D1 - 0.0001, D1 + 0.00022, M_SCREW, bevel=0.00012)
