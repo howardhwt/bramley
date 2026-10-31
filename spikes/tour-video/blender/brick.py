@@ -215,7 +215,7 @@ def shoulder(name, x0_, x1_, base, h, outer_sign, material):
     and the narrower body under it. R1 and L1 (outer_sign +1 or -1) round off at their outer end in
     plan like a bullet, the cap's lip running round that end too. Returns the cap, for carving."""
     y0, yb, lip = D1 + 0.0003, D2 - 0.0002, 0.0008
-    r_end = W * 0.07 if outer_sign else 0.0008                   # the outer end in plan
+    r_end = W * 0.03 if outer_sign else 0.0008                   # the outer end in plan
     def plan(inset):
         xa, xb = x0_, x1_
         if outer_sign > 0: xb -= inset
@@ -231,19 +231,24 @@ def shoulder(name, x0_, x1_, base, h, outer_sign, material):
     if not outer_sign:
         cap = prism_z(name, plan(0), z_lip, base + h, material)
     else:
-        # R1 / L1: seen from behind, the cap curls down over the outer end like a hook, keeping its
-        # thickness, its tip hanging lower than the lip (Howard's close-up)
+        # R1 / L1: seen from behind, the cap curls down over the outer end. CURL is traced from Howard's
+        # close-up of R1: u runs from the tip (0) to the inner end (1), v is how far the lip has dropped,
+        # as a share of the back face's height under it. The tip overhangs the body by TIP_OUT.
+        CURL = [(0.0, 0.62), (0.02, 0.48), (0.06, 0.33), (0.12, 0.24), (0.30, 0.12), (0.60, 0.04), (1.0, 0.0)]
+        def drop(u):
+            for (ua, va), (ub, vb) in zip(CURL, CURL[1:]):
+                if u <= ub: return va + (vb - va) * (u - ua) / (ub - ua)
+            return 0.0
         tc, top = base + h - z_lip, base + h
+        face = z_lip - base
         xi, xo = (x0_, x1_) if outer_sign > 0 else (x1_, x0_)
-        rx, rz = abs(x1_ - x0_) * 0.26, h * 0.34
-        xs = xo - outer_sign * rx
-        upper, lower = [], []
-        for i in range(25):
-            a_ = i / 24 * math.pi / 2
-            x = xs + outer_sign * rx * math.sin(a_)
-            upper.append((x, top - rz * (1 - math.cos(a_))))
-            lower.append((x - outer_sign * tc * 0.35 * math.sin(a_), top - tc - rz * (1 - math.cos(a_)) * 1.05))
-        prof = [(xi, top)] + upper + lower[::-1] + [(xi, top - tc)]
+        wid = abs(x1_ - x0_)
+        us = [i / 60 for i in range(61)]
+        us = sorted(set(us + [0.005, 0.01, 0.02, 0.03]))
+        flare = lambda u: outer_sign * 0.0007 * max(0.0, 1 - u / 0.12) ** 2   # the tip flares out past the side
+        upper = [(xo - outer_sign * u * wid + flare(u), top - drop(u) * face) for u in us]
+        lower = [(xo - outer_sign * u * wid + flare(u), top - tc - drop(u) * face) for u in us]
+        prof = upper[::-1] + lower        # from the inner end along the top to the tip, back along the lip
         if outer_sign < 0: prof = prof[::-1]
         me_ = bpy.data.meshes.new(name); bm = bmesh.new()
         F = [bm.verts.new((x, y0, z)) for x, z in prof]; B = [bm.verts.new((x, yb + lip, z)) for x, z in prof]
@@ -252,14 +257,11 @@ def shoulder(name, x0_, x1_, base, h, outer_sign, material):
             j = (i + 1) % len(prof); bm.faces.new((F[i], F[j], B[j], B[i]))
         bm.normal_update(); bmesh.ops.recalc_face_normals(bm, faces=bm.faces); bm.to_mesh(me_); bm.free()
         cap = bpy.data.objects.new(name, me_); scene.collection.objects.link(cap); cap.data.materials.append(material)
-        keep = prism_z("keep", plan(0), base - 0.002, top + 0.002, material)   # the bullet end in plan
-        m = cap.modifiers.new("plan", "BOOLEAN"); m.operation = "INTERSECT"; m.object = keep; m.solver = "EXACT"
-        bpy.context.view_layer.objects.active = cap; bpy.ops.object.modifier_apply(modifier="plan")
-        bpy.data.objects.remove(keep, do_unlink=True)
+        TIP_OUT = 0.05
+        xs = xo - outer_sign * TIP_OUT * wid
         # the body stops short of the curl
-        bm_ = body.data
-        for v in bm_.vertices:
-            if (v.co.x - xs) * outer_sign > 0: v.co.x = xs + (v.co.x - xs) * 0.75
+        for v in body.data.vertices:
+            if (v.co.x - xs) * outer_sign > 0: v.co.x = xs
     bv = cap.modifiers.new("roll", "BEVEL"); bv.width = 0.0019; bv.segments = 10; bv.limit_method = "ANGLE"; bv.angle_limit = math.radians(50)
     bv.profile = 0.55
     bb = body.modifiers.new("bevel", "BEVEL"); bb.width = 0.0005; bb.segments = 4; bb.limit_method = "ANGLE"; bb.angle_limit = math.radians(50)
