@@ -220,17 +220,16 @@ def shoulder(name, x0_, x1_, base, h_in, h_out, outer_sign, material):
         c = 0.0007
         prof = [(x0_, base), (x1_, base), (x1_, base + h_in - c), (x1_ - c, base + h_in), (x0_ + c, base + h_in), (x0_, base + h_in - c)]
     else:
+        # R1 / L1 (Howard's close-up): a flat top that turns down over the outer end in a long rounded
+        # corner, wide across and about half the height down, like a thumb rest
         xi, xo = (x0_, x1_) if outer_sign > 0 else (x1_, x0_)   # inner and outer ends
-        r = (h_out - h_in) * 0.9 + 0.0012                        # the rounded end
+        rx, rz = abs(x1_ - x0_) * 0.24, h_out * 0.55
         prof.append((xi, base)); prof.append((xo, base))
-        for i in range(10):                                      # up the outer end, rounding over
-            a = i / 9 * math.pi / 2
-            prof.append((xo - outer_sign * r * (1 - math.cos(a)), base + (h_out - r) + r * math.sin(a)))
-        for i in range(1, 17):                                   # the top falls in a curve to the inner end
-            t = i / 16
-            x = (xo - outer_sign * r) + (xi - (xo - outer_sign * r)) * t
-            prof.append((x, base + h_in + (h_out - h_in) * (1 - t) ** 4))
-        prof.append((xi, base + h_in))
+        prof.append((xo, base + h_out - rz))
+        for i in range(1, 17):                                   # the corner, from the end up to the top
+            a = i / 16 * math.pi / 2
+            prof.append((xo - outer_sign * rx * (1 - math.cos(a)), base + h_out - rz + rz * math.sin(a)))
+        prof.append((xi + outer_sign * 0.0007, base + h_out)); prof.append((xi, base + h_out - 0.0007))
         if outer_sign < 0: prof = prof[::-1]
     me_ = bpy.data.meshes.new(name); bm = bmesh.new()
     F = [bm.verts.new((x, y0, z)) for x, z in prof]; B = [bm.verts.new((x, y1 + lip, z)) for x, z in prof]
@@ -249,14 +248,11 @@ HB = H * 0.089                          # the outer ends' height above the ledge
 for (a, b, lab, outer) in [(0.0, 0.236, "R1", True), (0.240, 0.388, "R2", False), (0.590, 0.733, "L2", False), (0.738, 1.0, "L1", True)]:
     u0, u1 = bu(b), bu(a)
     sign = 0 if not outer else (1 if lab == "R1" else -1)
-    h_in = H * (0.072 if outer else 0.076)
-    btn, yc = shoulder("shoulder_" + lab, u0, u1, LEDGE + LED_H, h_in, HB, sign, M_SHOULDER)
+    h_in = H * 0.084                    # R2 / L2
+    btn, yc = shoulder("shoulder_" + lab, u0, u1, LEDGE + LED_H, h_in, H * 0.080, sign, M_SHOULDER)
     # the name carved into the top, over its flatter inner part
     lx = (u0 + u1) / 2 if not outer else ((u0 + u1) / 2 - sign * (u1 - u0) * 0.10)
-    top = h_in
-    if outer:  # the top's height at the label, on the curve toward the outer end
-        xo = u1 if sign > 0 else u0; r_ = (HB - h_in) * 0.9 + 0.0012; xs_ = xo - sign * r_; xi_ = u0 if sign > 0 else u1
-        tt = (lx - xs_) / (xi_ - xs_); top = h_in + (HB - h_in) * (1 - tt) ** 4
+    top = H * 0.080 if outer else h_in
     lz = LEDGE + LED_H + top - 0.00015
     t = text(lab, lx, lz, W * 0.06, M_SHOULDER, yc, align="CENTER", depth=0.0003)
     t.data.font = bpy.data.fonts.load(font_file("Avenir-Medium.ttf", "SemiBold"))
