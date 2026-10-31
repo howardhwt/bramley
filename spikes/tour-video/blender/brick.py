@@ -556,7 +556,7 @@ def side_word(word, mm_from_bottom, spacing):
     t = text(word, 0, 0, W * 0.054, M_BODY, 0, align="CENTER", depth=0.0005)
     t.data.font = bpy.data.fonts.load(font_file("Avenir-Black.ttf", "Bold")); t.data.space_character = spacing
     t.data.align_y = "CENTER"
-    t.rotation_euler = SIDE_ROT; t.location = (W / 2 - 0.00025, SIDE_Y, mm_from_bottom / 1000)   # cut 0.25 mm deep
+    t.rotation_euler = SIDE_ROT; t.location = (W / 2 - 0.00016, SIDE_Y, mm_from_bottom / 1000)   # cut 0.16 mm deep: read by edge light, not shadow
     bpy.ops.object.select_all(action="DESELECT"); t.select_set(True); bpy.context.view_layer.objects.active = t
     bpy.ops.object.convert(target="MESH"); side_cuts.append(t)
 side_word("TRIMUI", 10.8, 1.15)
@@ -566,6 +566,11 @@ for a_ in (90, 210, 330):   # the mark: three linked rings, cut as outlines
         location=(W / 2, SIDE_Y - math.sin(math.radians(a_)) * 0.00052, 0.0187 + math.cos(math.radians(a_)) * 0.00052),
         rotation=(0, math.radians(90), 0))
     side_cuts.append(bpy.context.object)
+# the parting line where the body meets the grip (Howard's photo 10): a fine groove along both sides
+# and across the bottom
+for sx in (-1, 1):
+    side_cuts.append(prism("part", outline(D1 - 0.00006, -0.001, D1 + 0.00006, LEDGE - 0.0004, 0, 0, 0, 0, 1), "x",
+                           sx * W / 2 - 0.0001, sx * W / 2 + 0.0001))
 for c_ in side_cuts:
     cut(body, c_)
 
