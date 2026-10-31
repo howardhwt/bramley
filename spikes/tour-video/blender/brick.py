@@ -211,25 +211,27 @@ for (a, b, lab, outer) in [(0.0, 0.236, "R1", True), (0.240, 0.388, "R2", False)
     t.rotation_euler = (0, 0, math.radians(180)); t.location = ((u0 + u1) / 2, (D1 + D2) / 2, top + 0.00002)
     slab("led_" + lab, outline(u0 + 0.0004, LEDGE - 0.0002, u1 - 0.0004, LEDGE + LED_H, 0.0002, 0.0002, 0.0002, 0.0002, 2),
          D1 + 0.0006, D2 + 0.0001, M_LED, bevel=0.0002, segs=1)
-# USB-C: a metal block lower than the buttons, the port facing back, on a light ribbed tab
+# USB-C, read in 3D from TrimUI's top view, its back-buttons close-up and photo 8: between R2 and L2 a
+# metal block lower than the buttons. Its back face is a ribbed plate, flush with the grip's back. The
+# port opens UPWARD in its top face, the long side across the width, centred in the depth.
 UB0, UB1 = bu(0.586), bu(0.394)
-UTOP = LEDGE + BTN_H * 0.80
-# a shallow block at the back: from above, the back plate shows right behind it (Howard's photo)
-slab("usb_block", outline(UB0, LEDGE + LED_H, UB1, UTOP, 0.0008, 0.0008, 0.0003, 0.0003, 6),
-     D2 - 0.0035, D2 + 0.0001, M_BODY, bevel=0.0004, segs=3)
-ucx, ucz = (UB0 + UB1) / 2, (LEDGE + LED_H + UTOP) / 2
-slab("usb_shell", outline(ucx - 0.0056, ucz - 0.0018, ucx + 0.0056, ucz + 0.0018, 0.0018, 0.0018, 0.0018, 0.0018, 10),
-     D2 - 0.0002, D2 + 0.00025, M_SCREW, bevel=0.0001, segs=2)
-slab("usb_hole", outline(ucx - 0.0049, ucz - 0.0012, ucx + 0.0049, ucz + 0.0012, 0.0012, 0.0012, 0.0012, 0.0012, 10),
-     D2 - 0.0002, D2 + 0.00028, M_HOLE, bevel=0)
-slab("usb_tongue", outline(ucx - 0.0037, ucz - 0.0003, ucx + 0.0037, ucz + 0.0003, 0.0002, 0.0002, 0.0002, 0.0002, 2),
-     D2 - 0.0002, D2 + 0.00010, M_LETTER, bevel=0)
-slab("usb_tab", outline(UB0, LEDGE - 0.0002, UB1, LEDGE + LED_H, 0.0002, 0.0002, 0.0002, 0.0002, 2),
-     D1 + 0.0006, D2 + 0.0001, M_PILL, bevel=0.0002, segs=1)
-for k in range(6):  # its ribs, across its back
-    z = LEDGE + 0.0002 + k * 0.00042
-    slab("usb_rib", outline(UB0 + 0.0003, z, UB1 - 0.0003, z + 0.00016, 0.00005, 0.00005, 0.00005, 0.00005, 1),
-         D2 + 0.0001, D2 + 0.00022, M_ENGRAVE, bevel=0)
+UTOP = LEDGE + LED_H + 0.0030
+slab("usb_block", outline(UB0, LEDGE - 0.0002, UB1, UTOP, 0.0006, 0.0006, 0.0002, 0.0002, 6),
+     D1 + 0.0003, D2 + 0.0001, M_BODY, bevel=0.0003, segs=3)
+for k in range(7):  # the ribbed plate on its back face
+    z = LEDGE + 0.0003 + k * 0.00052
+    slab("usb_rib", outline(UB0 + 0.0004, z, UB1 - 0.0004, z + 0.00022, 0.00005, 0.00005, 0.00005, 0.00005, 1),
+         D2 + 0.0001, D2 + 0.00026, M_BODY, bevel=0.00004, segs=1)
+def flat_top(name, cx, cy, w, d, r, z, material):
+    """A rounded rectangle lying flat, facing up, at height z."""
+    me_ = bpy.data.meshes.new(name); bm = bmesh.new()
+    pts = outline(cx - w / 2, cy - d / 2, cx + w / 2, cy + d / 2, r, r, r, r, 10)
+    vs = [bm.verts.new((x, y, z)) for x, y in pts]; bm.faces.new(vs); bm.to_mesh(me_); bm.free()
+    o_ = bpy.data.objects.new(name, me_); scene.collection.objects.link(o_); o_.data.materials.append(material)
+ucx, ucy = (UB0 + UB1) / 2, (D1 + D2) / 2
+flat_top("usb_rim", ucx, ucy, 0.0094, 0.0034, 0.0017, UTOP + 0.00002, M_SCREW)     # the bright steel shell
+flat_top("usb_hole", ucx, ucy, 0.0084, 0.0025, 0.00125, UTOP + 0.00004, M_HOLE)     # the opening
+flat_top("usb_tongue", ucx, ucy, 0.0066, 0.0007, 0.0002, UTOP + 0.00006, M_LETTER) # the contact tongue
 # the grip panel: "BRICK HAMMER" spaced wide, raised ribs, the marks in a band, four screw holes
 t = text("BRICK HAMMER", 0, fz(pv(0.635)), W * 0.034, M_ETCH, D2 + 0.00006, face="back", align="CENTER")
 t.data.font = bpy.data.fonts.load(font_file("Avenir-Light.ttf", "Regular")); t.data.space_character = 2.1
