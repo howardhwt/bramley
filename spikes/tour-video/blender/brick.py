@@ -196,42 +196,95 @@ slab("grip", outline(x0, 0, x1, LEDGE, 0.0025, 0.0025, R_BOT, R_BOT), D1 - 0.000
 # R1 0-23.6 %, R2 24-38.8 %, USB-C 39.4-58.6 %, L2 59-73.3 %, L1 73.8-100 % of the width; R1 and L1 reach
 # the edges, lower and with a rounded lip; R2 and L2 stand a little taller; names on top
 LED_H = 0.0028                         # the frosted strip under each button, seen on the back
+def prism_z(name, pts_xy, z0, z1, material):
+    """An outline in x and y, extruded from z0 up to z1."""
+    me_ = bpy.data.meshes.new(name); bm = bmesh.new()
+    lo = [bm.verts.new((x, y, z0)) for x, y in pts_xy]; hi = [bm.verts.new((x, y, z1)) for x, y in pts_xy]
+    bm.faces.new(lo[::-1]); bm.faces.new(hi)
+    for i in range(len(pts_xy)):
+        j = (i + 1) % len(pts_xy); bm.faces.new((lo[i], lo[j], hi[j], hi[i]))
+    bm.normal_update(); bmesh.ops.recalc_face_normals(bm, faces=bm.faces); bm.to_mesh(me_); bm.free()
+    o_ = bpy.data.objects.new(name, me_); scene.collection.objects.link(o_); o_.data.materials.append(material)
+    return o_
+def shoulder(name, x0_, x1_, base, hb, material):
+    """A shoulder button: a hill across the depth, low at the front, rising to a rounded crest near the
+    back, then curving down over the back edge as a lip (TrimUI's back-buttons close-up, Howard's notes).
+    The profile is drawn in y (depth) and z (height) and extruded across x."""
+    y0, y1, lip = D1 + 0.0003, D2 - 0.0002, 0.0010
+    prof = []
+    for i in range(17):                                   # the slope up to the crest
+        t = i / 16; prof.append((y0 + (y1 - y0) * 0.78 * t, base + hb * (0.58 + 0.42 * math.sin(t * math.pi / 2))))
+    yc = y0 + (y1 - y0) * 0.78
+    for i in range(1, 13):                                # the rounded crest falling over the back
+        a = i / 12 * math.pi / 2
+        prof.append((yc + (y1 + lip - yc) * math.sin(a), base + hb * (0.58 + 0.42 * math.cos(a))))
+    prof += [(y1 + lip, base + hb * 0.40), (y1, base + hb * 0.40), (y1, base), (y0, base)]
+    me_ = bpy.data.meshes.new(name); bm = bmesh.new()
+    L = [bm.verts.new((x0_, y, z)) for y, z in prof]; R = [bm.verts.new((x1_, y, z)) for y, z in prof]
+    bm.faces.new(L[::-1]); bm.faces.new(R)
+    for i in range(len(prof)):
+        j = (i + 1) % len(prof); bm.faces.new((L[i], L[j], R[j], R[i]))
+    bm.normal_update(); bmesh.ops.recalc_face_normals(bm, faces=bm.faces); bm.to_mesh(me_); bm.free()
+    o_ = bpy.data.objects.new(name, me_); scene.collection.objects.link(o_); o_.data.materials.append(material)
+    return o_, yc
+HB = H * 0.089                          # crest height above the ledge, from TrimUI's flat back view
 for (a, b, lab, outer) in [(0.0, 0.236, "R1", True), (0.240, 0.388, "R2", False), (0.590, 0.733, "L2", False), (0.738, 1.0, "L1", True)]:
     u0, u1 = bu(b), bu(a)
-    top = LEDGE + (BTN_H * 0.92 if outer else BTN_H)
-    r_out = W * 0.035 if outer else 0.0008
-    rl, rr = (0.0008, r_out) if lab.startswith("R") else (r_out, 0.0008)
-    slab("shoulder_" + lab, outline(u0, LEDGE + LED_H, u1, top, rl, rr, 0.0004, 0.0004, 10),
-         D1 + 0.0003, D2 + 0.0002, M_SHOULDER, bevel=0.0022 if outer else 0.0010, segs=8)
-    if outer:  # R1 and L1: the top runs out past the back as a lip that curves down
-        slab("lip_" + lab, outline(u0, top - 0.0009, u1, top, rl, rr, 0.0003, 0.0003, 10),
-             D2 - 0.0015, D2 + 0.0008, M_SHOULDER, bevel=0.00042, segs=8)
-    t = text(lab, (u0 + u1) / 2, top + 0.00002, W * 0.06, M_LABEL_BTN, (D1 + D2) / 2, align="CENTER")
+    hb = HB * (0.94 if outer else 1.0)
+    btn, yc = shoulder("shoulder_" + lab, u0, u1, LEDGE + LED_H, hb, M_SHOULDER)
+    # the name carved into the crest: the letters cut down into the top
+    t = text(lab, (u0 + u1) / 2, LEDGE + LED_H + hb - 0.00025, W * 0.06, M_SHOULDER, yc, align="CENTER", depth=0.0006)
     t.data.font = bpy.data.fonts.load(font_file("Avenir-Medium.ttf", "SemiBold"))
-    t.rotation_euler = (0, 0, math.radians(180)); t.location = ((u0 + u1) / 2, (D1 + D2) / 2, top + 0.00002)
+    t.rotation_euler = (0, 0, math.radians(180)); t.location = ((u0 + u1) / 2, yc, LEDGE + LED_H + hb - 0.00025)
+    bpy.context.view_layer.objects.active = t; t.select_set(True); bpy.ops.object.convert(target="MESH")
+    m = btn.modifiers.new("carve", "BOOLEAN"); m.operation = "DIFFERENCE"; m.object = t; m.solver = "EXACT"
+    m.material_mode = "TRANSFER"
+    bpy.context.view_layer.objects.active = btn; bpy.ops.object.modifier_apply(modifier="carve")
+    bpy.data.objects.remove(t, do_unlink=True)
+    if outer:  # R1 and L1: the outer end rounds off in plan, as in TrimUI's top view and close-up
+        r = W * 0.045; yb, yf = D2 + 0.0011, D1 + 0.0003
+        xs = (u0, u1)
+        pts = outline(xs[0], yf - 0.001, xs[1], yb, 0.0001, 0.0001, 0.0001, 0.0001, 2)
+        rl_, rr_ = (r, 0.0001) if lab == "L1" else (0.0001, r)
+        pts = outline(xs[0], yf - 0.001, xs[1], yb, rl_, rr_, 0.0001, 0.0001, 12)
+        keep = prism_z("keep", pts, LEDGE - 0.001, LEDGE + HB * 1.5, M_SHOULDER)
+        m = btn.modifiers.new("round", "BOOLEAN"); m.operation = "INTERSECT"; m.object = keep; m.solver = "EXACT"
+        bpy.context.view_layer.objects.active = btn; bpy.ops.object.modifier_apply(modifier="round")
+        bpy.data.objects.remove(keep, do_unlink=True)
+    bv = btn.modifiers.new("bevel", "BEVEL"); bv.width = 0.0012 if outer else 0.0007; bv.segments = 6
+    bv.limit_method = "ANGLE"; bv.angle_limit = math.radians(50)
+    for poly in btn.data.polygons: poly.use_smooth = True
+    btn.modifiers.new("wn", "WEIGHTED_NORMAL")
     slab("led_" + lab, outline(u0 + 0.0004, LEDGE - 0.0002, u1 - 0.0004, LEDGE + LED_H, 0.0002, 0.0002, 0.0002, 0.0002, 2),
          D1 + 0.0006, D2 + 0.0001, M_LED, bevel=0.0002, segs=1)
-# USB-C, read in 3D from TrimUI's top view, its back-buttons close-up and photo 8: between R2 and L2 a
-# metal block lower than the buttons. Its back face is a ribbed plate, flush with the grip's back. The
-# port opens UPWARD in its top face, the long side across the width, centred in the depth.
+# USB-C, read in 3D from TrimUI's top view, its back-buttons close-up, photo 8 and Howard's notes: one
+# metal piece between R2 and L2, lower than the buttons, its back face grooved (the ribbed plate is the
+# same piece), and the port a real hole cut down into its top, lined in steel, with the tongue inside.
 UB0, UB1 = bu(0.586), bu(0.394)
 UTOP = LEDGE + LED_H + 0.0030
-slab("usb_block", outline(UB0, LEDGE - 0.0002, UB1, UTOP, 0.0006, 0.0006, 0.0002, 0.0002, 6),
-     D1 + 0.0003, D2 + 0.0001, M_BODY, bevel=0.0003, segs=3)
-for k in range(7):  # the ribbed plate on its back face
-    z = LEDGE + 0.0003 + k * 0.00052
-    slab("usb_rib", outline(UB0 + 0.0004, z, UB1 - 0.0004, z + 0.00022, 0.00005, 0.00005, 0.00005, 0.00005, 1),
-         D2 + 0.0001, D2 + 0.00026, M_BODY, bevel=0.00004, segs=1)
-def flat_top(name, cx, cy, w, d, r, z, material):
-    """A rounded rectangle lying flat, facing up, at height z."""
-    me_ = bpy.data.meshes.new(name); bm = bmesh.new()
-    pts = outline(cx - w / 2, cy - d / 2, cx + w / 2, cy + d / 2, r, r, r, r, 10)
-    vs = [bm.verts.new((x, y, z)) for x, y in pts]; bm.faces.new(vs); bm.to_mesh(me_); bm.free()
-    o_ = bpy.data.objects.new(name, me_); scene.collection.objects.link(o_); o_.data.materials.append(material)
-ucx, ucy = (UB0 + UB1) / 2, (D1 + D2) / 2
-flat_top("usb_rim", ucx, ucy, 0.0094, 0.0034, 0.0017, UTOP + 0.00002, M_SCREW)     # the bright steel shell
-flat_top("usb_hole", ucx, ucy, 0.0084, 0.0025, 0.00125, UTOP + 0.00004, M_HOLE)     # the opening
-flat_top("usb_tongue", ucx, ucy, 0.0066, 0.0007, 0.0002, UTOP + 0.00006, M_LETTER) # the contact tongue
+def cut(target, cutter):
+    m = target.modifiers.new("cut_" + cutter.name, "BOOLEAN"); m.operation = "DIFFERENCE"; m.object = cutter
+    m.solver = "EXACT"; m.material_mode = "TRANSFER"
+    bpy.context.view_layer.objects.active = target
+    bpy.ops.object.modifier_apply(modifier=m.name)
+    bpy.data.objects.remove(cutter, do_unlink=True)
+block = slab("usb_block", outline(UB0, LEDGE - 0.0002, UB1, UTOP, 0.0006, 0.0006, 0.0002, 0.0002, 6),
+             D1 + 0.0003, D2 + 0.0001, M_BODY, bevel=0)
+# grooves across its back face, from the grip's top up to just under the port
+for k in range(7):
+    z = LEDGE + 0.00045 + k * 0.00052
+    g = slab("groove", outline(UB0 - 0.001, z, UB1 + 0.001, z + 0.00022, 0, 0, 0, 0, 1), D2 - 0.00012, D2 + 0.001, M_BODY, bevel=0)
+    cut(block, g)
+# the port: a rounded slot cut 3 mm down into the top; its walls take the steel of the cutter
+ucx, ucy = (UB0 + UB1) / 2, (D1 + D2) / 2 + 0.0004
+cut(block, prism_z("port", outline(ucx - 0.0044, ucy - 0.0013, ucx + 0.0044, ucy + 0.0013, 0.0013, 0.0013, 0.0013, 0.0013, 12),
+                   UTOP - 0.0030, UTOP + 0.001, M_SCREW))
+m = block.modifiers.new("bevel", "BEVEL"); m.width = 0.00025; m.segments = 3; m.limit_method = "ANGLE"; m.angle_limit = math.radians(40)
+for poly in block.data.polygons: poly.use_smooth = True
+prism_z("port_floor", outline(ucx - 0.0043, ucy - 0.0012, ucx + 0.0043, ucy + 0.0012, 0.0012, 0.0012, 0.0012, 0.0012, 12),
+        UTOP - 0.0030, UTOP - 0.0028, M_HOLE)
+prism_z("port_tongue", outline(ucx - 0.0033, ucy - 0.00035, ucx + 0.0033, ucy + 0.00035, 0.0002, 0.0002, 0.0002, 0.0002, 4),
+        UTOP - 0.0029, UTOP - 0.0006, M_HOLE)
 # the grip panel: "BRICK HAMMER" spaced wide, raised ribs, the marks in a band, four screw holes
 t = text("BRICK HAMMER", 0, fz(pv(0.635)), W * 0.034, M_ETCH, D2 + 0.00006, face="back", align="CENTER")
 t.data.font = bpy.data.fonts.load(font_file("Avenir-Light.ttf", "Regular")); t.data.space_character = 2.1
@@ -420,6 +473,7 @@ SHOTS = {
     "photo6": (0.26, -0.30, -0.05),    # low at the front right, as TrimUI's close-up
     "rside": (0.48, 0.02, 0.05),       # the teal-key side, as photo 12
     "lclose": (-0.20, -0.02, 0.12),    # close on the volume keys
+    "usbclose": (0.02, 0.10, 0.16),    # close on the USB-C, from above and behind
 }
 if os.environ.get("BRICK_SAVE"):  # BRICK_SAVE=/path/brick.blend saves the scene to open in Blender, without rendering
     cam.location = SHOTS["front34"]; place_lights(cam.location)
