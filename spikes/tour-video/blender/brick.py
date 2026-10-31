@@ -56,8 +56,10 @@ M_ENGRAVE = mat("engrave", srgb("3f4045"), metal=1.0, rough=0.62)
 M_TEAL = mat("teal", srgb("5fd6c8"), rough=0.35, emit=srgb("5fd6c8"), strength=0.4)
 M_LABEL = mat("label", (0.0, 0.0, 0.0), rough=0.03)
 M_LABEL_TEXT = mat("labeltext", srgb("c8c8cc"), rough=0.5)
-M_LED = mat("led", LED, emit=LED, strength=4.0)
-M_PILL_LIT = mat("pill_lit", (0.85, 0.95, 1.0), rough=0.3, emit=LED, strength=3.0)
+MOOD = os.environ.get("BRICK_MOOD", "off") == "on"   # the mood light: off by default, as in Howard's photos
+M_LED = mat("led", LED, emit=LED, strength=4.0) if MOOD else mat("led", srgb("b4b6ba"), rough=0.55)  # frosted when off
+M_USB = mat("usb", srgb("c6c7ca"), metal=0.55, rough=0.4)   # the USB-C piece: polished light silver
+M_PILL_LIT = mat("pill_lit", (0.85, 0.95, 1.0), rough=0.3, emit=LED, strength=3.0) if MOOD else mat("pill_lit", srgb("b4b6ba"), rough=0.5)
 M_ICON = mat("icon", srgb("3c3c3f"), rough=0.5)
 
 def sparkle(m, lo=0.22, hi=0.50):
@@ -301,11 +303,11 @@ def cut(target, cutter):
     bpy.ops.object.modifier_apply(modifier=m.name)
     bpy.data.objects.remove(cutter, do_unlink=True)
 block = slab("usb_block", outline(UB0, LEDGE - 0.002, UB1, UTOP, 0.0006, 0.0006, 0, 0, 6),
-             D1 + 0.0003, D2, M_BACK, bevel=0)
+             D1 + 0.0003, D2, M_USB, bevel=0)
 # grooves across its back face, from the grip's top up to just under the port
 for k in range(7):
     z = LEDGE + 0.00045 + k * 0.00052
-    g = slab("groove", outline(UB0 - 0.001, z, UB1 + 0.001, z + 0.00022, 0, 0, 0, 0, 1), D2 - 0.00012, D2 + 0.001, M_BODY, bevel=0)
+    g = slab("groove", outline(UB0 - 0.001, z, UB1 + 0.001, z + 0.00022, 0, 0, 0, 0, 1), D2 - 0.00012, D2 + 0.001, M_USB, bevel=0)
     cut(block, g)
 # the port: a rounded slot cut 3 mm down into the top; its walls take the steel of the cutter
 ucx, ucy = (UB0 + UB1) / 2, (D1 + D2) / 2 + 0.0004
