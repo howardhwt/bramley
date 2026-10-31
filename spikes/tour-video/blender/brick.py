@@ -544,24 +544,26 @@ for e in me.edges:
     f = edge_faces.get(e.key, [])
     if len(f) == 2 and f[0] != f[1]: e.use_edge_sharp = True
 
-# the side marking (Howard's photo 10, TrimUI's photo 12): "TRIMUI", the three-dot mark and "BRICK" cut
-# into the body's right side, centred in its depth, reading from the bottom up with the letters' tops
-# toward the front; it runs from 0.95 up to 0.72 of the height
+# the side marking, measured on Howard's photo 10 (straightened): "TRIMUI", the three-ring mark and "BRICK"
+# cut shallow into the body's right side, 0.6 of its depth back from the front, reading from the bottom
+# up with the letters' tops toward the front. Capitals 2.0 mm; TRIMUI from 5 mm above the bottom to 16.6 mm,
+# the mark at 18.7 mm, BRICK from 21 to 30 mm.
 from mathutils import Matrix
 SIDE_ROT = Matrix(((0, 0, 1), (0, -1, 0), (1, 0, 0))).to_euler()   # text x -> up the side, text y -> front
+SIDE_Y = D1 * 0.6
 side_cuts = []
-def side_word(word, v_mid):
-    t = text(word, 0, 0, W * 0.038, M_BODY, 0, align="CENTER", depth=0.0004)
-    t.data.font = bpy.data.fonts.load(font_file("Avenir-Heavy.ttf", "Bold")); t.data.space_character = 1.1
+def side_word(word, mm_from_bottom, spacing):
+    t = text(word, 0, 0, W * 0.054, M_BODY, 0, align="CENTER", depth=0.0005)
+    t.data.font = bpy.data.fonts.load(font_file("Avenir-Black.ttf", "Bold")); t.data.space_character = spacing
     t.data.align_y = "CENTER"
-    t.rotation_euler = SIDE_ROT; t.location = (W / 2 - 0.00015, D1 * 0.5, fz(v_mid))
+    t.rotation_euler = SIDE_ROT; t.location = (W / 2 - 0.00025, SIDE_Y, mm_from_bottom / 1000)   # cut 0.25 mm deep
     bpy.ops.object.select_all(action="DESELECT"); t.select_set(True); bpy.context.view_layer.objects.active = t
     bpy.ops.object.convert(target="MESH"); side_cuts.append(t)
-side_word("TRIMUI", 0.888)
-side_word("BRICK", 0.784)
-for a_ in (90, 210, 330):   # the three-dot mark between the words, pointing up the side
-    bpy.ops.mesh.primitive_cylinder_add(vertices=24, radius=W * 0.0042, depth=0.0006,
-        location=(W / 2, D1 * 0.5 - math.sin(math.radians(a_)) * W * 0.0052, fz(0.836) + math.cos(math.radians(a_)) * W * 0.0052),
+side_word("TRIMUI", 10.8, 1.15)
+side_word("BRICK", 25.5, 1.05)
+for a_ in (90, 210, 330):   # the mark: three linked rings, cut as outlines
+    bpy.ops.mesh.primitive_torus_add(major_radius=0.00055, minor_radius=0.00014, major_segments=40, minor_segments=8,
+        location=(W / 2, SIDE_Y - math.sin(math.radians(a_)) * 0.00052, 0.0187 + math.cos(math.radians(a_)) * 0.00052),
         rotation=(0, math.radians(90), 0))
     side_cuts.append(bpy.context.object)
 for c_ in side_cuts:
@@ -620,7 +622,8 @@ SHOTS = {
     "mine": (0.0, 0.36, 0.30),         # above and behind, as Howard's photo
     "photo6": (0.26, -0.30, -0.05),    # low at the front right, as TrimUI's close-up
     "rside": (0.48, 0.02, 0.05),       # the teal-key side, as photo 12
-    "sideclose": (0.15, -0.02, -0.07), # close on the side marking, as Howard's photo 10
+    "sideclose": (0.15, -0.02, -0.07),
+    "sideflat": (0.20, D1 * 0.6, 0.02),   # straight at the right side, low # close on the side marking, as Howard's photo 10
     "lclose": (-0.20, -0.02, 0.12),    # close on the volume keys
     "usbclose": (0.02, 0.10, 0.16),    # close on the USB-C, from above and behind
     "back2": (0.0, 0.30, 0.062),
