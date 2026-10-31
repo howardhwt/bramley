@@ -57,7 +57,7 @@ M_TEAL = mat("teal", srgb("5fd6c8"), rough=0.35, emit=srgb("5fd6c8"), strength=0
 M_LABEL = mat("label", (0.0, 0.0, 0.0), rough=0.03)
 M_LABEL_TEXT = mat("labeltext", srgb("c8c8cc"), rough=0.5)
 MOOD = os.environ.get("BRICK_MOOD", "off") == "on"   # the mood light: off by default, as in Howard's photos
-M_LED = mat("led", LED, emit=LED, strength=4.0) if MOOD else mat("led", srgb("5a5c60"), rough=0.6)  # frosted when off
+M_LED = mat("led", LED, emit=LED, strength=4.0) if MOOD else mat("led", srgb("a9abb0"), rough=0.5)  # frosted when off (photos IMG_8457-8459)
 M_USB = mat("usb", srgb("6e6f74"), metal=1.0, rough=0.42)   # the USB-C piece's ribbed part: the grip's metal, a shade lighter (Howard's straight-on photo)
 M_PILL_LIT = mat("pill_lit", (0.85, 0.95, 1.0), rough=0.3, emit=LED, strength=3.0) if MOOD else mat("pill_lit", srgb("b4b6ba"), rough=0.5)
 M_ICON = mat("icon", srgb("3c3c3f"), rough=0.5)
@@ -271,7 +271,7 @@ def shoulder(name, x0_, x1_, base, h, outer_sign, material):
 for (a, b, lab, outer) in [(0.0, 0.236, "R1", True), (0.240, 0.388, "R2", False), (0.590, 0.733, "L2", False), (0.738, 1.0, "L1", True)]:
     u0, u1 = bu(b), bu(a)
     sign = 0 if not outer else (1 if lab == "R1" else -1)
-    h = W * (0.084 if outer else 0.094)   # Howard's straight-on back photo, measured against the width
+    h = W * (0.093 if outer else 0.105)   # Howard's photos IMG_8457: R1/L1 0.093 W, R2/L2 0.105 W
     btn, yc = shoulder("shoulder_" + lab, u0, u1, LEDGE + LED_H, h, sign, M_SHOULDER)
     # the name carved into the cap's flat top, on its inner part
     lx = (u0 + u1) / 2 if not outer else ((u0 + u1) / 2 - sign * (u1 - u0) * 0.10)
@@ -292,7 +292,6 @@ for (a, b, lab, outer) in [(0.0, 0.236, "R1", True), (0.240, 0.388, "R2", False)
     # the frosted strip sits in a dark frame under its button, inset at each end (Howard's photo); the
     # strips under R1 and L1 also stop short of the device's side
     ia = 0.0009 + (0.0012 if outer and sign < 0 else 0); ib = 0.0009 + (0.0012 if outer and sign > 0 else 0)
-    slab("frame_" + lab, outline(u0, LEDGE - 0.0002, u1, LEDGE + LED_H, 0, 0, 0, 0, 1), D1 + 0.0004, D2 - 0.0004, M_HOLE, bevel=0)
     slab("led_" + lab, outline(u0 + ia, LEDGE, u1 - ib, LEDGE + LED_H - 0.0003, 0.0002, 0.0002, 0.0002, 0.0002, 2),
          D1 + 0.0006, D2 - 0.0002, M_LED, bevel=0.0002, segs=1)
 # USB-C, read in 3D from TrimUI's top view, its back-buttons close-up, photo 8 and Howard's notes: one
@@ -309,7 +308,8 @@ def cut(target, cutter):
 block = slab("usb_block", outline(UB0, LEDGE - 0.0003, UB1, UTOP, 0.0006, 0.0006, 0, 0, 6),
              D1 + 0.0003, D2, M_BACK, bevel=0)
 # grooves across its back face, from the grip's top up to just under the port
-for k in range(4):                       # the ribs only span the strips' height
+n_ribs = int((UTOP - LEDGE - 0.0006) / 0.0005)
+for k in range(n_ribs):                  # ribs across the whole back face (IMG_8457)
     z = LEDGE + 0.0002 + k * 0.0005
     g = slab("groove", outline(UB0 - 0.001, z, UB1 + 0.001, z + 0.00022, 0, 0, 0, 0, 1), D2 - 0.00012, D2 + 0.001, M_BACK, bevel=0)
     cut(block, g)
@@ -321,13 +321,7 @@ cut(block, prism_z("port", outline(ucx - 0.0044, ucy - 0.0013, ucx + 0.0044, ucy
 m = grip.modifiers.new("join_usb", "BOOLEAN"); m.operation = "UNION"; m.object = block; m.solver = "EXACT"; m.material_mode = "TRANSFER"
 bpy.context.view_layer.objects.active = grip; bpy.ops.object.modifier_apply(modifier="join_usb")
 bpy.data.objects.remove(block, do_unlink=True)
-# Howard's photo: the ribbed lower part is light silver, the top with the port is the body's grey
-grip.data.materials.append(M_USB); usb_slot = len(grip.data.materials) - 1
-lo_x, hi_x = min(UB0, UB1) - 0.0002, max(UB0, UB1) + 0.0002
-for poly in grip.data.polygons:
-    vs = [grip.data.vertices[i].co for i in poly.vertices]
-    if all(lo_x < v.x < hi_x and LEDGE - 0.0005 < v.z < LEDGE + LED_H + 0.0001 and v.y > D2 - 0.0025 for v in vs):
-        poly.material_index = usb_slot
+
 bpy.context.view_layer.objects.active = grip; grip.select_set(True)
 bpy.ops.object.shade_auto_smooth(angle=math.radians(35)); grip.select_set(False)
 prism_z("port_floor", outline(ucx - 0.0043, ucy - 0.0012, ucx + 0.0043, ucy + 0.0012, 0.0012, 0.0012, 0.0012, 0.0012, 12),
@@ -338,7 +332,7 @@ prism_z("port_tongue", outline(ucx - 0.0033, ucy - 0.00035, ucx + 0.0033, ucy + 
 # the grip panel, measured on Howard's straight-on photo in units of the width W, down from its top:
 # the name at 0.12, Torx screws at the corners, rounded grooves every 0.02 from 0.165, and an engraved
 # house-like outline in the middle: a roof 0.24 wide rising to 0.19, two posts down from 0.26
-t = text("BRICK HAMMER", 0, LEDGE - 0.12 * W, W * 0.052, M_ETCH, D2 + 0.00006, face="back", align="CENTER")
+t = text("BRICK HAMMER", 0, LEDGE - 0.09 * W, W * 0.052, M_ETCH, D2 + 0.00006, face="back", align="CENTER")
 t.data.font = bpy.data.fonts.load(font_file("Avenir-Heavy.ttf", "Bold")); t.data.space_character = 1.25
 RIB0, PITCH, RIB_END = LEDGE - 0.165 * W, 0.028 * W, 0.075 * W
 z = RIB0; i = 0
@@ -359,20 +353,19 @@ def engraved_line(name, pts, w_=0.00011):
     o_ = bpy.data.objects.new(name, me_); scene.collection.objects.link(o_); o_.data.materials.append(M_ETCH)
 apex, eave = LEDGE - 0.186 * W, LEDGE - 0.244 * W
 engraved_line("roof", [(-0.105 * W, eave), (0, apex), (0.105 * W, eave)])
+BOT_EAVE, BOT_PT = RIB_END + 0.10 * W, RIB_END + 0.04 * W
 for sx in (-1, 1):
-    engraved_line("post", [(sx * 0.105 * W, eave), (sx * 0.105 * W, RIB_END)])
+    engraved_line("post", [(sx * 0.105 * W, eave), (sx * 0.105 * W, BOT_EAVE)])
+engraved_line("keel", [(-0.105 * W, BOT_EAVE), (0, BOT_PT), (0.105 * W, BOT_EAVE)])
 # Torx screws at the four corners of the panel
-for (sx, zc) in [(-1, LEDGE - 0.18 * W), (1, LEDGE - 0.18 * W), (-1, 0.06 * W), (1, 0.06 * W)]:
-    xc = sx * (W / 2 - 0.035 * W)
-    cyl("hole", xc, zc, W * 0.030, D2 - 0.0004, D2 + 0.00005, M_HOLE, bevel=0)
-    cyl("grip_screw", xc, zc, W * 0.026, D2 - 0.0002, D2 + 0.00016, M_SCREW, bevel=0.00015)
-    for k in range(6):  # the star: three bars crossing
-        if k >= 3: break
-        bar = slab("torx", outline(xc - W * 0.012, zc - W * 0.0025, xc + W * 0.012, zc + W * 0.0025, 0.0001, 0.0001, 0.0001, 0.0001, 1),
-                   D2 + 0.00012, D2 + 0.00019, M_HOLE, bevel=0)
-        bar.rotation_euler = (0, math.radians(60 * k), 0)
-        bar.location = (xc - (xc * math.cos(math.radians(60 * k)) + zc * math.sin(math.radians(60 * k))) , 0,
-                        zc - (-xc * math.sin(math.radians(60 * k)) + zc * math.cos(math.radians(60 * k))))
+for (sx, zc) in [(-1, LEDGE - 0.15 * W), (1, LEDGE - 0.15 * W), (-1, 0.06 * W), (1, 0.06 * W)]:
+    xc = sx * (W / 2 - 0.065 * W)
+    hole = cyl("hole", xc, zc, W * 0.032, D2 - 0.0035, D2 + 0.001, M_HOLE, bevel=0)
+    m = grip.modifiers.new("hole", "BOOLEAN"); m.operation = "DIFFERENCE"; m.object = hole; m.solver = "EXACT"
+    bpy.context.view_layer.objects.active = grip; bpy.ops.object.modifier_apply(modifier="hole")
+    bpy.data.objects.remove(hole, do_unlink=True)
+    cyl("hole_floor", xc, zc, W * 0.032, D2 - 0.0036, D2 - 0.0034, M_HOLE, bevel=0)
+    cyl("grip_screw", xc, zc, W * 0.024, D2 - 0.0034, D2 - 0.0028, M_SCREW, bevel=0.0001)   # sunk deep (IMG_8458)
 # upper back: two silver Phillips screws, the three-dot mark
 for u in (0.09, 0.91):
     cyl("screw", bu(u), fz(pv(0.09)), W * 0.02, D1 - 0.0001, D1 + 0.00022, M_SCREW, bevel=0.00012)
@@ -537,7 +530,8 @@ SHOTS = {
     "rside": (0.48, 0.02, 0.05),       # the teal-key side, as photo 12
     "lclose": (-0.20, -0.02, 0.12),    # close on the volume keys
     "usbclose": (0.02, 0.10, 0.16),    # close on the USB-C, from above and behind
-    "back2": (0.0, 0.30, 0.062),        # straight behind the shoulder row, as Howard's second photo
+    "back2": (0.0, 0.30, 0.062),
+    "p8459": (0.10, 0.22, 0.055),      # behind and to the teal-key side, as IMG_8459        # straight behind the shoulder row, as Howard's second photo
     "btnclose": (0.05, 0.22, 0.14),    # the shoulder row from behind and above, as Howard's close-up
 }
 if os.environ.get("BRICK_SAVE"):  # BRICK_SAVE=/path/brick.blend saves the scene to open in Blender, without rendering
