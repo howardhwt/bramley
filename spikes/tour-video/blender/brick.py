@@ -72,7 +72,7 @@ def sparkle(m, lo=0.22, hi=0.50):
     nt.links.new(noise.outputs["Fac"], mr.inputs["Value"]); nt.links.new(mr.outputs["Result"], bsdf.inputs["Roughness"])
     bump = n.new("ShaderNodeBump"); bump.inputs["Strength"].default_value = 0.05
     nt.links.new(noise.outputs["Fac"], bump.inputs["Height"]); nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
-sparkle(M_BODY); sparkle(M_BACK)
+sparkle(M_BODY, 0.34, 0.58); sparkle(M_BACK, 0.34, 0.58)   # anodised: soft reflections
 M_FACE = mat("facebutton", srgb("1e1e21"), rough=0.4)   # the face buttons: dark grey, a soft sheen (photo 6)
 M_SHOULDER = mat("shoulder", srgb("0e0e10"), rough=0.7)   # matte black rubber, little sheen
 M_SHOULDER.node_tree.nodes["Principled BSDF"].inputs["Specular IOR Level"].default_value = 0.12
@@ -360,12 +360,19 @@ def groove_line(name, pts, w_=0.00014, depth=0.00018):
         bm.normal_update(); bmesh.ops.recalc_face_normals(bm, faces=bm.faces); bm.to_mesh(me_); bm.free()
         o_ = bpy.data.objects.new(f"{name}{i}", me_); scene.collection.objects.link(o_); parts.append(o_)
     return parts
-# the outline down the middle is cut into the metal like the ribs (Howard): pointed at both ends
-apex, eave = LEDGE - 0.186 * W, LEDGE - 0.244 * W
-BOT_EAVE, BOT_PT = RIB_END + 0.10 * W, RIB_END + 0.04 * W
-hx = 0.105 * W
-for part in groove_line("outline", [(0, apex), (hx, eave), (hx, BOT_EAVE), (0, BOT_PT), (-hx, BOT_EAVE), (-hx, eave), (0, apex)]):
-    cut(grip, part)   # one at a time: joined, the overlapping corners confuse the boolean
+# the diamond on the grip (IMG_8457): a six-sided shape about 0.23 W wide and 0.25 W tall, its top at the
+# first rib. It is a shallow pocket, so its edges show only as steps across the ribs, not in the grooves.
+hx, apex = 0.113 * W, RIB0 - 0.005 * W
+eave = apex - 0.062 * W; bot_eave = eave - 0.126 * W; bot_pt = bot_eave - 0.062 * W
+hexa = [(0, apex), (hx, eave), (hx, bot_eave), (0, bot_pt), (-hx, bot_eave), (-hx, eave)]
+me_ = bpy.data.meshes.new("diamond"); bm = bmesh.new()
+F = [bm.verts.new((x, D2 - 0.00009, z)) for x, z in hexa]; B = [bm.verts.new((x, D2 + 0.001, z)) for x, z in hexa]
+bm.faces.new(F); bm.faces.new(B[::-1])
+for j in range(6):
+    k = (j + 1) % 6; bm.faces.new((F[j], F[k], B[k], B[j]))
+bm.normal_update(); bmesh.ops.recalc_face_normals(bm, faces=bm.faces); bm.to_mesh(me_); bm.free()
+pocket = bpy.data.objects.new("diamond", me_); scene.collection.objects.link(pocket)
+cut(grip, pocket)
 # Torx screws at the four corners of the panel
 for (sx, zc) in [(-1, LEDGE - 0.15 * W), (1, LEDGE - 0.15 * W), (-1, 0.06 * W), (1, 0.06 * W)]:
     xc = sx * (W / 2 - 0.065 * W)
@@ -483,6 +490,30 @@ bottom_hole(0.368, W * 0.045, W * 0.045, W * 0.0224)
 bottom_hole(0.502, W * 0.125, D2 * 0.2, D2 * 0.099)
 bottom_hole(0.642, W * 0.014, W * 0.014, W * 0.0069)
 bottom_hole(0.755, W * 0.07, W * 0.07, W * 0.0349)
+
+# one shell: the grip and the body are the same metal piece (Howard), so join them into one solid and
+# let no seam show where the back steps out
+bpy.context.view_layer.objects.active = body
+for mod in list(body.modifiers): bpy.ops.object.modifier_apply(modifier=mod.name)
+m = body.modifiers.new("shell", "BOOLEAN"); m.operation = "UNION"; m.object = grip; m.solver = "EXACT"; m.material_mode = "TRANSFER"
+bpy.ops.object.modifier_apply(modifier="shell")
+bpy.data.objects.remove(grip, do_unlink=True)
+# shading: faces lying flat along an axis stay flat; only the rounded parts are smooth, with sharp edges
+# between the two, so the large back faces cannot pick up smeared normals from the boolean's triangles
+bpy.ops.object.select_all(action="DESELECT"); body.select_set(True); bpy.context.view_layer.objects.active = body
+bpy.ops.mesh.customdata_custom_splitnormals_clear()   # the baked weighted normals smeared across the new faces
+me = body.data
+for poly in me.polygons:
+    n = poly.normal; poly.use_smooth = max(abs(n.x), abs(n.y), abs(n.z)) < 0.999
+for e in me.edges:
+    e.use_edge_sharp = False
+import collections
+edge_faces = collections.defaultdict(list)
+for poly in me.polygons:
+    for ek in poly.edge_keys: edge_faces[ek].append(poly.use_smooth)
+for e in me.edges:
+    f = edge_faces.get(e.key, [])
+    if len(f) == 2 and f[0] != f[1]: e.use_edge_sharp = True
 
 # light, world and camera
 world = bpy.data.worlds.new("w"); scene.world = world; world.use_nodes = True
