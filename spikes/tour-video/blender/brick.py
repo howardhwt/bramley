@@ -10,6 +10,10 @@ OUT = argv[1] if len(argv) > 1 else "/tmp/brick"
 FINISH = argv[2] if len(argv) > 2 else "dark"     # dark | silver
 LED = (0.86, 0.93, 1.0)                          # the mood light: cool white (Howard, 2026-10-30)
 INTER = "/Users/howard/Documents/GitHub/brick-hammer-launcher/workspace/all/launcher/res/Inter-Bold.ttf"
+FONTS = os.environ.get("BRICK_FONTS", "")   # a folder with Avenir-Light.ttf and Avenir-Medium.ttf (the back's lettering)
+def font_file(name, fallback):
+    f = os.path.join(FONTS, name)
+    return f if FONTS and os.path.exists(f) else INTER.replace("Bold", fallback)
 
 W = 0.072                       # metres; only the proportions matter
 H = W * 1.515
@@ -71,7 +75,7 @@ M_FACE = mat("facebutton", srgb("1e1e21"), rough=0.4)   # the face buttons: dark
 M_SHOULDER = mat("shoulder", srgb("0e0e10"), rough=0.7)   # matte black rubber, little sheen
 M_SHOULDER.node_tree.nodes["Principled BSDF"].inputs["Specular IOR Level"].default_value = 0.12
 M_FACE.node_tree.nodes["Principled BSDF"].inputs["Specular IOR Level"].default_value = 0.3
-M_LABEL_BTN = mat("btnlabel", srgb("232326"), rough=0.7)
+M_LABEL_BTN = mat("btnlabel", srgb("2a2a2e"), rough=0.45)
 M_SCREW = mat("screw", srgb("c4c5c8"), metal=1.0, rough=0.25)
 M_ETCH = mat("etch", srgb("8a8b90"), metal=1.0, rough=0.55)   # light, thin markings on the grip
 
@@ -188,36 +192,49 @@ PANEL_TOP = LEDGE
 BTN_H = H * 0.062                      # the shoulder buttons stand this high on the ledge
 LED_Y0, LED_Y1 = D2 - 0.0024, D2 - 0.0004   # frosted strips along the ledge's back edge
 slab("grip", outline(x0, 0, x1, LEDGE, 0.0025, 0.0025, R_BOT, R_BOT), D1 - 0.0005, D2, M_BACK, bevel=0.0038, segs=10, back_only=True)
-# shoulder buttons standing on the ledge, R1 R2 | USB-C | L2 L1 as seen from behind, named on top
-for (a, b, lab, outer) in [(0.07, 0.305, "R1", True), (0.315, 0.44, "R2", False), (0.575, 0.70, "L2", False), (0.71, 0.93, "L1", True)]:
+# shoulder buttons standing on the ledge, R1 R2 | USB-C | L2 L1 as seen from behind (Howard's close-up):
+# R1 0-23.6 %, R2 24-38.8 %, USB-C 39.4-58.6 %, L2 59-73.3 %, L1 73.8-100 % of the width; R1 and L1 reach
+# the edges, lower and with a rounded lip; R2 and L2 stand a little taller; names on top
+LED_H = 0.0028                         # the frosted strip under each button, seen on the back
+for (a, b, lab, outer) in [(0.0, 0.236, "R1", True), (0.240, 0.388, "R2", False), (0.590, 0.733, "L2", False), (0.738, 1.0, "L1", True)]:
     u0, u1 = bu(b), bu(a)
-    r_out = W * 0.03 if outer else 0.0008
+    top = LEDGE + (BTN_H * 0.92 if outer else BTN_H)
+    r_out = W * 0.035 if outer else 0.0008
     rl, rr = (0.0008, r_out) if lab.startswith("R") else (r_out, 0.0008)
-    slab("shoulder_" + lab, outline(u0, LEDGE + 0.0012, u1, LEDGE + BTN_H, rl, rr, 0.0004, 0.0004, 10),  # on its light strip
-         D1 + 0.0003, D2 - 0.0002, M_SHOULDER, bevel=0.0016 if outer else 0.0010, segs=8)
-    t = text(lab, (u0 + u1) / 2, LEDGE + BTN_H + 0.00002, W * 0.045, M_LABEL_BTN, (D1 + LED_Y0) / 2, align="CENTER")
-    t.rotation_euler = (0, 0, math.radians(180)); t.location = ((u0 + u1) / 2, (D1 + LED_Y0) / 2, LEDGE + BTN_H + 0.00002)
-    slab("led_" + lab, outline(u0 + 0.0003, LEDGE - 0.0002, u1 - 0.0003, LEDGE + 0.0012, 0.0002, 0.0002, 0.0002, 0.0002, 2),
-         LED_Y0, D2 + 0.0001, M_LED, bevel=0.0002, segs=1)
-# USB-C facing up between R2 and L2, in a raised block, with a light ribbed tab behind it
-slab("usb_block", outline(bu(0.565), LEDGE - 0.0003, bu(0.45), LEDGE + BTN_H * 0.55, 0.0008, 0.0008, 0.0003, 0.0003, 6),
-     D1 + 0.0003, LED_Y0 - 0.0002, M_BODY, bevel=0.0005, segs=3)
-me_ = bpy.data.meshes.new("usb_hole"); bm = bmesh.new()
-cx_, cy_ = (bu(0.565) + bu(0.45)) / 2, (D1 + LED_Y0) / 2
-pts = outline(cx_ - W * 0.042, cy_ - 0.0012, cx_ + W * 0.042, cy_ + 0.0012, 0.0011, 0.0011, 0.0011, 0.0011, 8)
-vs = [bm.verts.new((x, y, LEDGE + BTN_H * 0.55 + 0.00003)) for x, y in pts]; bm.faces.new(vs); bm.to_mesh(me_); bm.free()
-o_ = bpy.data.objects.new("usb_hole", me_); scene.collection.objects.link(o_); o_.data.materials.append(M_HOLE)
-slab("usb_tab", outline(bu(0.56), LEDGE - 0.0002, bu(0.455), LEDGE + 0.0010, 0.0002, 0.0002, 0.0002, 0.0002, 2),
-     LED_Y0, LED_Y1, M_PILL, bevel=0.0002, segs=1)
-for k in range(5):
-    slab("usb_rib", outline(bu(0.56), LEDGE + 0.0010, bu(0.455), LEDGE + 0.0013, 0.0001, 0.0001, 0.0001, 0.0001, 1),
-         LED_Y0 + 0.0002 + k * 0.0004, LED_Y0 + 0.0004 + k * 0.0004, M_ENGRAVE, bevel=0)
+    slab("shoulder_" + lab, outline(u0, LEDGE + LED_H, u1, top, rl, rr, 0.0004, 0.0004, 10),
+         D1 + 0.0003, D2 + 0.0002, M_SHOULDER, bevel=0.0022 if outer else 0.0010, segs=8)
+    if outer:  # R1 and L1: the top runs out past the back as a lip that curves down
+        slab("lip_" + lab, outline(u0, top - 0.0009, u1, top, rl, rr, 0.0003, 0.0003, 10),
+             D2 - 0.0015, D2 + 0.0008, M_SHOULDER, bevel=0.00042, segs=8)
+    t = text(lab, (u0 + u1) / 2, top + 0.00002, W * 0.06, M_LABEL_BTN, (D1 + D2) / 2, align="CENTER")
+    t.data.font = bpy.data.fonts.load(font_file("Avenir-Medium.ttf", "SemiBold"))
+    t.rotation_euler = (0, 0, math.radians(180)); t.location = ((u0 + u1) / 2, (D1 + D2) / 2, top + 0.00002)
+    slab("led_" + lab, outline(u0 + 0.0004, LEDGE - 0.0002, u1 - 0.0004, LEDGE + LED_H, 0.0002, 0.0002, 0.0002, 0.0002, 2),
+         D1 + 0.0006, D2 + 0.0001, M_LED, bevel=0.0002, segs=1)
+# USB-C: a metal block lower than the buttons, the port facing back, on a light ribbed tab
+UB0, UB1 = bu(0.586), bu(0.394)
+UTOP = LEDGE + BTN_H * 0.80
+# a shallow block at the back: from above, the back plate shows right behind it (Howard's photo)
+slab("usb_block", outline(UB0, LEDGE + LED_H, UB1, UTOP, 0.0008, 0.0008, 0.0003, 0.0003, 6),
+     D2 - 0.0035, D2 + 0.0001, M_BODY, bevel=0.0004, segs=3)
+ucx, ucz = (UB0 + UB1) / 2, (LEDGE + LED_H + UTOP) / 2
+slab("usb_shell", outline(ucx - 0.0056, ucz - 0.0018, ucx + 0.0056, ucz + 0.0018, 0.0018, 0.0018, 0.0018, 0.0018, 10),
+     D2 - 0.0002, D2 + 0.00025, M_SCREW, bevel=0.0001, segs=2)
+slab("usb_hole", outline(ucx - 0.0049, ucz - 0.0012, ucx + 0.0049, ucz + 0.0012, 0.0012, 0.0012, 0.0012, 0.0012, 10),
+     D2 - 0.0002, D2 + 0.00028, M_HOLE, bevel=0)
+slab("usb_tongue", outline(ucx - 0.0037, ucz - 0.0003, ucx + 0.0037, ucz + 0.0003, 0.0002, 0.0002, 0.0002, 0.0002, 2),
+     D2 - 0.0002, D2 + 0.00010, M_LETTER, bevel=0)
+slab("usb_tab", outline(UB0, LEDGE - 0.0002, UB1, LEDGE + LED_H, 0.0002, 0.0002, 0.0002, 0.0002, 2),
+     D1 + 0.0006, D2 + 0.0001, M_PILL, bevel=0.0002, segs=1)
+for k in range(6):  # its ribs, across its back
+    z = LEDGE + 0.0002 + k * 0.00042
+    slab("usb_rib", outline(UB0 + 0.0003, z, UB1 - 0.0003, z + 0.00016, 0.00005, 0.00005, 0.00005, 0.00005, 1),
+         D2 + 0.0001, D2 + 0.00022, M_ENGRAVE, bevel=0)
 # the grip panel: "BRICK HAMMER" spaced wide, raised ribs, the marks in a band, four screw holes
-t = text("BRICK HAMMER", 0, fz(pv(0.635)), W * 0.04, M_ETCH, D2 + 0.00006, face="back", align="CENTER")
-t.data.font = bpy.data.fonts.load(INTER.replace("Bold", "Regular")); t.data.space_character = 1.7
+t = text("BRICK HAMMER", 0, fz(pv(0.635)), W * 0.034, M_ETCH, D2 + 0.00006, face="back", align="CENTER")
+t.data.font = bpy.data.fonts.load(font_file("Avenir-Light.ttf", "Regular")); t.data.space_character = 2.1
 for i in range(18):
     v = 0.675 + i * 0.0155
-    if 0.868 < v < 0.902: continue            # the band with the marks
     slab(f"rib{i}", outline(bu(0.905), fz(pv(v + 0.0085)), bu(0.095), fz(pv(v)), 0.0003, 0.0003, 0.0003, 0.0003, 2),
          D2 - 0.0001, D2 + 0.00028, M_BACK, bevel=0.00012, segs=2)
 # the zigzag engraved across the grip, seen only in the grooves between the ribs (Howard's photo)
@@ -236,10 +253,8 @@ def zigzag(v_top, v_bot, period, name):
     o_ = bpy.data.objects.new(name, me_); scene.collection.objects.link(o_); o_.data.materials.append(M_ETCH)
 zigzag(0.712, 0.772, W * 0.24, "zigzag_upper")
 zigzag(0.912, 0.945, W * 0.24, "zigzag_lower")
-t = text("FC   CE", bu(0.62), fz(pv(0.885)), W * 0.042, M_ETCH, D2 + 0.00006, face="back", align="CENTER")
-t.data.font = bpy.data.fonts.load(INTER.replace("Bold", "Regular"))
-for (u, v) in [(0.065, 0.68), (0.935, 0.68), (0.085, 0.962), (0.915, 0.962)]:
-    cyl("hole", bu(u), fz(pv(v)), W * 0.02, D2 - 0.0003, D2 + 0.00005, M_HOLE, bevel=0)
+for (u, v) in [(0.075, 0.676), (0.925, 0.676), (0.085, 0.962), (0.915, 0.962)]:
+    cyl("hole", bu(u), fz(pv(v)), W * 0.024, D2 - 0.0004, D2 + 0.00005, M_HOLE, bevel=0)
 # upper back: two silver Phillips screws, the three-dot mark
 for u in (0.09, 0.91):
     cyl("screw", bu(u), fz(pv(0.09)), W * 0.02, D1 - 0.0001, D1 + 0.00022, M_SCREW, bevel=0.00012)
@@ -255,8 +270,9 @@ slab("top_led", outline(bu(0.77), H - 0.0003, bu(0.23), H + 0.00015, 0.0002, 0.0
      D1 - 0.0028, D1 + 0.0004, M_LED, bevel=0)
 slab("label", outline(bu(0.77), fz(pv(0.175)), bu(0.23), H - 0.0003, 0.0003, 0.0003, W * 0.03, W * 0.03, 8), D1 - 0.0001, D1 + 0.0004, M_LABEL, bevel=0.0001, segs=1)
 t = text("BRICK HAMMER", 0, fz(pv(0.095)), W * 0.05, M_LABEL_TEXT, D1 + 0.00042, face="back", align="CENTER")
-t.data.font = bpy.data.fonts.load(INTER.replace("Bold", "Regular")); t.data.space_character = 1.5
-text("BRICK METAL VERSION DESIGNED BY TRIMUI", 0, fz(pv(0.135)), W * 0.016, M_LABEL_TEXT, D1 + 0.00042, face="back", align="CENTER")
+t.data.font = bpy.data.fonts.load(font_file("Avenir-Medium.ttf", "Regular")); t.data.space_character = 1.45
+t = text("BRICK METAL VERSION DESIGNED BY TRIMUI", 0, fz(pv(0.135)), W * 0.016, M_LABEL_TEXT, D1 + 0.00042, face="back", align="CENTER")
+t.data.font = bpy.data.fonts.load(font_file("Avenir-Medium.ttf", "Regular")); t.data.space_character = 1.15
 # front: glass across the top 52 %, the display inside it
 slab("glass", outline(x0 + 0.0004, fz(0.517), x1 - 0.0004, H - 0.0004, R_TOP * 0.8, R_TOP * 0.8, 0.0003, 0.0003),
      -0.00025, 0.0002, M_GLASS, bevel=0.00015, segs=2)
