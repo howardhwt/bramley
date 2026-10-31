@@ -372,8 +372,10 @@ prism_z("port_tongue", outline(ucx - 0.0033, ucy - 0.00035, ucx + 0.0033, ucy + 
 # house-like outline in the middle: a roof 0.24 wide rising to 0.19, two posts down from 0.26
 # the name is cut into the grip (Howard: countersunk, not raised)
 # measured on IMG_8457: centred 0.10 W below the grip's top, 0.34 W wide, capitals 0.023 W tall
-t = text("BRICK HAMMER", 0, LEDGE - 0.10 * W, W * 0.045, M_ENGRAVE, D2, face="back", align="CENTER", depth=0.00016)
-t.data.font = bpy.data.fonts.load(font_file("Avenir-Medium.ttf", "Bold")); t.data.space_character = 1.3
+# cut in the grip's own metal, so it reads by its edges catching light, not as dark paint; letters broad
+t = text("BRICK HAMMER", 0, LEDGE - 0.10 * W, W * 0.046, M_BACK, D2, face="back", align="CENTER", depth=0.00026)
+t.data.font = bpy.data.fonts.load(font_file("Avenir-Medium.ttf", "Bold")); t.data.space_character = 1.15
+t.scale = (1.18, 1.0, 1.0)
 bpy.ops.object.select_all(action="DESELECT"); t.select_set(True); bpy.context.view_layer.objects.active = t
 bpy.ops.object.convert(target="MESH")
 cut(grip, t)
