@@ -181,8 +181,15 @@ def text(s, x, z, size, material, y, rot_z=0.0, depth=0.00008, align="LEFT", fac
 
 # body: the upper slab and the grip behind its lower half
 x0, x1 = -W / 2, W / 2
-body = slab("body", outline(x0, 0, x1, H, R_TOP, R_TOP, R_BOT, R_BOT), 0, D1, M_BODY, bevel=0.0012, segs=3)   # front edges round softly
-body.modifiers["bevel"].angle_limit = math.radians(60)
+body = slab("body", outline(x0, 0, x1, H, R_TOP, R_TOP, R_BOT, R_BOT, 24), 0, D1, M_BODY, bevel=0)
+bm_ = body.data; bw = bm_.attributes.new("bevel_weight_edge", "FLOAT", "EDGE")
+for e in bm_.edges:   # front edges 0.6 mm, back edges 1.2 mm (under the top corners' 1.4 mm radius) (photos 6 and 8), swept round the corners
+    v0, v1 = bm_.vertices[e.vertices[0]].co, bm_.vertices[e.vertices[1]].co
+    if abs(v0.y) < 1e-6 and abs(v1.y) < 1e-6: bw.data[e.index].value = 0.5
+    elif v0.y > D1 - 1e-6 and v1.y > D1 - 1e-6: bw.data[e.index].value = 1.0
+bb_ = body.modifiers.new("round", "BEVEL"); bb_.width = 0.0012; bb_.segments = 10; bb_.limit_method = "WEIGHT"
+bb_.use_clamp_overlap = False; bb_.miter_outer = "MITER_ARC"
+bpy.context.view_layer.objects.active = body; bpy.ops.object.modifier_apply(modifier="round")
 # --- the back: layout from TrimUI's flat views, details from Howard's photo (2026-10-30) ---
 # Howard's photo looks down at the back from above and behind, so it shows top surfaces too: the
 # light pipe on the top edge, the tops of the shoulder buttons with their names, and the ledge where
@@ -209,7 +216,7 @@ _tab = [(UB0, LEDGE), (UB0, UTOP - 0.0006), (UB0 + 0.0006, UTOP), (UB1 - 0.0006,
 # from behind (rounded bottom corners), its section across the width (the back corners rounded over the
 # sides, IMG_8459 and TrimUI's bottom view, about 0.045 W) and its section down the side (the back
 # rounded into the bottom). The top edge at the shoulder row stays crisp, so nothing has to blend there.
-RG = 0.0056                            # IMG_8459 and TrimUI's bottom view: the grip's side curves into its back, about 5.5 mm
+RG = 0.0049                            # IMG_8459 and TrimUI's bottom view: the grip's side curves into its back, about 5.5 mm
 def prism(name, pts, axis, a0, a1):
     """A 2D outline extruded along an axis: 'z' takes (x, y) points, 'x' takes (y, z) points."""
     me_ = bpy.data.meshes.new(name); bm_ = bmesh.new()
@@ -226,11 +233,18 @@ def intersect(a, b):
     bpy.context.view_layer.objects.active = a; bpy.ops.object.modifier_apply(modifier="x")
     bpy.data.objects.remove(b, do_unlink=True)
 GY0 = D1 - 0.0020
-grip = slab("grip", _pts, GY0, D2, M_BACK, bevel=0)
-# outline(): corners (x0, y_front)->tl, tr, br, bl in its own plane; here the plane is x across, y depth,
-# so the "top" corners are the back ones
-intersect(grip, prism("grip_w", outline(x0 - 0.001, GY0 - 0.001, x1 + 0.001, D2, RG, RG, 0.0001, 0.0001, 16), "z", -0.01, LEDGE + 0.02))
-intersect(grip, prism("grip_d", outline(GY0 - 0.001, -0.01, D2, LEDGE, 0.0001, 0.0016, RG, 0.0001, 16), "x", x0 - 0.01, x1 + 0.01))   # the top edge softly rounded too (side photos)
+# one bevel swept round the whole back edge, so the side round and the bottom round meet in a smooth
+# corner like the machined part, not a crease; the top edge stays crisp under the shoulder row
+grip = slab("grip", outline(x0, 0, x1, LEDGE, 0.0025, 0.0025, R_BOT, R_BOT, 24), GY0, D2, M_BACK, bevel=0)
+gm = grip.data
+gw = gm.attributes.new("bevel_weight_edge", "FLOAT", "EDGE")
+for e in gm.edges:
+    v0, v1 = gm.vertices[e.vertices[0]].co, gm.vertices[e.vertices[1]].co
+    if v0.y > D2 - 1e-6 and v1.y > D2 - 1e-6:
+        gw.data[e.index].value = 0.0 if (v0.z > LEDGE - 1e-5 and v1.z > LEDGE - 1e-5) else 1.0
+gb = grip.modifiers.new("round", "BEVEL"); gb.width = RG; gb.segments = 18; gb.limit_method = "WEIGHT"
+gb.use_clamp_overlap = False; gb.miter_outer = "MITER_ARC"
+bpy.context.view_layer.objects.active = grip; bpy.ops.object.modifier_apply(modifier="round")
 # the USB-C tab rises from the grip's top as part of the same piece
 tab = slab("tab", outline(UB0, LEDGE - 0.001, UB1, UTOP, 0.0006, 0.0006, 0, 0, 6), GY0, D2, M_BACK, bevel=0)
 m = grip.modifiers.new("tab", "BOOLEAN"); m.operation = "UNION"; m.object = tab; m.solver = "EXACT"
@@ -628,6 +642,9 @@ SHOTS = {
     "photo6": (0.26, -0.30, -0.05),    # low at the front right, as TrimUI's close-up
     "rside": (0.48, 0.02, 0.05),       # the teal-key side, as photo 12
     "sideclose": (0.15, -0.02, -0.07),
+    "cornerbl": (0.10, 0.12, -0.10),      # the grip's bottom corner from behind and below
+    "cornertop": (0.12, 0.10, 0.20),      # the top corners from behind and above
+    "cornerfront": (-0.12, -0.12, -0.08), # the front's bottom corner
     "sideflat": (0.20, D1 * 0.6, 0.02),   # straight at the right side, low # close on the side marking, as Howard's photo 10
     "lclose": (-0.20, -0.02, 0.12),    # close on the volume keys
     "usbclose": (0.02, 0.10, 0.16),    # close on the USB-C, from above and behind
