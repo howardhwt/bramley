@@ -4,7 +4,7 @@ import sys
 from PIL import Image, ImageDraw, ImageEnhance
 W = 0.072; H = W * 1.515; D2 = W * 0.254
 LEDGE = H * (1 - 0.454); LED_H = 0.0028
-h = H * 0.080; base = LEDGE + LED_H; z_lip = base + h * 0.58; face = z_lip - base; tc = base + h - z_lip
+h = H * 0.080; base = LEDGE + LED_H; z_lip = base + h * 0.76; face = z_lip - base; tc = base + h - z_lip
 CURL = [(0.0, 0.62), (0.02, 0.48), (0.06, 0.33), (0.12, 0.24), (0.30, 0.12), (0.60, 0.04), (1.0, 0.0)]
 def drop(u):
     for (ua, va), (ub, vb) in zip(CURL, CURL[1:]):

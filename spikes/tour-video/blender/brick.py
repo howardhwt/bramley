@@ -226,7 +226,7 @@ def shoulder(name, x0_, x1_, base, h, outer_sign, material):
         rrb = rb if outer_sign > 0 else 0.0006
         rlb = rb if outer_sign < 0 else 0.0006
         return outline(xa, y0, xb, yb + lip - inset, rlb, rrb, rrf, rlf, 14)
-    z_lip = base + h * 0.58
+    z_lip = base + h * 0.76                                      # a thin lip (Howard)
     body = prism_z(name + "_body", plan(lip), base, z_lip + 0.0004, material)
     if not outer_sign:
         cap = prism_z(name, plan(0), z_lip, base + h, material)
@@ -274,8 +274,8 @@ for (a, b, lab, outer) in [(0.0, 0.236, "R1", True), (0.240, 0.388, "R2", False)
     # the name carved into the cap's flat top, on its inner part
     lx = (u0 + u1) / 2 if not outer else ((u0 + u1) / 2 - sign * (u1 - u0) * 0.10)
     lz = LEDGE + LED_H + h - 0.00015
-    t = text(lab, lx, lz, W * 0.06, M_SHOULDER, yc, align="CENTER", depth=0.0003)
-    t.data.font = bpy.data.fonts.load(font_file("Avenir-Medium.ttf", "SemiBold"))
+    t = text(lab, lx, lz, W * 0.092, M_SHOULDER, yc, align="CENTER", depth=0.0004)
+    t.data.font = bpy.data.fonts.load(font_file("Avenir-Heavy.ttf", "Bold"))
     t.rotation_euler = (0, 0, math.radians(180)); t.location = (lx, yc, lz)
     bpy.context.view_layer.objects.active = t; t.select_set(True); bpy.ops.object.convert(target="MESH")
     bpy.context.view_layer.objects.active = btn
