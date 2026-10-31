@@ -303,11 +303,11 @@ def cut(target, cutter):
     bpy.ops.object.modifier_apply(modifier=m.name)
     bpy.data.objects.remove(cutter, do_unlink=True)
 block = slab("usb_block", outline(UB0, LEDGE - 0.002, UB1, UTOP, 0.0006, 0.0006, 0, 0, 6),
-             D1 + 0.0003, D2, M_USB, bevel=0)
+             D1 + 0.0003, D2, M_BACK, bevel=0)
 # grooves across its back face, from the grip's top up to just under the port
-for k in range(7):
-    z = LEDGE + 0.00045 + k * 0.00052
-    g = slab("groove", outline(UB0 - 0.001, z, UB1 + 0.001, z + 0.00022, 0, 0, 0, 0, 1), D2 - 0.00012, D2 + 0.001, M_USB, bevel=0)
+for k in range(5):
+    z = LEDGE + 0.0003 + k * 0.0005
+    g = slab("groove", outline(UB0 - 0.001, z, UB1 + 0.001, z + 0.00022, 0, 0, 0, 0, 1), D2 - 0.00012, D2 + 0.001, M_BACK, bevel=0)
     cut(block, g)
 # the port: a rounded slot cut 3 mm down into the top; its walls take the steel of the cutter
 ucx, ucy = (UB0 + UB1) / 2, (D1 + D2) / 2 + 0.0004
@@ -317,6 +317,13 @@ cut(block, prism_z("port", outline(ucx - 0.0044, ucy - 0.0013, ucx + 0.0044, ucy
 m = grip.modifiers.new("join_usb", "BOOLEAN"); m.operation = "UNION"; m.object = block; m.solver = "EXACT"; m.material_mode = "TRANSFER"
 bpy.context.view_layer.objects.active = grip; bpy.ops.object.modifier_apply(modifier="join_usb")
 bpy.data.objects.remove(block, do_unlink=True)
+# Howard's photo: the ribbed lower part is light silver, the top with the port is the body's grey
+grip.data.materials.append(M_USB); usb_slot = len(grip.data.materials) - 1
+lo_x, hi_x = min(UB0, UB1) - 0.0002, max(UB0, UB1) + 0.0002
+for poly in grip.data.polygons:
+    vs = [grip.data.vertices[i].co for i in poly.vertices]
+    if all(lo_x < v.x < hi_x and LEDGE - 0.0025 < v.z < LEDGE + LED_H + 0.0001 and v.y > D2 - 0.0025 for v in vs):
+        poly.material_index = usb_slot
 bpy.context.view_layer.objects.active = grip; grip.select_set(True)
 bpy.ops.object.shade_auto_smooth(angle=math.radians(35)); grip.select_set(False)
 prism_z("port_floor", outline(ucx - 0.0043, ucy - 0.0012, ucx + 0.0043, ucy + 0.0012, 0.0012, 0.0012, 0.0012, 0.0012, 12),
