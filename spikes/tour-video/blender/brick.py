@@ -194,13 +194,20 @@ LEDGE = fz(0.454)                      # the grip's top: the ledge
 PANEL_TOP = LEDGE
 BTN_H = H * 0.062                      # the shoulder buttons stand this high on the ledge
 LED_Y0, LED_Y1 = D2 - 0.0024, D2 - 0.0004   # frosted strips along the ledge's back edge
-grip = slab("grip", outline(x0, 0, x1, LEDGE, 0.0025, 0.0025, R_BOT, R_BOT), D1 - 0.0005, D2, M_BACK, bevel=0.0038, segs=10, back_only=True)
+LED_H = 0.0022                         # the frosted strip under each button, seen on the back
+UB0, UB1 = bu(0.586), bu(0.394)        # the USB-C piece, between R2 and L2
+UTOP = LEDGE + LED_H + 0.0022          # its top a little above the strips (Howard's photos)
+_pts = outline(x0, 0, x1, LEDGE, 0.0025, 0.0025, R_BOT, R_BOT)
+_k = 15                                # outline(): after the top-left corner's 15 points comes the top edge
+_tab = [(UB0, LEDGE), (UB0, UTOP - 0.0006), (UB0 + 0.0006, UTOP), (UB1 - 0.0006, UTOP), (UB1, UTOP - 0.0006), (UB1, LEDGE)]
+# the USB-C piece is not a part of its own: the grip's outline rises into it (Howard), so the grip's back
+# face runs straight up into the piece and the same rounding runs round both
+grip = slab("grip", _pts[:_k] + _tab + _pts[_k:], D1 - 0.0005, D2, M_BACK, bevel=0.0038, segs=10, back_only=True)
 bpy.context.view_layer.objects.active = grip
 for mod in list(grip.modifiers): bpy.ops.object.modifier_apply(modifier=mod.name)   # baked, so the USB-C piece can join it
 # shoulder buttons standing on the ledge, R1 R2 | USB-C | L2 L1 as seen from behind (Howard's close-up):
 # R1 0-23.6 %, R2 24-38.8 %, USB-C 39.4-58.6 %, L2 59-73.3 %, L1 73.8-100 % of the width; R1 and L1 reach
 # the edges, lower and with a rounded lip; R2 and L2 stand a little taller; names on top
-LED_H = 0.0022                         # the frosted strip under each button, seen on the back
 def prism_z(name, pts_xy, z0, z1, material):
     """An outline in x and y, extruded from z0 up to z1."""
     me_ = bpy.data.meshes.new(name); bm = bmesh.new()
@@ -297,31 +304,26 @@ for (a, b, lab, outer) in [(0.0, 0.236, "R1", True), (0.240, 0.388, "R2", False)
 # USB-C, read in 3D from TrimUI's top view, its back-buttons close-up, photo 8 and Howard's notes: one
 # metal piece between R2 and L2, lower than the buttons, its back face grooved (the ribbed plate is the
 # same piece), and the port a real hole cut down into its top, lined in steel, with the tongue inside.
-UB0, UB1 = bu(0.586), bu(0.394)
-UTOP = LEDGE + LED_H + 0.0022           # its top a little above the strips (Howard's straight-on photo)
 def cut(target, cutter):
     m = target.modifiers.new("cut_" + cutter.name, "BOOLEAN"); m.operation = "DIFFERENCE"; m.object = cutter
     m.solver = "EXACT"; m.material_mode = "TRANSFER"
     bpy.context.view_layer.objects.active = target
     bpy.ops.object.modifier_apply(modifier=m.name)
     bpy.data.objects.remove(cutter, do_unlink=True)
-block = slab("usb_block", outline(UB0, LEDGE - 0.0003, UB1, UTOP, 0.0006, 0.0006, 0, 0, 6),
-             D1 + 0.0003, D2, M_BACK, bevel=0)
-# grooves across its back face, from the grip's top up to just under the port
+def cut_all(target, cutters):
+    """One boolean for many cutters: they are joined first."""
+    bpy.ops.object.select_all(action="DESELECT")
+    for c in cutters: c.select_set(True)
+    bpy.context.view_layer.objects.active = cutters[0]; bpy.ops.object.join()
+    cut(target, bpy.context.view_layer.objects.active)
+# grooves across the piece's back face, part of the grip like the ribs below
 n_ribs = int((UTOP - LEDGE - 0.0006) / 0.0005)
-for k in range(n_ribs):                  # ribs across the whole back face (IMG_8457)
-    z = LEDGE + 0.0002 + k * 0.0005
-    g = slab("groove", outline(UB0 - 0.001, z, UB1 + 0.001, z + 0.00022, 0, 0, 0, 0, 1), D2 - 0.00012, D2 + 0.001, M_BACK, bevel=0)
-    cut(block, g)
+cut_all(grip, [slab("groove", outline(UB0 - 0.0002, LEDGE + 0.0002 + k * 0.0005, UB1 + 0.0002, LEDGE + 0.00042 + k * 0.0005, 0, 0, 0, 0, 1),
+                    D2 - 0.00012, D2 + 0.001, M_BACK, bevel=0) for k in range(n_ribs)])
 # the port: a rounded slot cut 3 mm down into the top; its walls take the steel of the cutter
 ucx, ucy = (UB0 + UB1) / 2, (D1 + D2) / 2 + 0.0004
-cut(block, prism_z("port", outline(ucx - 0.0044, ucy - 0.0013, ucx + 0.0044, ucy + 0.0013, 0.0013, 0.0013, 0.0013, 0.0013, 12),
-                   UTOP - 0.0030, UTOP + 0.001, M_PORT))
-# the USB-C piece is part of the grip's housing: one solid, the grip's back running up into it
-m = grip.modifiers.new("join_usb", "BOOLEAN"); m.operation = "UNION"; m.object = block; m.solver = "EXACT"; m.material_mode = "TRANSFER"
-bpy.context.view_layer.objects.active = grip; bpy.ops.object.modifier_apply(modifier="join_usb")
-bpy.data.objects.remove(block, do_unlink=True)
-
+cut(grip, prism_z("port", outline(ucx - 0.0044, ucy - 0.0013, ucx + 0.0044, ucy + 0.0013, 0.0013, 0.0013, 0.0013, 0.0013, 12),
+                  UTOP - 0.0030, UTOP + 0.001, M_PORT))
 bpy.context.view_layer.objects.active = grip; grip.select_set(True)
 bpy.ops.object.shade_auto_smooth(angle=math.radians(35)); grip.select_set(False)
 prism_z("port_floor", outline(ucx - 0.0043, ucy - 0.0012, ucx + 0.0043, ucy + 0.0012, 0.0012, 0.0012, 0.0012, 0.0012, 12),
@@ -335,12 +337,14 @@ prism_z("port_tongue", outline(ucx - 0.0033, ucy - 0.00035, ucx + 0.0033, ucy + 
 t = text("BRICK HAMMER", 0, LEDGE - 0.09 * W, W * 0.052, M_ETCH, D2 + 0.00006, face="back", align="CENTER")
 t.data.font = bpy.data.fonts.load(font_file("Avenir-Heavy.ttf", "Bold")); t.data.space_character = 1.25
 RIB0, PITCH, RIB_END = LEDGE - 0.165 * W, 0.028 * W, 0.075 * W
-z = RIB0; i = 0
+z = RIB0; i = 0; grooves = []
 while z - 0.012 * W > RIB_END:
-    inset = 0.075 * W if i < 2 else 0.035 * W          # the top two grooves stop short of the screws
-    slab(f"rib{i}", outline(x0 + inset, z - 0.020 * W, x1 - inset, z, 0.010 * W, 0.010 * W, 0.010 * W, 0.010 * W, 8),
-         D2 - 0.0001, D2 + 0.00018, M_BACK, bevel=0.00008, segs=2)
+    inset = 0.10 * W if i < 2 else 0.035 * W          # the top two grooves stop short of the holes
+    r_ = 0.0025 * W
+    grooves.append(slab(f"groove{i}", outline(x0 + inset, z - 0.005 * W, x1 - inset, z, r_, r_, r_, r_, 6),
+                        D2 - 0.00022, D2 + 0.001, M_BACK, bevel=0))
     z -= PITCH; i += 1
+cut_all(grip, grooves)
 def engraved_line(name, pts, w_=0.00011):
     me_ = bpy.data.meshes.new(name); verts, faces = [], []
     for (xa, za), (xb, zb) in zip(pts, pts[1:]):
