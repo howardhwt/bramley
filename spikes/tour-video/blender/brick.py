@@ -345,22 +345,27 @@ while z - 0.012 * W > RIB_END:
                         D2 - 0.00022, D2 + 0.001, M_BACK, bevel=0))
     z -= PITCH; i += 1
 cut_all(grip, grooves)
-def engraved_line(name, pts, w_=0.00011):
-    me_ = bpy.data.meshes.new(name); verts, faces = [], []
-    for (xa, za), (xb, zb) in zip(pts, pts[1:]):
+def groove_line(name, pts, w_=0.00014, depth=0.00018):
+    """A fine cut along a polyline: each segment a thin box pushed into the grip's back face."""
+    parts = []
+    for i, ((xa, za), (xb, zb)) in enumerate(zip(pts, pts[1:])):
         dx, dz = xb - xa, zb - za; L = math.hypot(dx, dz); nx, nz = -dz / L * w_, dx / L * w_
-        k = len(verts)
-        for (px, pz) in ((xa + nx, za + nz), (xb + nx, zb + nz), (xb - nx, zb - nz), (xa - nx, za - nz)):
-            verts.append((px, D2 + 0.00030, pz))
-        faces.append((k, k + 1, k + 2, k + 3))
-    me_.from_pydata(verts, [], faces)
-    o_ = bpy.data.objects.new(name, me_); scene.collection.objects.link(o_); o_.data.materials.append(M_ETCH)
+        ex, ez = dx / L * w_, dz / L * w_          # a little past each end, so the corners close
+        quad = [(xa - ex + nx, za - ez + nz), (xb + ex + nx, zb + ez + nz), (xb + ex - nx, zb + ez - nz), (xa - ex - nx, za - ez - nz)]
+        me_ = bpy.data.meshes.new(f"{name}{i}"); bm = bmesh.new()
+        F = [bm.verts.new((x, D2 - depth, z)) for x, z in quad]; B = [bm.verts.new((x, D2 + 0.001, z)) for x, z in quad]
+        bm.faces.new(F); bm.faces.new(B[::-1])
+        for j in range(4):
+            k = (j + 1) % 4; bm.faces.new((F[j], F[k], B[k], B[j]))
+        bm.normal_update(); bmesh.ops.recalc_face_normals(bm, faces=bm.faces); bm.to_mesh(me_); bm.free()
+        o_ = bpy.data.objects.new(f"{name}{i}", me_); scene.collection.objects.link(o_); parts.append(o_)
+    return parts
+# the outline down the middle is cut into the metal like the ribs (Howard): pointed at both ends
 apex, eave = LEDGE - 0.186 * W, LEDGE - 0.244 * W
-engraved_line("roof", [(-0.105 * W, eave), (0, apex), (0.105 * W, eave)])
 BOT_EAVE, BOT_PT = RIB_END + 0.10 * W, RIB_END + 0.04 * W
-for sx in (-1, 1):
-    engraved_line("post", [(sx * 0.105 * W, eave), (sx * 0.105 * W, BOT_EAVE)])
-engraved_line("keel", [(-0.105 * W, BOT_EAVE), (0, BOT_PT), (0.105 * W, BOT_EAVE)])
+hx = 0.105 * W
+for part in groove_line("outline", [(0, apex), (hx, eave), (hx, BOT_EAVE), (0, BOT_PT), (-hx, BOT_EAVE), (-hx, eave), (0, apex)]):
+    cut(grip, part)   # one at a time: joined, the overlapping corners confuse the boolean
 # Torx screws at the four corners of the panel
 for (sx, zc) in [(-1, LEDGE - 0.15 * W), (1, LEDGE - 0.15 * W), (-1, 0.06 * W), (1, 0.06 * W)]:
     xc = sx * (W / 2 - 0.065 * W)
