@@ -472,7 +472,7 @@ LIGHTS = [  # (name, offset from the camera's side: azimuth degrees, height, dis
 ]
 for name, _, size, power in LIGHTS:
     bpy.ops.object.light_add(type="AREA"); l = bpy.context.object; l.name = "light_" + name  # own names: "key" is also a side key
-    l.data.size = size; l.data.energy = power
+    l.data.size = size; l.data.energy = power * float(os.environ.get("BRICK_LIGHT", "1"))  # BRICK_LIGHT=0.4 dims every light
 def place_lights(cam_loc):
     """Lights keep their places around the camera, so each angle is lit like a product photo."""
     az = math.degrees(math.atan2(cam_loc[0], -cam_loc[1]))
