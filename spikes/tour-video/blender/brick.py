@@ -117,7 +117,7 @@ def outline(x0, z0, x1, z1, rtl, rtr, rbr, rbl, seg=14):
             pts.append((cx + r * math.cos(a), cz + r * math.sin(a)))
     return pts
 
-def slab(name, pts, y0, y1, material, bevel=0.0006, segs=3, back_only=False):
+def slab(name, pts, y0, y1, material, bevel=0.0006, segs=3, back_only=False, back_zmax=None, back_skip_x=None):
     """The outline extruded from y0 (front) to y1 (back)."""
     me = bpy.data.meshes.new(name); bm = bmesh.new()
     vf = [bm.verts.new((x, y0, z)) for x, z in pts]
@@ -132,16 +132,21 @@ def slab(name, pts, y0, y1, material, bevel=0.0006, segs=3, back_only=False):
     if back_only:
         bm.edges.ensure_lookup_table()
         back = set(vb)
-        back_edges = {e.index for e in bm.edges if all(v in back for v in e.verts)}
+        # the edges along the top (above back_zmax) stay sharp; a small round there broke the booleans
+        def weight(e):   # the sides and bottom round fully; the top edge and the USB-C tab stay crisp (partial weights broke the booleans)
+            if back_skip_x and all(back_skip_x[0] <= v.co.x <= back_skip_x[1] for v in e.verts): return 0.0
+            if back_zmax is None or any(v.co.z < back_zmax for v in e.verts): return 1.0
+            return 0.0   # the top edge stays crisp (rounding it rolled the ledge into a slope)
+        back_edges = {e.index: weight(e) for e in bm.edges if all(v in back for v in e.verts)}
     bm.to_mesh(me); bm.free()
     if back_only:
         a = me.attributes.new("bevel_weight_edge", "FLOAT", "EDGE")
-        for i in range(len(me.edges)): a.data[i].value = 1.0 if i in back_edges else 0.0
+        for i in range(len(me.edges)): a.data[i].value = back_edges.get(i, 0.0)
     ob = bpy.data.objects.new(name, me); scene.collection.objects.link(ob)
     ob.data.materials.append(material)
     if bevel:
         m = ob.modifiers.new("bevel", "BEVEL"); m.width = bevel; m.segments = segs
-        if back_only: m.limit_method = "WEIGHT"
+        if back_only: m.limit_method = "WEIGHT"; m.use_clamp_overlap = False   # short corner edges must not shrink the round
         else: m.limit_method = "ANGLE"; m.angle_limit = math.radians(40)
     for p in ob.data.polygons: p.use_smooth = True
     ob.modifiers.new("ws", "WEIGHTED_NORMAL") if bevel else None
@@ -176,7 +181,7 @@ def text(s, x, z, size, material, y, rot_z=0.0, depth=0.00008, align="LEFT", fac
 
 # body: the upper slab and the grip behind its lower half
 x0, x1 = -W / 2, W / 2
-body = slab("body", outline(x0, 0, x1, H, R_TOP, R_TOP, R_BOT, R_BOT), 0, D1, M_BODY, bevel=0.0007, segs=1)
+body = slab("body", outline(x0, 0, x1, H, R_TOP, R_TOP, R_BOT, R_BOT), 0, D1, M_BODY, bevel=0.0012, segs=3)   # front edges round softly
 body.modifiers["bevel"].angle_limit = math.radians(60)
 # --- the back: layout from TrimUI's flat views, details from Howard's photo (2026-10-30) ---
 # Howard's photo looks down at the back from above and behind, so it shows top surfaces too: the
@@ -194,7 +199,7 @@ LEDGE = fz(0.454)                      # the grip's top: the ledge
 PANEL_TOP = LEDGE
 BTN_H = H * 0.062                      # the shoulder buttons stand this high on the ledge
 LED_Y0, LED_Y1 = D2 - 0.0024, D2 - 0.0004   # frosted strips along the ledge's back edge
-LED_H = 0.0022                         # the frosted strip under each button, seen on the back
+LED_H = 0.0031                         # the frosted strips under each button (IMG_8457-8459)
 UB0, UB1 = bu(0.586), bu(0.394)        # the USB-C piece, between R2 and L2
 UTOP = LEDGE + LED_H + 0.0022          # its top a little above the strips (Howard's photos)
 _pts = outline(x0, 0, x1, LEDGE, 0.0025, 0.0025, R_BOT, R_BOT)
@@ -202,7 +207,10 @@ _k = 15                                # outline(): after the top-left corner's 
 _tab = [(UB0, LEDGE), (UB0, UTOP - 0.0006), (UB0 + 0.0006, UTOP), (UB1 - 0.0006, UTOP), (UB1, UTOP - 0.0006), (UB1, LEDGE)]
 # the USB-C piece is not a part of its own: the grip's outline rises into it (Howard), so the grip's back
 # face runs straight up into the piece and the same rounding runs round both
-grip = slab("grip", _pts[:_k] + _tab + _pts[_k:], D1 - 0.0005, D2, M_BACK, bevel=0.0052, segs=12, back_only=True)   # a broad round (IMG_8457-8459)
+# the grip's sides and bottom round over broadly into the back (IMG_8459); its top edge at the shoulder
+# row stays crisp. Rounding only those edges keeps the tab's short edges from clamping the radius.
+grip = slab("grip", _pts[:_k] + _tab + _pts[_k:], D1 - 0.0020, D2, M_BACK, bevel=0.0032, segs=12, back_only=True,   # TrimUI's bottom view: about 0.04 W
+            back_zmax=LEDGE - 0.0001, back_skip_x=(min(UB0, UB1) - 0.0001, max(UB0, UB1) + 0.0001))   # all round, except the USB-C tab
 bpy.context.view_layer.objects.active = grip
 for mod in list(grip.modifiers): bpy.ops.object.modifier_apply(modifier=mod.name)   # baked, so the USB-C piece can join it
 # shoulder buttons standing on the ledge, R1 R2 | USB-C | L2 L1 as seen from behind (Howard's close-up):
@@ -298,9 +306,13 @@ for (a, b, lab, outer) in [(0.0, 0.236, "R1", True), (0.240, 0.388, "R2", False)
     bpy.ops.object.select_all(action="DESELECT")
     # the frosted strip sits in a dark frame under its button, inset at each end (Howard's photo); the
     # strips under R1 and L1 also stop short of the device's side
-    ia = 0.0009 + (0.0012 if outer and sign < 0 else 0); ib = 0.0009 + (0.0012 if outer and sign > 0 else 0)
-    slab("led_" + lab, outline(u0 + ia, LEDGE, u1 - ib, LEDGE + LED_H - 0.0003, 0.0002, 0.0002, 0.0002, 0.0002, 2),
-         D1 + 0.0006, D2 - 0.0002, M_LED, bevel=0.0002, segs=1)
+    ia = 0.0006 + (0.0012 if outer and sign < 0 else 0); ib = 0.0006 + (0.0012 if outer and sign > 0 else 0)
+    # two tiers (IMG_8459): a thick lower block set back under the button, and a thin plate above it
+    # that reaches a little further back, just under the button's body
+    slab("led_" + lab, outline(u0 + ia, LEDGE - 0.0001, u1 - ib, LEDGE + 0.0020, 0.0003, 0.0003, 0.0003, 0.0003, 3),
+         D1 + 0.0006, D2 - 0.0009, M_LED, bevel=0.0004, segs=3)
+    slab("led_plate_" + lab, outline(u0 + ia - 0.0004, LEDGE + 0.0020, u1 - ib + 0.0004, LEDGE + LED_H, 0.0003, 0.0003, 0.0003, 0.0003, 3),
+         D1 + 0.0006, D2 - 0.0004, M_LED, bevel=0.0003, segs=3)
 # USB-C, read in 3D from TrimUI's top view, its back-buttons close-up, photo 8 and Howard's notes: one
 # metal piece between R2 and L2, lower than the buttons, its back face grooved (the ribbed plate is the
 # same piece), and the port a real hole cut down into its top, lined in steel, with the tongue inside.
@@ -317,8 +329,9 @@ def cut_all(target, cutters):
     bpy.context.view_layer.objects.active = cutters[0]; bpy.ops.object.join()
     cut(target, bpy.context.view_layer.objects.active)
 # grooves across the piece's back face, part of the grip like the ribs below
-n_ribs = int((UTOP - LEDGE - 0.0006) / 0.0005)
-cut_all(grip, [slab("groove", outline(UB0 - 0.0002, LEDGE + 0.0002 + k * 0.0005, UB1 + 0.0002, LEDGE + 0.00042 + k * 0.0005, 0, 0, 0, 0, 1),
+n_ribs = 4                               # four grooves (IMG_8457, IMG_8459)
+pitch_ = (UTOP - LEDGE - 0.0008) / n_ribs
+cut_all(grip, [slab("groove", outline(UB0 - 0.0002, LEDGE + 0.0004 + k * pitch_, UB1 + 0.0002, LEDGE + 0.0004 + k * pitch_ + pitch_ * 0.42, 0, 0, 0, 0, 1),
                     D2 - 0.00012, D2 + 0.001, M_BACK, bevel=0) for k in range(n_ribs)])
 # the port: a rounded slot cut 3 mm down into the top; its walls take the steel of the cutter
 ucx, ucy = (UB0 + UB1) / 2, (D1 + D2) / 2 + 0.0004
@@ -569,7 +582,8 @@ SHOTS = {
     "lclose": (-0.20, -0.02, 0.12),    # close on the volume keys
     "usbclose": (0.02, 0.10, 0.16),    # close on the USB-C, from above and behind
     "back2": (0.0, 0.30, 0.062),
-    "p8459": (0.10, 0.22, 0.055),      # behind and to the teal-key side, as IMG_8459        # straight behind the shoulder row, as Howard's second photo
+    "p8459": (0.10, 0.22, 0.055),      # behind and to the teal-key side, as IMG_8459
+    "stripclose": (0.05, 0.11, 0.075), # close on the strips under R1 and R2        # straight behind the shoulder row, as Howard's second photo
     "btnclose": (0.05, 0.22, 0.14),    # the shoulder row from behind and above, as Howard's close-up
 }
 if os.environ.get("BRICK_SAVE"):  # BRICK_SAVE=/path/brick.blend saves the scene to open in Blender, without rendering
