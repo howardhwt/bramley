@@ -331,35 +331,44 @@ prism_z("port_floor", outline(ucx - 0.0043, ucy - 0.0012, ucx + 0.0043, ucy + 0.
 prism_z("port_tongue", outline(ucx - 0.0033, ucy - 0.00035, ucx + 0.0033, ucy + 0.00035, 0.0002, 0.0002, 0.0002, 0.0002, 4),
         UTOP - 0.0029, UTOP - 0.0006, M_HOLE)
 # the grip panel: "BRICK HAMMER" spaced wide, raised ribs, the marks in a band, four screw holes
-t = text("BRICK HAMMER", 0, fz(pv(0.635)), W * 0.046, M_ETCH, D2 + 0.00006, face="back", align="CENTER")
-t.data.font = bpy.data.fonts.load(font_file("Avenir-Medium.ttf", "Regular")); t.data.space_character = 1.35
-for i in range(18):
-    v = 0.675 + i * 0.0155
-    slab(f"rib{i}", outline(bu(0.905), fz(pv(v + 0.0085)), bu(0.095), fz(pv(v)), 0.0003, 0.0003, 0.0003, 0.0003, 2),
-         D2 - 0.0001, D2 + 0.00028, M_BACK, bevel=0.00012, segs=2)
-# the zigzag engraved across the grip, seen only in the grooves between the ribs (Howard's photo)
-def zigzag(v_top, v_bot, period, name):
+# the grip panel, measured on Howard's straight-on photo in units of the width W, down from its top:
+# the name at 0.12, Torx screws at the corners, rounded grooves every 0.02 from 0.165, and an engraved
+# house-like outline in the middle: a roof 0.24 wide rising to 0.19, two posts down from 0.26
+t = text("BRICK HAMMER", 0, LEDGE - 0.12 * W, W * 0.052, M_ETCH, D2 + 0.00006, face="back", align="CENTER")
+t.data.font = bpy.data.fonts.load(font_file("Avenir-Heavy.ttf", "Bold")); t.data.space_character = 1.25
+RIB0, PITCH, RIB_END = LEDGE - 0.165 * W, 0.028 * W, 0.075 * W
+z = RIB0; i = 0
+while z - 0.012 * W > RIB_END:
+    inset = 0.075 * W if i < 2 else 0.035 * W          # the top two grooves stop short of the screws
+    slab(f"rib{i}", outline(x0 + inset, z - 0.020 * W, x1 - inset, z, 0.010 * W, 0.010 * W, 0.010 * W, 0.010 * W, 8),
+         D2 - 0.0001, D2 + 0.00018, M_BACK, bevel=0.00008, segs=2)
+    z -= PITCH; i += 1
+def engraved_line(name, pts, w_=0.00011):
     me_ = bpy.data.meshes.new(name); verts, faces = [], []
-    z_top, z_bot = fz(pv(v_top)), fz(pv(v_bot)); x = bu(0.89); up = True; w_ = 0.00012
-    while x < bu(0.11) - 0.0001:
-        x2 = min(x + period / 2, bu(0.11))
-        za, zb = (z_bot, z_top) if up else (z_top, z_bot)
-        dx, dz = x2 - x, zb - za; L = math.hypot(dx, dz); nx, nz = -dz / L * w_, dx / L * w_
-        i = len(verts)
-        for (px, pz) in ((x + nx, za + nz), (x2 + nx, zb + nz), (x2 - nx, zb - nz), (x - nx, za - nz)):
-            verts.append((px, D2 + 0.00003, pz))
-        faces.append((i, i + 1, i + 2, i + 3)); x = x2; up = not up
+    for (xa, za), (xb, zb) in zip(pts, pts[1:]):
+        dx, dz = xb - xa, zb - za; L = math.hypot(dx, dz); nx, nz = -dz / L * w_, dx / L * w_
+        k = len(verts)
+        for (px, pz) in ((xa + nx, za + nz), (xb + nx, zb + nz), (xb - nx, zb - nz), (xa - nx, za - nz)):
+            verts.append((px, D2 + 0.00030, pz))
+        faces.append((k, k + 1, k + 2, k + 3))
     me_.from_pydata(verts, [], faces)
     o_ = bpy.data.objects.new(name, me_); scene.collection.objects.link(o_); o_.data.materials.append(M_ETCH)
-zigzag(0.712, 0.772, W * 0.24, "zigzag_upper")
-zigzag(0.912, 0.945, W * 0.24, "zigzag_lower")
-for (u, v) in [(0.075, 0.676), (0.925, 0.676), (0.085, 0.962), (0.915, 0.962)]:
-    cyl("hole", bu(u), fz(pv(v)), W * 0.024, D2 - 0.0004, D2 + 0.00005, M_HOLE, bevel=0)
-    cyl("grip_screw", bu(u), fz(pv(v)), W * 0.019, D2 - 0.0002, D2 + 0.00012, M_SCREW, bevel=0.0001)   # a silver screw in it
-    for horiz in (True, False):
-        w_, h_ = (W * 0.02, W * 0.0035) if horiz else (W * 0.0035, W * 0.02)
-        slab("slot", outline(bu(u) - w_ / 2, fz(pv(v)) - h_ / 2, bu(u) + w_ / 2, fz(pv(v)) + h_ / 2, 0.00005, 0.00005, 0.00005, 0.00005, 1),
-             D2 + 0.0001, D2 + 0.00016, M_HOLE, bevel=0)
+apex, eave = LEDGE - 0.186 * W, LEDGE - 0.244 * W
+engraved_line("roof", [(-0.105 * W, eave), (0, apex), (0.105 * W, eave)])
+for sx in (-1, 1):
+    engraved_line("post", [(sx * 0.105 * W, eave), (sx * 0.105 * W, RIB_END)])
+# Torx screws at the four corners of the panel
+for (sx, zc) in [(-1, LEDGE - 0.18 * W), (1, LEDGE - 0.18 * W), (-1, 0.06 * W), (1, 0.06 * W)]:
+    xc = sx * (W / 2 - 0.035 * W)
+    cyl("hole", xc, zc, W * 0.030, D2 - 0.0004, D2 + 0.00005, M_HOLE, bevel=0)
+    cyl("grip_screw", xc, zc, W * 0.026, D2 - 0.0002, D2 + 0.00016, M_SCREW, bevel=0.00015)
+    for k in range(6):  # the star: three bars crossing
+        if k >= 3: break
+        bar = slab("torx", outline(xc - W * 0.012, zc - W * 0.0025, xc + W * 0.012, zc + W * 0.0025, 0.0001, 0.0001, 0.0001, 0.0001, 1),
+                   D2 + 0.00012, D2 + 0.00019, M_HOLE, bevel=0)
+        bar.rotation_euler = (0, math.radians(60 * k), 0)
+        bar.location = (xc - (xc * math.cos(math.radians(60 * k)) + zc * math.sin(math.radians(60 * k))) , 0,
+                        zc - (-xc * math.sin(math.radians(60 * k)) + zc * math.cos(math.radians(60 * k))))
 # upper back: two silver Phillips screws, the three-dot mark
 for u in (0.09, 0.91):
     cyl("screw", bu(u), fz(pv(0.09)), W * 0.02, D1 - 0.0001, D1 + 0.00022, M_SCREW, bevel=0.00012)
