@@ -200,7 +200,7 @@ for mod in list(grip.modifiers): bpy.ops.object.modifier_apply(modifier=mod.name
 # shoulder buttons standing on the ledge, R1 R2 | USB-C | L2 L1 as seen from behind (Howard's close-up):
 # R1 0-23.6 %, R2 24-38.8 %, USB-C 39.4-58.6 %, L2 59-73.3 %, L1 73.8-100 % of the width; R1 and L1 reach
 # the edges, lower and with a rounded lip; R2 and L2 stand a little taller; names on top
-LED_H = 0.0013                         # the frosted strip under each button, seen on the back
+LED_H = 0.0022                         # the frosted strip under each button, seen on the back
 def prism_z(name, pts_xy, z0, z1, material):
     """An outline in x and y, extruded from z0 up to z1."""
     me_ = bpy.data.meshes.new(name); bm = bmesh.new()
@@ -271,7 +271,7 @@ def shoulder(name, x0_, x1_, base, h, outer_sign, material):
 for (a, b, lab, outer) in [(0.0, 0.236, "R1", True), (0.240, 0.388, "R2", False), (0.590, 0.733, "L2", False), (0.738, 1.0, "L1", True)]:
     u0, u1 = bu(b), bu(a)
     sign = 0 if not outer else (1 if lab == "R1" else -1)
-    h = H * (0.070 if outer else 0.073)   # Howard's straight-on back photo: about 7.6 mm
+    h = W * (0.084 if outer else 0.094)   # Howard's straight-on back photo, measured against the width
     btn, yc = shoulder("shoulder_" + lab, u0, u1, LEDGE + LED_H, h, sign, M_SHOULDER)
     # the name carved into the cap's flat top, on its inner part
     lx = (u0 + u1) / 2 if not outer else ((u0 + u1) / 2 - sign * (u1 - u0) * 0.10)
@@ -289,24 +289,28 @@ for (a, b, lab, outer) in [(0.0, 0.236, "R1", True), (0.240, 0.388, "R2", False)
         bpy.ops.object.select_all(action="DESELECT"); o_.select_set(True); bpy.context.view_layer.objects.active = o_
         bpy.ops.object.shade_auto_smooth(angle=math.radians(35))
     bpy.ops.object.select_all(action="DESELECT")
-    slab("led_" + lab, outline(u0 + 0.0004, LEDGE - 0.0002, u1 - 0.0004, LEDGE + LED_H, 0.0002, 0.0002, 0.0002, 0.0002, 2),
-         D1 + 0.0006, D2 + 0.0001, M_LED, bevel=0.0002, segs=1)
+    # the frosted strip sits in a dark frame under its button, inset at each end (Howard's photo); the
+    # strips under R1 and L1 also stop short of the device's side
+    ia = 0.0009 + (0.0012 if outer and sign < 0 else 0); ib = 0.0009 + (0.0012 if outer and sign > 0 else 0)
+    slab("frame_" + lab, outline(u0, LEDGE - 0.0002, u1, LEDGE + LED_H, 0, 0, 0, 0, 1), D1 + 0.0004, D2 - 0.0004, M_HOLE, bevel=0)
+    slab("led_" + lab, outline(u0 + ia, LEDGE, u1 - ib, LEDGE + LED_H - 0.0003, 0.0002, 0.0002, 0.0002, 0.0002, 2),
+         D1 + 0.0006, D2 - 0.0002, M_LED, bevel=0.0002, segs=1)
 # USB-C, read in 3D from TrimUI's top view, its back-buttons close-up, photo 8 and Howard's notes: one
 # metal piece between R2 and L2, lower than the buttons, its back face grooved (the ribbed plate is the
 # same piece), and the port a real hole cut down into its top, lined in steel, with the tongue inside.
 UB0, UB1 = bu(0.586), bu(0.394)
-UTOP = LEDGE + 0.0040                   # about 4 mm above the grip (Howard's straight-on photo)
+UTOP = LEDGE + LED_H + 0.0022           # its top a little above the strips (Howard's straight-on photo)
 def cut(target, cutter):
     m = target.modifiers.new("cut_" + cutter.name, "BOOLEAN"); m.operation = "DIFFERENCE"; m.object = cutter
     m.solver = "EXACT"; m.material_mode = "TRANSFER"
     bpy.context.view_layer.objects.active = target
     bpy.ops.object.modifier_apply(modifier=m.name)
     bpy.data.objects.remove(cutter, do_unlink=True)
-block = slab("usb_block", outline(UB0, LEDGE - 0.002, UB1, UTOP, 0.0006, 0.0006, 0, 0, 6),
+block = slab("usb_block", outline(UB0, LEDGE - 0.0003, UB1, UTOP, 0.0006, 0.0006, 0, 0, 6),
              D1 + 0.0003, D2, M_BACK, bevel=0)
 # grooves across its back face, from the grip's top up to just under the port
-for k in range(6):
-    z = LEDGE + 0.0003 + k * 0.0005
+for k in range(4):                       # the ribs only span the strips' height
+    z = LEDGE + 0.0002 + k * 0.0005
     g = slab("groove", outline(UB0 - 0.001, z, UB1 + 0.001, z + 0.00022, 0, 0, 0, 0, 1), D2 - 0.00012, D2 + 0.001, M_BACK, bevel=0)
     cut(block, g)
 # the port: a rounded slot cut 3 mm down into the top; its walls take the steel of the cutter
@@ -322,7 +326,7 @@ grip.data.materials.append(M_USB); usb_slot = len(grip.data.materials) - 1
 lo_x, hi_x = min(UB0, UB1) - 0.0002, max(UB0, UB1) + 0.0002
 for poly in grip.data.polygons:
     vs = [grip.data.vertices[i].co for i in poly.vertices]
-    if all(lo_x < v.x < hi_x and LEDGE - 0.0025 < v.z < LEDGE + 0.0034 and v.y > D2 - 0.0025 for v in vs):
+    if all(lo_x < v.x < hi_x and LEDGE - 0.0005 < v.z < LEDGE + LED_H + 0.0001 and v.y > D2 - 0.0025 for v in vs):
         poly.material_index = usb_slot
 bpy.context.view_layer.objects.active = grip; grip.select_set(True)
 bpy.ops.object.shade_auto_smooth(angle=math.radians(35)); grip.select_set(False)
