@@ -209,7 +209,7 @@ _tab = [(UB0, LEDGE), (UB0, UTOP - 0.0006), (UB0 + 0.0006, UTOP), (UB1 - 0.0006,
 # from behind (rounded bottom corners), its section across the width (the back corners rounded over the
 # sides, IMG_8459 and TrimUI's bottom view, about 0.045 W) and its section down the side (the back
 # rounded into the bottom). The top edge at the shoulder row stays crisp, so nothing has to blend there.
-RG = 0.0032
+RG = 0.0056                            # IMG_8459 and TrimUI's bottom view: the grip's side curves into its back, about 5.5 mm
 def prism(name, pts, axis, a0, a1):
     """A 2D outline extruded along an axis: 'z' takes (x, y) points, 'x' takes (y, z) points."""
     me_ = bpy.data.meshes.new(name); bm_ = bmesh.new()
@@ -230,7 +230,7 @@ grip = slab("grip", _pts, GY0, D2, M_BACK, bevel=0)
 # outline(): corners (x0, y_front)->tl, tr, br, bl in its own plane; here the plane is x across, y depth,
 # so the "top" corners are the back ones
 intersect(grip, prism("grip_w", outline(x0 - 0.001, GY0 - 0.001, x1 + 0.001, D2, RG, RG, 0.0001, 0.0001, 16), "z", -0.01, LEDGE + 0.02))
-intersect(grip, prism("grip_d", outline(GY0 - 0.001, -0.01, D2, LEDGE + 0.02, 0.0001, 0.0001, RG, 0.0001, 16), "x", x0 - 0.01, x1 + 0.01))
+intersect(grip, prism("grip_d", outline(GY0 - 0.001, -0.01, D2, LEDGE, 0.0001, 0.0016, RG, 0.0001, 16), "x", x0 - 0.01, x1 + 0.01))   # the top edge softly rounded too (side photos)
 # the USB-C tab rises from the grip's top as part of the same piece
 tab = slab("tab", outline(UB0, LEDGE - 0.001, UB1, UTOP, 0.0006, 0.0006, 0, 0, 6), GY0, D2, M_BACK, bevel=0)
 m = grip.modifiers.new("tab", "BOOLEAN"); m.operation = "UNION"; m.object = tab; m.solver = "EXACT"
@@ -412,7 +412,7 @@ for part in groove_line("diamond", hexa, w_=0.00022, depth=0.00012):
     cut(grip, part)   # one at a time: joined, the overlapping corners confuse the boolean
 # Torx screws at the four corners of the panel
 for (sx, zc) in [(-1, LEDGE - 0.175 * W), (1, LEDGE - 0.175 * W), (-1, 0.06 * W), (1, 0.06 * W)]:
-    xc = sx * (W / 2 - 0.058 * W)        # IMG_8457: 0.175 W down, 0.058 W in from the side, 0.028 W across
+    xc = sx * (W / 2 - 0.088 * W)        # IMG_8457/8459: 0.175 W down, on the flat back just inside the curve, 0.028 W across
     hole = cyl("hole", xc, zc, W * 0.028, D2 - 0.0045, D2 + 0.001, M_HOLE, bevel=0)
     m = grip.modifiers.new("hole", "BOOLEAN"); m.operation = "DIFFERENCE"; m.object = hole; m.solver = "EXACT"
     bpy.context.view_layer.objects.active = grip; bpy.ops.object.modifier_apply(modifier="hole")
