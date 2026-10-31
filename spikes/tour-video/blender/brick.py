@@ -199,20 +199,43 @@ LEDGE = fz(0.454)                      # the grip's top: the ledge
 PANEL_TOP = LEDGE
 BTN_H = H * 0.062                      # the shoulder buttons stand this high on the ledge
 LED_Y0, LED_Y1 = D2 - 0.0024, D2 - 0.0004   # frosted strips along the ledge's back edge
-LED_H = 0.0031                         # the frosted strips under each button (IMG_8457-8459)
+LED_H = 0.0019                         # the frosted strips under each button (IMG_8457-8459)
 UB0, UB1 = bu(0.586), bu(0.394)        # the USB-C piece, between R2 and L2
 UTOP = LEDGE + LED_H + 0.0022          # its top a little above the strips (Howard's photos)
 _pts = outline(x0, 0, x1, LEDGE, 0.0025, 0.0025, R_BOT, R_BOT)
 _k = 15                                # outline(): after the top-left corner's 15 points comes the top edge
 _tab = [(UB0, LEDGE), (UB0, UTOP - 0.0006), (UB0 + 0.0006, UTOP), (UB1 - 0.0006, UTOP), (UB1, UTOP - 0.0006), (UB1, LEDGE)]
-# the USB-C piece is not a part of its own: the grip's outline rises into it (Howard), so the grip's back
-# face runs straight up into the piece and the same rounding runs round both
-# the grip's sides and bottom round over broadly into the back (IMG_8459); its top edge at the shoulder
-# row stays crisp. Rounding only those edges keeps the tab's short edges from clamping the radius.
-grip = slab("grip", _pts[:_k] + _tab + _pts[_k:], D1 - 0.0020, D2, M_BACK, bevel=0.0032, segs=12, back_only=True,   # TrimUI's bottom view: about 0.04 W
-            back_zmax=LEDGE - 0.0001, back_skip_x=(min(UB0, UB1) - 0.0001, max(UB0, UB1) + 0.0001))   # all round, except the USB-C tab
-bpy.context.view_layer.objects.active = grip
-for mod in list(grip.modifiers): bpy.ops.object.modifier_apply(modifier=mod.name)   # baked, so the USB-C piece can join it
+# The grip is built from its cross-sections, not rounded afterwards: the intersection of its outline seen
+# from behind (rounded bottom corners), its section across the width (the back corners rounded over the
+# sides, IMG_8459 and TrimUI's bottom view, about 0.045 W) and its section down the side (the back
+# rounded into the bottom). The top edge at the shoulder row stays crisp, so nothing has to blend there.
+RG = 0.0032
+def prism(name, pts, axis, a0, a1):
+    """A 2D outline extruded along an axis: 'z' takes (x, y) points, 'x' takes (y, z) points."""
+    me_ = bpy.data.meshes.new(name); bm_ = bmesh.new()
+    mk = (lambda p, a: (p[0], p[1], a)) if axis == "z" else (lambda p, a: (a, p[0], p[1]))
+    lo = [bm_.verts.new(mk(p, a0)) for p in pts]; hi = [bm_.verts.new(mk(p, a1)) for p in pts]
+    bm_.faces.new(lo[::-1]); bm_.faces.new(hi)
+    for i in range(len(pts)):
+        j = (i + 1) % len(pts); bm_.faces.new((lo[i], lo[j], hi[j], hi[i]))
+    bm_.normal_update(); bmesh.ops.recalc_face_normals(bm_, faces=bm_.faces); bm_.to_mesh(me_); bm_.free()
+    o_ = bpy.data.objects.new(name, me_); scene.collection.objects.link(o_); o_.data.materials.append(M_BACK)
+    return o_
+def intersect(a, b):
+    m = a.modifiers.new("x", "BOOLEAN"); m.operation = "INTERSECT"; m.object = b; m.solver = "EXACT"
+    bpy.context.view_layer.objects.active = a; bpy.ops.object.modifier_apply(modifier="x")
+    bpy.data.objects.remove(b, do_unlink=True)
+GY0 = D1 - 0.0020
+grip = slab("grip", _pts, GY0, D2, M_BACK, bevel=0)
+# outline(): corners (x0, y_front)->tl, tr, br, bl in its own plane; here the plane is x across, y depth,
+# so the "top" corners are the back ones
+intersect(grip, prism("grip_w", outline(x0 - 0.001, GY0 - 0.001, x1 + 0.001, D2, RG, RG, 0.0001, 0.0001, 16), "z", -0.01, LEDGE + 0.02))
+intersect(grip, prism("grip_d", outline(GY0 - 0.001, -0.01, D2, LEDGE + 0.02, 0.0001, 0.0001, RG, 0.0001, 16), "x", x0 - 0.01, x1 + 0.01))
+# the USB-C tab rises from the grip's top as part of the same piece
+tab = slab("tab", outline(UB0, LEDGE - 0.001, UB1, UTOP, 0.0006, 0.0006, 0, 0, 6), GY0, D2, M_BACK, bevel=0)
+m = grip.modifiers.new("tab", "BOOLEAN"); m.operation = "UNION"; m.object = tab; m.solver = "EXACT"
+bpy.context.view_layer.objects.active = grip; bpy.ops.object.modifier_apply(modifier="tab")
+bpy.data.objects.remove(tab, do_unlink=True)
 # shoulder buttons standing on the ledge, R1 R2 | USB-C | L2 L1 as seen from behind (Howard's close-up):
 # R1 0-23.6 %, R2 24-38.8 %, USB-C 39.4-58.6 %, L2 59-73.3 %, L1 73.8-100 % of the width; R1 and L1 reach
 # the edges, lower and with a rounded lip; R2 and L2 stand a little taller; names on top
@@ -309,9 +332,9 @@ for (a, b, lab, outer) in [(0.0, 0.236, "R1", True), (0.240, 0.388, "R2", False)
     ia = 0.0006 + (0.0012 if outer and sign < 0 else 0); ib = 0.0006 + (0.0012 if outer and sign > 0 else 0)
     # two tiers (IMG_8459): a thick lower block set back under the button, and a thin plate above it
     # that reaches a little further back, just under the button's body
-    slab("led_" + lab, outline(u0 + ia, LEDGE - 0.0001, u1 - ib, LEDGE + 0.0020, 0.0003, 0.0003, 0.0003, 0.0003, 3),
+    slab("led_" + lab, outline(u0 + ia, LEDGE - 0.0001, u1 - ib, LEDGE + 0.0012, 0.0003, 0.0003, 0.0003, 0.0003, 3),
          D1 + 0.0006, D2 - 0.0009, M_LED, bevel=0.0004, segs=3)
-    slab("led_plate_" + lab, outline(u0 + ia - 0.0004, LEDGE + 0.0020, u1 - ib + 0.0004, LEDGE + LED_H, 0.0003, 0.0003, 0.0003, 0.0003, 3),
+    slab("led_plate_" + lab, outline(u0 + ia - 0.0004, LEDGE + 0.0012, u1 - ib + 0.0004, LEDGE + LED_H, 0.0002, 0.0002, 0.0002, 0.0002, 3),
          D1 + 0.0006, D2 - 0.0004, M_LED, bevel=0.0003, segs=3)
 # USB-C, read in 3D from TrimUI's top view, its back-buttons close-up, photo 8 and Howard's notes: one
 # metal piece between R2 and L2, lower than the buttons, its back face grooved (the ribbed plate is the
