@@ -371,15 +371,16 @@ prism_z("port_tongue", outline(ucx - 0.0033, ucy - 0.00035, ucx + 0.0033, ucy + 
 # the name at 0.12, Torx screws at the corners, rounded grooves every 0.02 from 0.165, and an engraved
 # house-like outline in the middle: a roof 0.24 wide rising to 0.19, two posts down from 0.26
 # the name is cut into the grip (Howard: countersunk, not raised)
-t = text("BRICK HAMMER", 0, LEDGE - 0.09 * W, W * 0.052, M_ENGRAVE, D2, face="back", align="CENTER", depth=0.00016)
-t.data.font = bpy.data.fonts.load(font_file("Avenir-Heavy.ttf", "Bold")); t.data.space_character = 1.25
+# measured on IMG_8457: centred 0.10 W below the grip's top, 0.34 W wide, capitals 0.023 W tall
+t = text("BRICK HAMMER", 0, LEDGE - 0.10 * W, W * 0.045, M_ENGRAVE, D2, face="back", align="CENTER", depth=0.00016)
+t.data.font = bpy.data.fonts.load(font_file("Avenir-Medium.ttf", "Bold")); t.data.space_character = 1.3
 bpy.ops.object.select_all(action="DESELECT"); t.select_set(True); bpy.context.view_layer.objects.active = t
 bpy.ops.object.convert(target="MESH")
 cut(grip, t)
-RIB0, PITCH, RIB_END = LEDGE - 0.165 * W, 0.028 * W, 0.075 * W
+RIB0, PITCH, RIB_END = LEDGE - 0.140 * W, 0.028 * W, 0.075 * W   # first groove 0.14 W down (IMG_8457)
 z = RIB0; i = 0; grooves = []
 while z - 0.012 * W > RIB_END:
-    inset = 0.10 * W if i < 2 else 0.035 * W          # the top two grooves stop short of the holes
+    inset = 0.105 * W if i < 2 else 0.065 * W         # the top two grooves stop short of the holes
     r_ = 0.0025 * W
     grooves.append(slab(f"groove{i}", outline(x0 + inset, z - 0.005 * W, x1 - inset, z, r_, r_, r_, r_, 6),
                         D2 - 0.00022, D2 + 0.001, M_BACK, bevel=0))
@@ -402,19 +403,19 @@ def groove_line(name, pts, w_=0.00014, depth=0.00018):
     return parts
 # the diamond on the grip (IMG_8457): a six-sided outline, a fine line cut into the metal, about 0.23 W
 # wide and 0.25 W tall, its top at the first rib (Howard: a shape, not a sunken area)
-hx, apex = 0.113 * W, RIB0 - 0.009 * W   # not on a groove's edge: coplanar faces break the boolean
+hx, apex = 0.111 * W, LEDGE - 0.163 * W   # not on a groove's edge: coplanar faces break the boolean
 eave = apex - 0.062 * W; bot_eave = eave - 0.126 * W; bot_pt = bot_eave - 0.062 * W
 hexa = [(hx, eave), (hx, bot_eave), (0, bot_pt), (-hx, bot_eave), (-hx, eave), (0, apex), (hx, eave)]
 for part in groove_line("diamond", hexa, w_=0.00022, depth=0.00012):
     cut(grip, part)   # one at a time: joined, the overlapping corners confuse the boolean
 # Torx screws at the four corners of the panel
-for (sx, zc) in [(-1, LEDGE - 0.15 * W), (1, LEDGE - 0.15 * W), (-1, 0.06 * W), (1, 0.06 * W)]:
-    xc = sx * (W / 2 - 0.065 * W)
-    hole = cyl("hole", xc, zc, W * 0.035, D2 - 0.0045, D2 + 0.001, M_HOLE, bevel=0)
+for (sx, zc) in [(-1, LEDGE - 0.175 * W), (1, LEDGE - 0.175 * W), (-1, 0.06 * W), (1, 0.06 * W)]:
+    xc = sx * (W / 2 - 0.058 * W)        # IMG_8457: 0.175 W down, 0.058 W in from the side, 0.028 W across
+    hole = cyl("hole", xc, zc, W * 0.028, D2 - 0.0045, D2 + 0.001, M_HOLE, bevel=0)
     m = grip.modifiers.new("hole", "BOOLEAN"); m.operation = "DIFFERENCE"; m.object = hole; m.solver = "EXACT"
     bpy.context.view_layer.objects.active = grip; bpy.ops.object.modifier_apply(modifier="hole")
     bpy.data.objects.remove(hole, do_unlink=True)
-    cyl("hole_floor", xc, zc, W * 0.035, D2 - 0.0046, D2 - 0.0044, M_HOLE, bevel=0)
+    cyl("hole_floor", xc, zc, W * 0.028, D2 - 0.0046, D2 - 0.0044, M_HOLE, bevel=0)
     cyl("grip_screw", xc, zc, W * 0.024, D2 - 0.0044, D2 - 0.0039, M_PORT, bevel=0.0001)   # sunk deep, in shadow (IMG_8458)
 # upper back: two silver Phillips screws, the three-dot mark
 for u in (0.09, 0.91):
