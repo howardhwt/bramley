@@ -505,16 +505,6 @@ for v, mark in ((0.09, "+"), (0.195, "-")):
     side_pill(-1, v, H * 0.076, D1 * 0.42, M_FACE, out=0.0007, name="vol")
     t = text(mark, -W / 2 - 0.00075, fz(v), W * 0.04, M_ICON, D1 * 0.5, align="CENTER")
     t.rotation_euler = (math.radians(90), 0, math.radians(-90)); t.location = (-W / 2 - 0.00075, D1 * 0.5, fz(v))
-# "TRIMUI", the three-dot mark as three discs (no font needed), "BRICK", running up the right side
-YS = D1 + 0.0016  # on the grip's flat side, ahead of its rounded back edge
-for word, v in (("TRIMUI", 0.89), ("BRICK", 0.755)):
-    t = text(word, W / 2 + 0.00002, fz(v), W * 0.03, M_ENGRAVE, YS, align="CENTER")
-    t.rotation_euler = (math.radians(90), math.radians(-90), math.radians(90)); t.location = (W / 2 + 0.00002, YS, fz(v))
-for a in (0, 120, 240):
-    bpy.ops.mesh.primitive_cylinder_add(vertices=24, radius=W * 0.0035, depth=0.00004,
-        location=(W / 2 + 0.00002, YS + math.cos(math.radians(a)) * W * 0.0045, fz(0.822) + math.sin(math.radians(a)) * W * 0.0045),
-        rotation=(0, math.radians(90), 0))
-    bpy.context.object.data.materials.append(M_ENGRAVE)
 # bottom edge: card slot, USB-C, headphone jack
 # bottom edge, measured on the bottom view: card slot, reset, USB-C, light, headphones
 def bottom_hole(u, w_, h_, r):
@@ -553,6 +543,29 @@ for poly in me.polygons:
 for e in me.edges:
     f = edge_faces.get(e.key, [])
     if len(f) == 2 and f[0] != f[1]: e.use_edge_sharp = True
+
+# the side marking (Howard's photo 10, TrimUI's photo 12): "TRIMUI", the three-dot mark and "BRICK" cut
+# into the body's right side, centred in its depth, reading from the bottom up with the letters' tops
+# toward the front; it runs from 0.95 up to 0.72 of the height
+from mathutils import Matrix
+SIDE_ROT = Matrix(((0, 0, 1), (0, -1, 0), (1, 0, 0))).to_euler()   # text x -> up the side, text y -> front
+side_cuts = []
+def side_word(word, v_mid):
+    t = text(word, 0, 0, W * 0.038, M_BODY, 0, align="CENTER", depth=0.0004)
+    t.data.font = bpy.data.fonts.load(font_file("Avenir-Heavy.ttf", "Bold")); t.data.space_character = 1.1
+    t.data.align_y = "CENTER"
+    t.rotation_euler = SIDE_ROT; t.location = (W / 2 - 0.00015, D1 * 0.5, fz(v_mid))
+    bpy.ops.object.select_all(action="DESELECT"); t.select_set(True); bpy.context.view_layer.objects.active = t
+    bpy.ops.object.convert(target="MESH"); side_cuts.append(t)
+side_word("TRIMUI", 0.888)
+side_word("BRICK", 0.784)
+for a_ in (90, 210, 330):   # the three-dot mark between the words, pointing up the side
+    bpy.ops.mesh.primitive_cylinder_add(vertices=24, radius=W * 0.0042, depth=0.0006,
+        location=(W / 2, D1 * 0.5 - math.sin(math.radians(a_)) * W * 0.0052, fz(0.836) + math.cos(math.radians(a_)) * W * 0.0052),
+        rotation=(0, math.radians(90), 0))
+    side_cuts.append(bpy.context.object)
+for c_ in side_cuts:
+    cut(body, c_)
 
 # light, world and camera
 world = bpy.data.worlds.new("w"); scene.world = world; world.use_nodes = True
@@ -607,6 +620,7 @@ SHOTS = {
     "mine": (0.0, 0.36, 0.30),         # above and behind, as Howard's photo
     "photo6": (0.26, -0.30, -0.05),    # low at the front right, as TrimUI's close-up
     "rside": (0.48, 0.02, 0.05),       # the teal-key side, as photo 12
+    "sideclose": (0.15, -0.02, -0.07), # close on the side marking, as Howard's photo 10
     "lclose": (-0.20, -0.02, 0.12),    # close on the volume keys
     "usbclose": (0.02, 0.10, 0.16),    # close on the USB-C, from above and behind
     "back2": (0.0, 0.30, 0.062),
