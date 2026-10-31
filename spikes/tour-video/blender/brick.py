@@ -75,6 +75,7 @@ M_FACE = mat("facebutton", srgb("1e1e21"), rough=0.4)   # the face buttons: dark
 M_SHOULDER = mat("shoulder", srgb("0e0e10"), rough=0.7)   # matte black rubber, little sheen
 M_SHOULDER.node_tree.nodes["Principled BSDF"].inputs["Specular IOR Level"].default_value = 0.12
 M_FACE.node_tree.nodes["Principled BSDF"].inputs["Specular IOR Level"].default_value = 0.3
+M_PORT = mat("port", srgb("3a3b3f"), metal=1.0, rough=0.35)   # the port's steel lining, in shadow
 M_LABEL_BTN = mat("btnlabel", srgb("2a2a2e"), rough=0.45)
 M_SCREW = mat("screw", srgb("c4c5c8"), metal=1.0, rough=0.25)
 M_ETCH = mat("etch", srgb("8a8b90"), metal=1.0, rough=0.55)   # light, thin markings on the grip
@@ -191,7 +192,9 @@ LEDGE = fz(0.454)                      # the grip's top: the ledge
 PANEL_TOP = LEDGE
 BTN_H = H * 0.062                      # the shoulder buttons stand this high on the ledge
 LED_Y0, LED_Y1 = D2 - 0.0024, D2 - 0.0004   # frosted strips along the ledge's back edge
-slab("grip", outline(x0, 0, x1, LEDGE, 0.0025, 0.0025, R_BOT, R_BOT), D1 - 0.0005, D2, M_BACK, bevel=0.0038, segs=10, back_only=True)
+grip = slab("grip", outline(x0, 0, x1, LEDGE, 0.0025, 0.0025, R_BOT, R_BOT), D1 - 0.0005, D2, M_BACK, bevel=0.0038, segs=10, back_only=True)
+bpy.context.view_layer.objects.active = grip
+for mod in list(grip.modifiers): bpy.ops.object.modifier_apply(modifier=mod.name)   # baked, so the USB-C piece can join it
 # shoulder buttons standing on the ledge, R1 R2 | USB-C | L2 L1 as seen from behind (Howard's close-up):
 # R1 0-23.6 %, R2 24-38.8 %, USB-C 39.4-58.6 %, L2 59-73.3 %, L1 73.8-100 % of the width; R1 and L1 reach
 # the edges, lower and with a rounded lip; R2 and L2 stand a little taller; names on top
@@ -206,52 +209,70 @@ def prism_z(name, pts_xy, z0, z1, material):
     bm.normal_update(); bmesh.ops.recalc_face_normals(bm, faces=bm.faces); bm.to_mesh(me_); bm.free()
     o_ = bpy.data.objects.new(name, me_); scene.collection.objects.link(o_); o_.data.materials.append(material)
     return o_
-def shoulder(name, x0_, x1_, base, hb, material):
-    """A shoulder button: a hill across the depth, low at the front, rising to a rounded crest near the
-    back, then curving down over the back edge as a lip (TrimUI's back-buttons close-up, Howard's notes).
-    The profile is drawn in y (depth) and z (height) and extruded across x."""
-    y0, y1, lip = D1 + 0.0003, D2 - 0.0002, 0.0010
+def shoulder(name, x0_, x1_, base, h_in, h_out, outer_sign, material):
+    """A shoulder button, seen from behind (Howard's close-up, TrimUI's back-buttons close-up): R2 and L2
+    are blocks with a chamfered top; R1 and L1 rise in a curve toward the device's edge and round over
+    at the end. The profile is drawn across the width (x) and height (z) and run through the depth; the
+    top part then overhangs the back face as a lip."""
+    y0, y1, lip = D1 + 0.0003, D2 - 0.0002, 0.0009
     prof = []
-    for i in range(17):                                   # the slope up to the crest
-        t = i / 16; prof.append((y0 + (y1 - y0) * 0.78 * t, base + hb * (0.58 + 0.42 * math.sin(t * math.pi / 2))))
-    yc = y0 + (y1 - y0) * 0.78
-    for i in range(1, 13):                                # the rounded crest falling over the back
-        a = i / 12 * math.pi / 2
-        prof.append((yc + (y1 + lip - yc) * math.sin(a), base + hb * (0.58 + 0.42 * math.cos(a))))
-    prof += [(y1 + lip, base + hb * 0.40), (y1, base + hb * 0.40), (y1, base), (y0, base)]
+    if outer_sign == 0:                                   # R2 / L2: a block, chamfered along the top
+        c = 0.0007
+        prof = [(x0_, base), (x1_, base), (x1_, base + h_in - c), (x1_ - c, base + h_in), (x0_ + c, base + h_in), (x0_, base + h_in - c)]
+    else:
+        xi, xo = (x0_, x1_) if outer_sign > 0 else (x1_, x0_)   # inner and outer ends
+        r = (h_out - h_in) * 0.9 + 0.0012                        # the rounded end
+        prof.append((xi, base)); prof.append((xo, base))
+        for i in range(10):                                      # up the outer end, rounding over
+            a = i / 9 * math.pi / 2
+            prof.append((xo - outer_sign * r * (1 - math.cos(a)), base + (h_out - r) + r * math.sin(a)))
+        for i in range(1, 17):                                   # the top falls in a curve to the inner end
+            t = i / 16
+            x = (xo - outer_sign * r) + (xi - (xo - outer_sign * r)) * t
+            prof.append((x, base + h_in + (h_out - h_in) * (1 - t) ** 4))
+        prof.append((xi, base + h_in))
+        if outer_sign < 0: prof = prof[::-1]
     me_ = bpy.data.meshes.new(name); bm = bmesh.new()
-    L = [bm.verts.new((x0_, y, z)) for y, z in prof]; R = [bm.verts.new((x1_, y, z)) for y, z in prof]
-    bm.faces.new(L[::-1]); bm.faces.new(R)
+    F = [bm.verts.new((x, y0, z)) for x, z in prof]; B = [bm.verts.new((x, y1 + lip, z)) for x, z in prof]
+    bm.faces.new(F); bm.faces.new(B[::-1])
     for i in range(len(prof)):
-        j = (i + 1) % len(prof); bm.faces.new((L[i], L[j], R[j], R[i]))
+        j = (i + 1) % len(prof); bm.faces.new((F[i], F[j], B[j], B[i]))
     bm.normal_update(); bmesh.ops.recalc_face_normals(bm, faces=bm.faces); bm.to_mesh(me_); bm.free()
     o_ = bpy.data.objects.new(name, me_); scene.collection.objects.link(o_); o_.data.materials.append(material)
-    return o_, yc
-HB = H * 0.089                          # crest height above the ledge, from TrimUI's flat back view
+    # the lip: the lower part of the back steps in, so only the top overhangs
+    step = slab("step", outline(x0_ - 0.002, base - 0.001, x1_ + 0.002, base + h_in * 0.62, 0, 0, 0, 0, 1), y1, y1 + 0.003, material, bevel=0)
+    m = o_.modifiers.new("step", "BOOLEAN"); m.operation = "DIFFERENCE"; m.object = step; m.solver = "EXACT"
+    bpy.context.view_layer.objects.active = o_; bpy.ops.object.modifier_apply(modifier="step")
+    bpy.data.objects.remove(step, do_unlink=True)
+    return o_, (y0 + y1) / 2 + 0.0006
+HB = H * 0.089                          # the outer ends' height above the ledge, from TrimUI's flat back view
 for (a, b, lab, outer) in [(0.0, 0.236, "R1", True), (0.240, 0.388, "R2", False), (0.590, 0.733, "L2", False), (0.738, 1.0, "L1", True)]:
     u0, u1 = bu(b), bu(a)
-    hb = HB * (0.94 if outer else 1.0)
-    btn, yc = shoulder("shoulder_" + lab, u0, u1, LEDGE + LED_H, hb, M_SHOULDER)
-    # the name carved into the crest: the letters cut down into the top
-    t = text(lab, (u0 + u1) / 2, LEDGE + LED_H + hb - 0.00025, W * 0.06, M_SHOULDER, yc, align="CENTER", depth=0.0006)
+    sign = 0 if not outer else (1 if lab == "R1" else -1)
+    h_in = H * (0.072 if outer else 0.076)
+    btn, yc = shoulder("shoulder_" + lab, u0, u1, LEDGE + LED_H, h_in, HB, sign, M_SHOULDER)
+    # the name carved into the top, over its flatter inner part
+    lx = (u0 + u1) / 2 if not outer else ((u0 + u1) / 2 - sign * (u1 - u0) * 0.10)
+    top = h_in
+    if outer:  # the top's height at the label, on the curve toward the outer end
+        xo = u1 if sign > 0 else u0; r_ = (HB - h_in) * 0.9 + 0.0012; xs_ = xo - sign * r_; xi_ = u0 if sign > 0 else u1
+        tt = (lx - xs_) / (xi_ - xs_); top = h_in + (HB - h_in) * (1 - tt) ** 4
+    lz = LEDGE + LED_H + top - 0.00015
+    t = text(lab, lx, lz, W * 0.06, M_SHOULDER, yc, align="CENTER", depth=0.0003)
     t.data.font = bpy.data.fonts.load(font_file("Avenir-Medium.ttf", "SemiBold"))
-    t.rotation_euler = (0, 0, math.radians(180)); t.location = ((u0 + u1) / 2, yc, LEDGE + LED_H + hb - 0.00025)
+    t.rotation_euler = (0, 0, math.radians(180)); t.location = (lx, yc, lz)
     bpy.context.view_layer.objects.active = t; t.select_set(True); bpy.ops.object.convert(target="MESH")
     m = btn.modifiers.new("carve", "BOOLEAN"); m.operation = "DIFFERENCE"; m.object = t; m.solver = "EXACT"
-    m.material_mode = "TRANSFER"
     bpy.context.view_layer.objects.active = btn; bpy.ops.object.modifier_apply(modifier="carve")
     bpy.data.objects.remove(t, do_unlink=True)
-    if outer:  # R1 and L1: the outer end rounds off in plan, as in TrimUI's top view and close-up
+    if outer:  # R1 and L1: the outer end rounds off in plan too, as in TrimUI's top view
         r = W * 0.045; yb, yf = D2 + 0.0011, D1 + 0.0003
-        xs = (u0, u1)
-        pts = outline(xs[0], yf - 0.001, xs[1], yb, 0.0001, 0.0001, 0.0001, 0.0001, 2)
         rl_, rr_ = (r, 0.0001) if lab == "L1" else (0.0001, r)
-        pts = outline(xs[0], yf - 0.001, xs[1], yb, rl_, rr_, 0.0001, 0.0001, 12)
-        keep = prism_z("keep", pts, LEDGE - 0.001, LEDGE + HB * 1.5, M_SHOULDER)
+        keep = prism_z("keep", outline(u0, yf - 0.001, u1, yb, rl_, rr_, 0.0001, 0.0001, 12), LEDGE - 0.001, LEDGE + HB * 1.5, M_SHOULDER)
         m = btn.modifiers.new("round", "BOOLEAN"); m.operation = "INTERSECT"; m.object = keep; m.solver = "EXACT"
         bpy.context.view_layer.objects.active = btn; bpy.ops.object.modifier_apply(modifier="round")
         bpy.data.objects.remove(keep, do_unlink=True)
-    bv = btn.modifiers.new("bevel", "BEVEL"); bv.width = 0.0012 if outer else 0.0007; bv.segments = 6
+    bv = btn.modifiers.new("bevel", "BEVEL"); bv.width = 0.0005; bv.segments = 4
     bv.limit_method = "ANGLE"; bv.angle_limit = math.radians(50)
     for poly in btn.data.polygons: poly.use_smooth = True
     btn.modifiers.new("wn", "WEIGHTED_NORMAL")
@@ -268,8 +289,8 @@ def cut(target, cutter):
     bpy.context.view_layer.objects.active = target
     bpy.ops.object.modifier_apply(modifier=m.name)
     bpy.data.objects.remove(cutter, do_unlink=True)
-block = slab("usb_block", outline(UB0, LEDGE - 0.0002, UB1, UTOP, 0.0006, 0.0006, 0.0002, 0.0002, 6),
-             D1 + 0.0003, D2 + 0.0001, M_BODY, bevel=0)
+block = slab("usb_block", outline(UB0, LEDGE - 0.002, UB1, UTOP, 0.0006, 0.0006, 0, 0, 6),
+             D1 + 0.0003, D2, M_BACK, bevel=0)
 # grooves across its back face, from the grip's top up to just under the port
 for k in range(7):
     z = LEDGE + 0.00045 + k * 0.00052
@@ -278,9 +299,13 @@ for k in range(7):
 # the port: a rounded slot cut 3 mm down into the top; its walls take the steel of the cutter
 ucx, ucy = (UB0 + UB1) / 2, (D1 + D2) / 2 + 0.0004
 cut(block, prism_z("port", outline(ucx - 0.0044, ucy - 0.0013, ucx + 0.0044, ucy + 0.0013, 0.0013, 0.0013, 0.0013, 0.0013, 12),
-                   UTOP - 0.0030, UTOP + 0.001, M_SCREW))
-m = block.modifiers.new("bevel", "BEVEL"); m.width = 0.00025; m.segments = 3; m.limit_method = "ANGLE"; m.angle_limit = math.radians(40)
-for poly in block.data.polygons: poly.use_smooth = True
+                   UTOP - 0.0030, UTOP + 0.001, M_PORT))
+# the USB-C piece is part of the grip's housing: one solid, the grip's back running up into it
+m = grip.modifiers.new("join_usb", "BOOLEAN"); m.operation = "UNION"; m.object = block; m.solver = "EXACT"; m.material_mode = "TRANSFER"
+bpy.context.view_layer.objects.active = grip; bpy.ops.object.modifier_apply(modifier="join_usb")
+bpy.data.objects.remove(block, do_unlink=True)
+bpy.context.view_layer.objects.active = grip; grip.select_set(True)
+bpy.ops.object.shade_auto_smooth(angle=math.radians(35)); grip.select_set(False)
 prism_z("port_floor", outline(ucx - 0.0043, ucy - 0.0012, ucx + 0.0043, ucy + 0.0012, 0.0012, 0.0012, 0.0012, 0.0012, 12),
         UTOP - 0.0030, UTOP - 0.0028, M_HOLE)
 prism_z("port_tongue", outline(ucx - 0.0033, ucy - 0.00035, ucx + 0.0033, ucy + 0.00035, 0.0002, 0.0002, 0.0002, 0.0002, 4),
@@ -474,6 +499,7 @@ SHOTS = {
     "rside": (0.48, 0.02, 0.05),       # the teal-key side, as photo 12
     "lclose": (-0.20, -0.02, 0.12),    # close on the volume keys
     "usbclose": (0.02, 0.10, 0.16),    # close on the USB-C, from above and behind
+    "btnclose": (0.05, 0.22, 0.14),    # the shoulder row from behind and above, as Howard's close-up
 }
 if os.environ.get("BRICK_SAVE"):  # BRICK_SAVE=/path/brick.blend saves the scene to open in Blender, without rendering
     cam.location = SHOTS["front34"]; place_lights(cam.location)
