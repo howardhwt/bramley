@@ -285,7 +285,9 @@ def shoulder(name, x0_, x1_, base, h, outer_sign, material):
         wid = abs(x1_ - x0_)
         us = [i / 60 for i in range(61)]
         us = sorted(set(us + [0.005, 0.01, 0.02, 0.03]))
-        flare = lambda u: outer_sign * 0.0007 * max(0.0, 1 - u / 0.12) ** 2   # the tip flares out past the side
+        xo -= outer_sign * 0.0003      # the outer end stays just inside the device's side (Howard: no overhang)
+        wid = abs(xo - xi)
+        flare = lambda u: 0.0
         upper = [(xo - outer_sign * u * wid + flare(u), top - drop(u) * face) for u in us]
         lower = [(xo - outer_sign * u * wid + flare(u), top - tc - drop(u) * face) for u in us]
         prof = upper[::-1] + lower        # from the inner end along the top to the tip, back along the lip
