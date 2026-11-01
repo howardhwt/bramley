@@ -15,7 +15,7 @@ INK, SUB = (29, 29, 31), (110, 110, 115)
 
 # titles: shot -> list of (text, weight, size, colour), anchor ("left" | "right" | "bottom"), delay
 TITLES = {
-    "s02": ([("Bramley.", "Bold", 120, INK)], "right", 0.9),
+    "s02": ([("Bramley.", "Bold", 110, INK)], "right", 2.2),
     "s04": ([("Everything you play,", "Bold", 64, INK), ("in one place.", "Bold", 64, INK)], "left", 0.4),
     "s06": ([("Press A.", "Bold", 76, INK), ("You're in.", "Bold", 76, INK)], "right", 0.4),
     "s07": ([("Music that", "Bold", 72, INK), ("follows you.", "Bold", 72, INK),
@@ -27,8 +27,8 @@ TITLES = {
 
 def title_layer(lines, anchor):
     layer = Image.new("RGBA", (W, H), (0, 0, 0, 0)); d = ImageDraw.Draw(layer)
-    fonts = [F(w, int(px * u)) for _, w, px, _ in lines]
-    heights = [int(px * u * 1.18) for _, _, px, _ in lines]
+    fonts = [F(w, int(px * u * 1.4)) for _, w, px, _ in lines]   # larger, so the words read on a phone
+    heights = [int(px * u * 1.4 * 1.22) for _, _, px, _ in lines]
     total = sum(heights)
     if anchor == "right": x0, y = int(W * 0.56), (H - total) // 2
     elif anchor == "left": x0, y = int(W * 0.08), (H - total) // 2
@@ -55,7 +55,7 @@ for name in names:
         dev = Image.open(os.path.join(SHOTS, name, fn)).convert("RGBA")
         # the background: dark for the cold open, brightening to white as the screen wakes
         if name == "s01": b = 0.0
-        elif name == "s02": b = ease(min(1.0, t / 0.8))
+        elif name == "s02": b = ease(min(1.0, t / 1.6))   # brightens as the camera pulls back
         else: b = 1.0
         base = np.full((H, W, 3), bg_white * b + np.array([0, 0, 0], np.float32) * (1 - b), np.float32)
         frame = Image.fromarray(base.astype(np.uint8)).convert("RGBA")

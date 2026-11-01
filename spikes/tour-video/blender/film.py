@@ -33,9 +33,20 @@ cam.location = (-0.17, -0.42, 0.20); bpy.context.view_layer.update()
 for l in lights:
     mw = l.matrix_world.copy(); l.parent = cam; l.matrix_world = mw
 
+# dark grey, as Howard's: the anodised metal darker, and the studio lights softer so it never reads as silver
+def srgb(h):
+    c = [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+    return tuple((x / 12.92) if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c)
+for mname in ("anodised", "back"):
+    bsdf = bpy.data.materials[mname].node_tree.nodes["Principled BSDF"]
+    bsdf.inputs["Base Color"].default_value = (*srgb("4a4b50"), 1)
+for l in lights: l.data.energy *= 0.55
+# the screen's picture: sharp texture sampling, and the glass reflecting only a little
+for n_ in bpy.data.materials["screen"].node_tree.nodes:
+    if n_.type == "MATH": n_.inputs[1].default_value = 0.12
 # the screen's picture
 screen_mat = bpy.data.materials["screen"]
-tex = next(n for n in screen_mat.node_tree.nodes if n.type == "TEX_IMAGE")
+tex = next(n for n in screen_mat.node_tree.nodes if n.type == "TEX_IMAGE"); tex.interpolation = "Cubic"
 emit = next(n for n in screen_mat.node_tree.nodes if n.type == "EMISSION")
 black = bpy.data.images.new("black", 8, 6); black.pixels = [0, 0, 0, 1] * 48
 def show(kind, frames):
@@ -58,17 +69,17 @@ def show(kind, frames):
 
 # shots: (name, seconds, screen, camera from, camera to, look-at from, look-at to, turn from, turn to (degrees about z), screen glow ramp)
 T = lambda x, z: (x, 0.0, z)
-SHOTS = [
-    ("s01", 4.24, "black", (0.10, -0.40, 0.09), (0.05, -0.37, 0.07), C[:], C[:], 205, 150, None),
-    ("s02", 4.09, "splash", (-0.02, -0.43, 0.06), (-0.01, -0.41, 0.06), T(0.034, 0.058), T(0.034, 0.058), 22, 0, (0.2, 0.9)),
-    ("s03", 4.08, "s3", (0.0, -0.40, 0.07), (0.0, -0.25, 0.085), T(0.03, 0.062), T(0.0, SCREEN_Z), 0, -6, None),
-    ("s04", 3.80, "s4", (-0.16, -0.30, 0.11), (-0.12, -0.32, 0.10), T(-0.045, SCREEN_Z - 0.01), T(-0.045, SCREEN_Z - 0.01), 0, 0, None),
-    ("s05", 4.40, "s5", (0.10, -0.30, 0.04), (0.04, -0.30, 0.07), T(0.0, SCREEN_Z - 0.006), T(0.0, SCREEN_Z), 18, 4, None),
-    ("s06", 4.00, "s6", (0.0, -0.36, 0.055), (0.0, -0.33, 0.06), T(0.034, 0.06), T(0.034, 0.062), 0, 0, None),
-    ("s07", 4.10, "s7", (0.12, -0.35, 0.09), (0.08, -0.37, 0.08), T(-0.032, 0.06), T(-0.032, 0.06), 0, 0, None),
-    ("s08", 4.10, "s8", (-0.12, -0.27, 0.14), (-0.07, -0.29, 0.12), T(-0.045, 0.072), T(-0.045, 0.072), 0, 0, None),
-    ("s09", 8.10, "still:s3", (0.0, -0.42, 0.06), (0.0, -0.42, 0.06), C[:], C[:], 0, 180, None),
-    ("s10", 4.10, "still:s3", (0.0, -0.44, 0.06), (0.0, -0.52, 0.06), T(0.04, 0.055), T(0.045, 0.055), 180, 360, None),
+SHOTS = [   # opens on the front, as Apple's launch films do: the screen waking up close, then the reveal
+    ("s01", 4.24, "splash", (0.07, -0.10, 0.10), (-0.05, -0.11, 0.094), T(0.0, SCREEN_Z), T(0.0, SCREEN_Z), 0, 0, (0.8, 2.6)),
+    ("s02", 4.09, "still:s3", (0.0, -0.16, 0.083), (-0.01, -0.40, 0.06), T(0.0, SCREEN_Z), T(0.034, 0.058), 0, 0, None),
+    ("s03", 4.08, "s3", (0.0, -0.30, 0.08), (0.0, -0.17, 0.083), T(0.0, SCREEN_Z - 0.004), T(0.0, SCREEN_Z), 0, 0, None),
+    ("s04", 3.80, "s4", (-0.12, -0.24, 0.10), (-0.09, -0.25, 0.095), T(-0.04, SCREEN_Z - 0.006), T(-0.04, SCREEN_Z - 0.006), 0, 0, None),
+    ("s05", 4.40, "s5", (0.07, -0.20, 0.06), (0.03, -0.19, 0.08), T(0.0, SCREEN_Z - 0.004), T(0.0, SCREEN_Z), 12, 0, None),
+    ("s06", 4.00, "s6", (0.0, -0.26, 0.07), (0.0, -0.24, 0.072), T(0.032, SCREEN_Z - 0.006), T(0.032, SCREEN_Z - 0.006), 0, 0, None),
+    ("s07", 4.10, "s7", (0.10, -0.26, 0.09), (0.07, -0.27, 0.085), T(-0.032, SCREEN_Z - 0.006), T(-0.032, SCREEN_Z - 0.006), 0, 0, None),
+    ("s08", 4.10, "s8", (-0.10, -0.23, 0.12), (-0.06, -0.24, 0.11), T(-0.038, SCREEN_Z - 0.006), T(-0.038, SCREEN_Z - 0.006), 0, 0, None),
+    ("s09", 8.10, "still:s3", (0.11, 0.24, 0.12), (-0.11, 0.23, 0.11), (0.0, D2 / 2, 0.062), (0.0, D2 / 2, 0.058), 0, 0, None),
+    ("s10", 4.10, "still:s3", (0.0, -0.47, 0.06), (0.0, -0.43, 0.06), T(0.04, 0.055), T(0.04, 0.055), 28, 0, None),
 ]
 
 def ease(t):  # cubic in-out
@@ -83,10 +94,10 @@ def key_shot(sh):
         cam.location = Vector(c0).lerp(Vector(c1), k); cam.keyframe_insert("location", frame=f)
         target.location = Vector(t0).lerp(Vector(t1), k); target.keyframe_insert("location", frame=f)
         pivot.rotation_euler = (0, 0, math.radians(r0 + (r1 - r0) * k)); pivot.keyframe_insert("rotation_euler", frame=f)
-        s = 1.6
+        s = 2.0
         if glow:
             g = min(1.0, max(0.0, ((f - 1) / FPS - glow[0]) / (glow[1] - glow[0])))
-            s = 1.6 * g
+            s = 2.0 * g
         emit.inputs["Strength"].default_value = s; emit.inputs["Strength"].keyframe_insert("default_value", frame=f)
     show(scr, n)
     if scr not in ("black", "splash") and not scr.startswith("still:") and FPS == 60:
@@ -99,13 +110,15 @@ def clear_keys():
     screen_mat.node_tree.animation_data_clear()
 
 # render settings
-scene.render.engine = "BLENDER_EEVEE" if QUALITY == "draft" else "CYCLES"
-if QUALITY == "draft":
-    scene.eevee.taa_render_samples = 16
-    scene.render.resolution_x, scene.render.resolution_y = 960, 540
-else:
-    scene.cycles.samples = 64
-    scene.render.resolution_x, scene.render.resolution_y = 1920, 1080
+# Cycles always: Eevee rendered the dark grey metal as silver. 1080p even for drafts, so the screen reads
+scene.render.engine = "CYCLES"
+prefs = bpy.context.preferences.addons["cycles"].preferences
+prefs.compute_device_type = "METAL"; prefs.get_devices()
+for d in prefs.devices: d.use = True
+scene.cycles.device = "GPU"
+scene.cycles.samples = 12 if QUALITY == "draft" else 64
+scene.cycles.use_denoising = True
+scene.render.resolution_x, scene.render.resolution_y = 1920, 1080
 scene.render.fps = FPS
 scene.render.film_transparent = True
 scene.render.image_settings.file_format = "PNG"; scene.render.image_settings.color_mode = "RGBA"
@@ -116,6 +129,9 @@ for sh in SHOTS:
     clear_keys()
     n = key_shot(sh)
     os.makedirs(os.path.join(OUT, sh[0]), exist_ok=True)
+    if os.environ.get("FILM_STILLS"):   # one frame from the middle of each shot, to check the look quickly
+        scene.frame_set(n // 2); scene.render.filepath = os.path.join(OUT, sh[0] + ".png")
+        bpy.ops.render.render(write_still=True); continue
     scene.render.filepath = os.path.join(OUT, sh[0], "")
     bpy.ops.render.render(animation=True)
     print("rendered", sh[0], n, "frames")
