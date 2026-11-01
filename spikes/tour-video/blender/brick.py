@@ -74,6 +74,7 @@ def sparkle(m, lo=0.22, hi=0.50):
     nt.links.new(noise.outputs["Fac"], bump.inputs["Height"]); nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
 sparkle(M_BODY, 0.34, 0.58); sparkle(M_BACK, 0.34, 0.58)   # anodised: soft reflections
 M_FACE = mat("facebutton", srgb("1e1e21"), rough=0.4)   # the face buttons: dark grey, a soft sheen (photo 6)
+M_DISH = mat("dish", srgb("121214"), rough=0.5)
 M_SHOULDER = mat("shoulder", srgb("0e0e10"), rough=0.7)   # matte black rubber, little sheen
 M_SHOULDER.node_tree.nodes["Principled BSDF"].inputs["Specular IOR Level"].default_value = 0.12
 M_FACE.node_tree.nodes["Principled BSDF"].inputs["Specular IOR Level"].default_value = 0.3
@@ -466,13 +467,55 @@ disp = bpy.data.objects.new("display", me); scene.collection.objects.link(disp);
 
 # d-pad: a cross, raised, in a shallow dark well
 cx, cz = fx(0.222), fz(0.653); arm, th = W * 0.135, W * 0.046
-slab("dpad_well", outline(cx - arm - 0.0008, cz - th - 0.0008, cx + arm + 0.0008, cz + th + 0.0008, 0.0012, 0.0012, 0.0012, 0.0012, 4),
-     -0.00005, 0.0003, M_HOLE, bevel=0.0002, segs=1)
-slab("dpad_h", outline(cx - arm, cz - th, cx + arm, cz + th, 0.0009, 0.0009, 0.0009, 0.0009, 4), -0.0016, 0.0002, M_FACE, bevel=0.0004)
-slab("dpad_v", outline(cx - th, cz - arm, cx + th, cz + arm, 0.0009, 0.0009, 0.0009, 0.0009, 4), -0.0016, 0.0002, M_FACE, bevel=0.0004)
-for a in (90, 210, 330):  # the three-dot mark in the middle
-    cyl("dot", cx + math.cos(math.radians(a)) * W * 0.014, cz + math.sin(math.radians(a)) * W * 0.014, W * 0.011,
-        -0.00168, -0.00158, M_LETTER, bevel=0.00003)
+def rounded_poly(corners, radii, seg=10):
+    """A polygon with each corner replaced by an arc tangent to its two edges (convex or concave)."""
+    pts, n = [], len(corners)
+    for i in range(n):
+        p0, p1, p2 = Vector(corners[i - 1]), Vector(corners[i]), Vector(corners[(i + 1) % n])
+        a, b = (p0 - p1).normalized(), (p2 - p1).normalized()
+        half = math.acos(max(-1.0, min(1.0, a.dot(b)))) / 2
+        r = radii[i]; d = r / math.tan(half)
+        t0, t1 = p1 + a * d, p1 + b * d
+        c = p1 + (a + b).normalized() * (r / math.sin(half))
+        a0, a1 = math.atan2(t0.y - c.y, t0.x - c.x), math.atan2(t1.y - c.y, t1.x - c.x)
+        da = (a1 - a0 + math.pi) % (2 * math.pi) - math.pi
+        for k in range(seg + 1):
+            ang = a0 + da * k / seg
+            pts.append((c.x + r * math.cos(ang), c.y + r * math.sin(ang)))
+    return pts
+# one piece, as on the device: a cross with rounded outer corners and filleted inner corners (TrimUI's
+# close-up), its top rounded over; in the middle a shallow round dish with the three-dot mark sunk in it
+a_, t_ = arm, th
+cross = [(t_, a_), (-t_, a_), (-t_, t_), (-a_, t_), (-a_, -t_), (-t_, -t_), (-t_, -a_), (t_, -a_), (t_, -t_), (a_, -t_), (a_, t_), (t_, t_)]
+rad = [0.0011, 0.0011, 0.0006, 0.0011, 0.0011, 0.0006, 0.0011, 0.0011, 0.0006, 0.0011, 0.0011, 0.0006]
+dp = slab("dpad", [(cx + x, cz + z) for x, z in rounded_poly(cross, rad)], -0.0016, 0.0002, M_FACE, bevel=0)
+# the dark gap around it follows the cross's own outline
+g_ = 0.0005
+gap = [(x + (g_ if x > 0 else -g_) * (abs(x) > t_ - 1e-9), z + (g_ if z > 0 else -g_) * (abs(z) > t_ - 1e-9)) for x, z in cross]
+slab("dpad_well", [(cx + x, cz + z) for x, z in rounded_poly(gap, [r_ + 0.0004 if r_ > 0.001 else 0.0004 for r_ in rad])],
+     -0.00005, 0.0003, M_HOLE, bevel=0)
+dw = dp.data.attributes.new("bevel_weight_edge", "FLOAT", "EDGE")
+for e in dp.data.edges:
+    v0, v1 = dp.data.vertices[e.vertices[0]].co, dp.data.vertices[e.vertices[1]].co
+    if v0.y < -0.00159 and v1.y < -0.00159: dw.data[e.index].value = 1.0
+db = dp.modifiers.new("round", "BEVEL"); db.width = 0.0005; db.segments = 6; db.limit_method = "WEIGHT"; db.use_clamp_overlap = False
+bpy.context.view_layer.objects.active = dp; bpy.ops.object.modifier_apply(modifier="round")
+rr, depth = t_ * 0.9, 0.00035                       # the dish: 0.8 of the arm's width across, 0.25 mm deep
+R = (rr * rr + depth * depth) / (2 * depth); yb = -0.0016 + depth
+# a crisp round recess with a dark floor (TrimUI's front view), not a soft dish
+bpy.ops.mesh.primitive_cylinder_add(vertices=96, radius=rr, depth=0.001, location=(cx, -0.0016 - 0.0005 + depth, cz), rotation=(math.radians(90), 0, 0))
+bpy.context.object.data.materials.append(M_DISH); cut(dp, bpy.context.object)
+for a in (90, 210, 330):   # the mark: three small circles, one above two, sunk 0.12 mm into the dish
+    bpy.ops.mesh.primitive_cylinder_add(vertices=40, radius=0.00072, depth=0.0006,
+        location=(cx + math.cos(math.radians(a)) * 0.00125, -0.0016 + depth - 0.00038, cz + math.sin(math.radians(a)) * 0.00125),
+        rotation=(math.radians(90), 0, 0))
+    bpy.context.object.data.materials.append(M_FACE)   # raised dots: they stand up from the recess floor
+    dot_ = bpy.context.object
+    m_ = dp.modifiers.new("dot", "BOOLEAN"); m_.operation = "UNION"; m_.object = dot_; m_.solver = "EXACT"
+    bpy.context.view_layer.objects.active = dp; bpy.ops.object.modifier_apply(modifier="dot")
+    bpy.data.objects.remove(dot_, do_unlink=True)
+bpy.ops.object.select_all(action="DESELECT"); dp.select_set(True); bpy.context.view_layer.objects.active = dp
+bpy.ops.object.shade_auto_smooth(angle=math.radians(40)); bpy.ops.object.select_all(action="DESELECT")
 # face buttons with their letters
 for l, u, v in [("X", 0.778, 0.586), ("Y", 0.675, 0.654), ("A", 0.876, 0.654), ("B", 0.778, 0.722)]:
     cyl("btn_" + l, fx(u), fz(v), W * 0.05, -0.0013, 0.0002, M_FACE, bevel=0.0004)
@@ -648,6 +691,7 @@ SHOTS = {
     "cornerfront": (-0.12, -0.12, -0.08), # the front's bottom corner
     "sideflat": (0.20, D1 * 0.6, 0.02),   # straight at the right side, low # close on the side marking, as Howard's photo 10
     "lclose": (-0.20, -0.02, 0.12),    # close on the volume keys
+    "dpadclose": (-0.05, -0.12, 0.10),  # close on the d-pad, as TrimUI's close-up
     "usbclose": (0.02, 0.10, 0.16),    # close on the USB-C, from above and behind
     "back2": (0.0, 0.30, 0.062),
     "p8459": (0.10, 0.22, 0.055),      # behind and to the teal-key side, as IMG_8459
