@@ -95,7 +95,8 @@ def screen_mat():
         tex = n.new("ShaderNodeTexImage"); tex.image = bpy.data.images.load(SCREEN_IMG)
         tex.extension = "EXTEND"
         nt.links.new(tex.outputs["Color"], emit.inputs["Color"])
-    nt.links.new(fres.outputs[0], mix.inputs[0]); nt.links.new(emit.outputs[0], mix.inputs[1])
+    dim = n.new("ShaderNodeMath"); dim.operation = "MULTIPLY"; dim.inputs[1].default_value = 0.35   # the glass reflects softly
+    nt.links.new(fres.outputs[0], dim.inputs[0]); nt.links.new(dim.outputs[0], mix.inputs[0]); nt.links.new(emit.outputs[0], mix.inputs[1])
     nt.links.new(gloss.outputs[0], mix.inputs[2]); nt.links.new(mix.outputs[0], out.inputs[0])
     return m
 M_SCREEN = screen_mat()
