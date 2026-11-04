@@ -33,6 +33,7 @@ TITLES = {
     "s07": ([("Music that", "Bold", 72, INK), ("follows you.", "Bold", 72, INK),
              ("SELECT opens Now Playing from anywhere.", "SemiBold", 28, SUB)], "left", 0.3),
     "s08": ([("Every detail,", "Bold", 64, INK), ("considered.", "Bold", 64, INK)], "left", 0.3),
+    "s09": ([("Made for the", "Bold", 64, INK), ("Brick Hammer.", "Bold", 64, INK)], "left", 1.0),
     "s10": ([("Bramley", "Bold", 96, INK), ("For TrimUI Brick and Brick Hammer.", "SemiBold", 32, SUB),
              ("github.com/howardhwt/bramley", "SemiBold", 28, LINK)], "right", 0.15),
 }

@@ -101,7 +101,9 @@ SHOTS = [   # opens on the front, as Apple's launch films do: the screen waking 
     ("s07", 4.10, "s7@45-126", (0.10, -0.26, 0.09), (0.07, -0.27, 0.085), T(-0.052, SCREEN_Z - 0.006), T(-0.052, SCREEN_Z - 0.006), 0, 0, None),
     ("s08", 4.10, "s8", (-0.10, -0.23, 0.12), (-0.06, -0.24, 0.11), T(-0.038, SCREEN_Z - 0.006), T(-0.038, SCREEN_Z - 0.006), 0, 0, None),
     # the back: the sweep passes closest at its middle, so it sits far enough back to keep headroom there
-    ("s09", 8.10, "still:s3", (0.17, 0.35, 0.11), (-0.17, 0.34, 0.10), (0.0, D2 / 2, 0.056), (0.0, D2 / 2, 0.054), 0, 0, None),
+    # seen from behind, +x is frame left: the whole sweep shifts 4.5 cm that way so the device sits right of
+    # centre and "Made for the Brick Hammer." has the left side
+    ("s09", 8.10, "still:s3", (0.215, 0.35, 0.11), (-0.125, 0.34, 0.10), (0.045, D2 / 2, 0.056), (0.045, D2 / 2, 0.054), 0, 0, None),
     ("s10", 4.10, "still:s3", (0.0, -0.35, 0.06), (0.0, -0.33, 0.06), T(0.046, 0.056), T(0.046, 0.056), 20, 0, None),
 ]
 # shots whose move finishes early and then holds, so their titles land on a still device
