@@ -4,6 +4,7 @@
 #define BRAMLEY_CLOCK_H
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <time.h>
 
 #ifdef __cplusplus
@@ -15,6 +16,13 @@ extern "C" {
 #endif
 
 static inline void bramley_clock(const struct tm* tm, char* out, size_t size, int suffix) {
+	// BRAMLEY_DEBUG_CLOCK=9:41 shows that time everywhere, so screen recordings for screenshots and the
+	// launch film agree. Desktop and recording use only; nothing sets it on the device.
+	const char* fixed = getenv("BRAMLEY_DEBUG_CLOCK");
+	if (fixed && *fixed) {
+		snprintf(out, size, "%s", fixed);
+		return;
+	}
 	if (CFG_getClock24H()) {
 		snprintf(out, size, "%02d:%02d", tm->tm_hour, tm->tm_min);
 		return;

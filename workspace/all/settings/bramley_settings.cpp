@@ -1526,6 +1526,7 @@ bool bramley_settings_overlay(const std::string &message, int mode)
 	return true;
 }
 
+static void (*frame_hook)(void);
 int bramley_settings_frame(MenuList *root, SDL_Surface *screen, const SDL_Rect &list, const SDL_Rect &title)
 {
 	static bool debugging;
@@ -1560,6 +1561,8 @@ int bramley_settings_frame(MenuList *root, SDL_Surface *screen, const SDL_Rect &
 		shots_wanted--;
 		save_shot();
 	}
+	if (frame_hook)
+		frame_hook();
 	lgfx_end_frame();
 	if (frames < 2)
 		LOG_info("bramley_settings: frame %d drawn in %.0f ms, at %.0f ms\n", frames, since_start() - t0, since_start());
@@ -1646,6 +1649,9 @@ bool bramley_is_level(const std::vector<std::string> &labels)
 }
 
 void (*bramley_host_tick_fn)(void);
+// Bramley: called after each Settings frame is drawn, before it is shown. The launcher sets it while
+// a screen recording runs (LAUNCHER_RECORD), so recordings go on inside Settings. Unused otherwise.
+extern "C" void bramley_set_frame_hook(void (*fn)(void)) { frame_hook = fn; }
 
 void bramley_host_tick()
 {
