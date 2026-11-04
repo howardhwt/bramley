@@ -799,14 +799,17 @@ static void draw_status(void) {
 
 
 ///////////////////////////////////////
-// Library: a grid of covers. Game covers for one console are 3:4; the Music app uses the same
-// grid with square album covers.
+// Library: a grid of square tiles, as iOS draws app icons, with the name under every tile. Games
+// for one console and the Music app's albums share it (design: docs/plans/library-tiles-and-demo-game.md).
+// Bramley: square tiles replace the 3:4 box-art covers (2026-11-03).
 
 #define LIB_COLS 5
 #define COVER_W 150.0f
 #define COVER_GAP 40.0f
 #define LIB_TOP 132.0f
 #define LIB_LINE (lib.cover_h + 64.0f)
+#define TILE_RADIUS 34.0f   // about 22 percent of the tile, like an iOS icon; Home keeps ICON_RADIUS
+#define TILE_FADE 0.15      // seconds for a tile's art (or its no-art look) to fade in over the placeholder
 #define LAST_FOCUS_PATH "/tmp/launcher_last"
 
 static struct {
@@ -826,6 +829,8 @@ static struct {
 	LTex* letter;
 	double letter_until;
 	float cover_h;
+	LTex* symbol;     // the white symbol on tiles without art: the console's, the collection's or Music's
+	double* shown;    // when each tile's art, or its no-art look, was ready; 0 while it loads
 	int music, books; // the Music app, showing albums or audiobooks
 	int collection;   // a collection: the player's own order, so no A to Z
 } lib = { .caption_for = -1 };
@@ -847,6 +852,8 @@ static void close_library(void) {
 	ltex_free(lib.caption);
 	ltex_free(lib.hints);
 	ltex_free(lib.letter);
+	ltex_free(lib.symbol);
+	free(lib.shown);
 	memset(&lib, 0, sizeof(lib));
 	lib.caption_for = -1;
 	shine_t = 1.0f;
@@ -863,11 +870,13 @@ static void open_library(Card* console, int focus) {
 		return;
 	}
 	lib.open = 1;
-	lib.cover_h = 200.0f;
+	lib.cover_h = COVER_W;
 	lib.collection = collection;
 	lib.console = console;
+	lib.symbol = widget_symbol(console, 128);
 	lib.focus = focus >= 0 && focus < lib.count ? focus : 0;
 	lib.scale = calloc(lib.count, sizeof(Spring));
+	lib.shown = calloc(lib.count, sizeof(double));
 	for (int i = 0; i < lib.count; i++) lib.scale[i].x = 1.0f;
 	lib.caption_for = -1;
 	lib.header = ltex_text(LFONT_HERO, console->name, 640);
@@ -909,8 +918,10 @@ static void open_music(int books) {
 	lib.music = 1;
 	lib.books = books;
 	lib.cover_h = COVER_W;
+	lib.symbol = ltex_load(BRAMLEY_RES_DIR "/brand/consoles/sym-music-128.png", 0);
 	lib.focus = 0;
 	lib.scale = calloc(n > 0 ? n : 1, sizeof(Spring));
+	lib.shown = calloc(n > 0 ? n : 1, sizeof(double));
 	for (int i = 0; i < n; i++) lib.scale[i].x = 1.0f;
 	lib.caption_for = -1;
 	lib.header = ltex_text(LFONT_HERO, books ? "Audiobooks" : "Music", 640);
@@ -964,7 +975,7 @@ static void lib_move(int dx, int dy) {
 static float lib_scroll_target(void) {
 	float line_top = LIB_TOP + (lib.focus / LIB_COLS) * LIB_LINE;
 	if (line_top - lib.scroll_goal < LIB_TOP) lib.scroll_goal = line_top - LIB_TOP;
-	if (line_top + lib.cover_h + 56 - lib.scroll_goal > SCREEN_H) lib.scroll_goal = line_top + lib.cover_h + 56 - SCREEN_H;
+	if (line_top + lib.cover_h + 48 - lib.scroll_goal > SCREEN_H) lib.scroll_goal = line_top + lib.cover_h + 48 - SCREEN_H;
 	if (lib.scroll_goal < 0) lib.scroll_goal = 0;
 	return lib.scroll_goal;
 }
@@ -980,17 +991,14 @@ static int lib_update_caption(void) {
 		return 1;
 	}
 	Card* game = &lib.games[lib.focus];
+	lib.caption = NULL; // the name is under every tile; the artist stays on the album page
 	if (lib.music) {
-		char text[300];
-		snprintf(text, sizeof(text), "%s%s%s", game->name, game->tag[0] ? "  ·  " : "", game->tag);
-		lib.caption = ltex_text(LFONT_LABEL, text, (int)(COVER_W + COVER_GAP) * 3);
 		lib.hints = ltex_text(LFONT_SMALL, lib.books ? "A  Resume     L1 R1  Music     SELECT  Now Playing     B  Back"
 		                                             : "A  Open     L1 R1  Audiobooks     SELECT  Now Playing     B  Back", 0);
 		shine_t = 0.0f;
 		return 1;
 	}
 	if (game->kind == CARD_GAME) ldata_check_resume(game);
-	lib.caption = ltex_text(LFONT_LABEL, game->name, (int)(COVER_W + COVER_GAP) * 2);
 	const char* hints = game->can_resume ? (lib.collection ? "A  Play     X  Resume save     B  Back"
 	                                                       : "A  Play     X  Resume save     L1 R1  A-Z     B  Back")
 	                                     : (lib.collection ? "A  Play     B  Back" : "A  Play     L1 R1  A-Z     B  Back");
@@ -1011,13 +1019,17 @@ static int lib_load_next(void) {
 			const char* cover = lmusic_cover(game->index);
 			if (cover) snprintf(game->art_path, sizeof(game->art_path), "%s", cover);
 		}
-		if (!game->art_tried && game->art_path[0]) {
-			game->art = ltex_load(game->art_path, game->art_is_pixel);
+		if (lib.music && !game->art_tried && !game->art_path[0]) {
+			// no cover yet: show the album's colour, and keep asking, as the daemon may answer later
+			if (!lib.shown[i]) lib.shown[i] = SDL_GetTicks() / 1000.0;
+		} else if (!game->art_tried) {
+			if (game->art_path[0]) game->art = ltex_load(game->art_path, game->art_is_pixel);
 			game->art_tried = 1;
-			return 1;
+			lib.shown[i] = SDL_GetTicks() / 1000.0;
+			if (game->art_path[0]) return 1;
 		}
-		if (!game->art && !game->label) {
-			game->label = ltex_text_wrapped(LFONT_LABEL, game->name, (int)COVER_W - 24, 3, 1);
+		if (!game->label) {
+			game->label = ltex_text(LFONT_LABEL, game->name, (int)(COVER_W + 12));
 			return 1;
 		}
 	}
@@ -1034,20 +1046,30 @@ static void draw_cover(int i, float alpha) {
 	y0 += (1.0f - lib.fade.x) * 30;
 	float w = COVER_W * s, h = lib.cover_h * s;
 	float cx = x0 + COVER_W * 0.5f, cy = y0 + lib.cover_h * 0.5f - lift * 8;
-	float x = cx - w * 0.5f, y = cy - h * 0.5f, radius = 14 * s;
+	float x = cx - w * 0.5f, y = cy - h * 0.5f, radius = TILE_RADIUS * s;
 
 	lgfx_draw_shadow(x, y, w, h, lift * 12, (0.45f + lift * 0.4f) * alpha);
-	if (game->art) {
-		lgfx_draw_tex(game->art, x, y, w, h, radius, alpha);
-	} else {
+	// while the art loads: a neutral glass square, then the art or the no-art look fades in over it
+	float k = lib.shown[i] > 0 ? fminf(1.0f, (float)((SDL_GetTicks() / 1000.0 - lib.shown[i]) / TILE_FADE)) : 0.0f;
+	if (k < 1.0f) lgfx_draw_fill(x, y, w, h, radius, 0.55f, 0.56f, 0.6f, 0.28f * alpha);
+	if (k > 0.0f && game->art) {
+		lgfx_draw_art(game->art, x, y, w, h, radius, alpha * k);
+	} else if (k > 0.0f) {
+		// no art: the game's own colour and the console's white symbol, as on the Home tiles
 		float top[4], bottom[4];
 		card_colors(game, top, bottom);
-		top[3] = bottom[3] = alpha;
+		top[3] = bottom[3] = alpha * k;
 		lgfx_draw_gradient(x, y, w, h, radius, top, bottom);
-		if (game->label) {
-			float lw = game->label->w * s, lh = game->label->h * s;
-			lgfx_draw_tex(game->label, cx - lw * 0.5f, cy - lh * 0.5f, lw, lh, 0, alpha);
+		if (lib.symbol) {
+			float sz = w * 0.4f, q = sz / fmaxf(lib.symbol->w, lib.symbol->h);
+			lgfx_draw_tex(lib.symbol, cx - lib.symbol->w * q * 0.5f, cy - lib.symbol->h * q * 0.5f, lib.symbol->w * q,
+			              lib.symbol->h * q, 0, alpha * k);
 		}
+	}
+	// the name under every tile, moving with the tile's lift
+	if (game->label) {
+		float lw = game->label->w, lh = game->label->h;
+		lgfx_draw_tex(game->label, cx - lw * 0.5f, y + h + 8, lw, lh, 0, alpha);
 	}
 	if (i == lib.focus && shine_t < 1.0f) lgfx_draw_shine(x, y, w, h, radius, shine_t);
 }
@@ -1060,15 +1082,6 @@ static void draw_library(void) {
 	for (int i = 0; i < lib.count; i++)
 		if (i != lib.focus) draw_cover(i, a);
 	if (lib.count) draw_cover(lib.focus, a);
-
-	if (lib.caption && lib.count) {
-		float x, y;
-		cover_pos(lib.focus, &x, &y);
-		float cx = x + COVER_W * 0.5f - lib.caption->w * 0.5f;
-		cx = fmaxf(MARGIN_X, fminf(cx, SCREEN_W - MARGIN_X - lib.caption->w));
-		float cy = y + lib.cover_h * FOCUS_SCALE + 2 + (1.0f - a) * 30;
-		if (cy + lib.caption->h < SCREEN_H) lgfx_draw_tex(lib.caption, cx, cy, lib.caption->w, lib.caption->h, 0, a);
-	}
 
 	// Header over the grid, on a soft band so covers scrolling under it stay out of the way.
 	const float band_top[4] = { 0, 0, 0, 0.55f }, band_bottom[4] = { 0, 0, 0, 0 };
@@ -2399,6 +2412,9 @@ int main(int argc, char* argv[]) {
 			}
 			if (lib.letter && SDL_GetTicks() / 1000.0 < lib.letter_until + 0.1) animating = 1;
 			animating |= lib_load_next();
+			double now = SDL_GetTicks() / 1000.0;   // tiles still fading in keep the frame moving
+			for (int i = 0; i < lib.count && !animating; i++)
+				if (lib.shown[i] > 0 && now - lib.shown[i] < TILE_FADE + 0.05) animating = 1;
 		} else if (row_count > 0) {
 			animating |= update_shelf();
 			for (int r = 0; r < row_count; r++) {
