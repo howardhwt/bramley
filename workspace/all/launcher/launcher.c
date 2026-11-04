@@ -250,7 +250,6 @@ static void hsv_to_rgb(float h, float s, float v, float* r, float* g, float* b) 
 // Settings lives in the launcher (../settings): it opens as a screen of its own and returns here
 // when closed, instead of starting a separate program, which took most of a second each way.
 int bramley_open_settings(SDL_Surface* screen, void (*tick)(void));
-void bramley_set_frame_hook(void (*fn)(void)); // Bramley: records Settings frames too while LAUNCHER_RECORD runs
 void bramley_close_settings(int keep_place);
 int bramley_settings_typing(void);
 static SDL_Surface* screen;
@@ -1301,10 +1300,8 @@ static void settings_tick(void) {
 	}
 }
 
-static void debug_record(void);
 static void open_settings(void) {
 	settings_wants_music = 0;
-	if (getenv("LAUNCHER_RECORD")) bramley_set_frame_hook(debug_record);
 	bramley_open_settings(screen, settings_tick);
 	// the wallpaper may have been changed, and the clock has moved on
 	ltex_free(wallpaper);
