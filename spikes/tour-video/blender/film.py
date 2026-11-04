@@ -41,6 +41,13 @@ for mname in ("anodised", "back"):
     bsdf = bpy.data.materials[mname].node_tree.nodes["Principled BSDF"]
     bsdf.inputs["Base Color"].default_value = (*srgb("4a4b50"), 1)
 for l in lights: l.data.energy *= 0.55
+# FILM_RIM=1 (default): a soft light behind the device, facing the camera, so the dark metal's outline
+# separates from a black background. It travels with the camera like the others.
+if os.environ.get("FILM_RIM", "1") == "1":
+    rim = bpy.data.lights.new("rim", "AREA"); rim.shape = "DISK"; rim.size = float(os.environ.get("FILM_RIM_SIZE", "0.8"))
+    rim.energy = float(os.environ.get("FILM_RIM_W", "150")); rim.color = (0.92, 0.95, 1.0)
+    rim_ob = bpy.data.objects.new("rim", rim); scene.collection.objects.link(rim_ob)
+    rim_ob.parent = cam; rim_ob.location = (0.0, 0.22, -0.75); rim_ob.rotation_euler = (math.radians(200), 0, 0)
 # the screen's picture: sharp texture sampling, and the glass reflecting only a little
 for n_ in bpy.data.materials["screen"].node_tree.nodes:
     if n_.type == "MATH": n_.inputs[1].default_value = 0.12
@@ -144,6 +151,28 @@ scene.cycles.use_denoising = True
 scene.render.resolution_x, scene.render.resolution_y = 1920, 1080
 scene.render.fps = FPS
 scene.render.film_transparent = True
+# FILM_STAGE=black (default; "none" renders on transparency): a real stage instead of a flat colour added later. The device stands on a wide,
+# near-black floor with a soft sheen, under a black sky, so its contact shadow, its reflection and the
+# rim light are all rendered. Titles are still added by film_compose.py.
+if os.environ.get("FILM_STAGE", "black") == "black":
+    scene.render.film_transparent = False
+    w = scene.world or bpy.data.worlds.new("world"); scene.world = w; w.use_nodes = True
+    bg = w.node_tree.nodes.get("Background"); bg.inputs["Color"].default_value = (0, 0, 0, 1); bg.inputs["Strength"].default_value = 0
+    bpy.ops.mesh.primitive_plane_add(size=6, location=(0, D2 / 2, -0.0002))
+    floor = bpy.context.active_object; floor.name = "stage"
+    fm = bpy.data.materials.new("stage"); fm.use_nodes = True
+    fb = fm.node_tree.nodes["Principled BSDF"]
+    fb.inputs["Base Color"].default_value = (0.004, 0.004, 0.005, 1)
+    fb.inputs["Roughness"].default_value = float(os.environ.get("FILM_STAGE_ROUGH", "0.3"))
+    fb.inputs["Specular IOR Level"].default_value = float(os.environ.get("FILM_STAGE_SPEC", "0.5"))
+    floor.data.materials.append(fm)
+    # light linking: the studio lights light the device only, so the floor stays black and shows just
+    # the device's reflection and the shade under it, instead of blowing out under lights this close
+    lit = bpy.data.collections.new("lit"); scene.collection.children.link(lit)
+    for o in scene.objects:
+        if o.type not in ("CAMERA", "LIGHT") and o.name not in ("stage", "target", "pivot"): lit.objects.link(o)
+    for l in [o for o in scene.objects if o.type == "LIGHT"]:
+        l.light_linking.receiver_collection = lit
 scene.render.image_settings.file_format = "PNG"; scene.render.image_settings.color_mode = "RGBA"
 cam.data.lens = 50
 

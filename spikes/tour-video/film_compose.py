@@ -16,7 +16,11 @@ names = sorted(d for d in os.listdir(SHOTS) if os.path.isdir(os.path.join(SHOTS,
 first = sorted(f for f in os.listdir(os.path.join(SHOTS, names[0])) if f.endswith(".png"))[0]
 W, H = Image.open(os.path.join(SHOTS, names[0], first)).size
 u = W / 1920                                    # sizes below are for 1920 x 1080
-INK, SUB = (29, 29, 31), (110, 110, 115)
+# FILM_THEME=dark (default): white titles on black, as in the cold open, for every shot.
+# FILM_THEME=light: dark grey titles on Apple's off-white, the earlier look.
+DARK = os.environ.get("FILM_THEME", "dark") == "dark"
+INK, SUB, LINK = ((245, 245, 247), (161, 161, 166), (41, 151, 255)) if DARK else ((29, 29, 31), (110, 110, 115), (0, 113, 227))
+BG = (0, 0, 0) if DARK else (245, 245, 247)
 
 # titles: shot -> list of (text, weight, size, colour), anchor ("left" | "right" | "bottom"), delay
 TITLES = {
@@ -27,7 +31,7 @@ TITLES = {
              ("SELECT opens Now Playing from anywhere.", "SemiBold", 28, SUB)], "left", 0.3),
     "s08": ([("Every detail,", "Bold", 64, INK), ("considered.", "Bold", 64, INK)], "left", 0.3),
     "s10": ([("Bramley", "Bold", 96, INK), ("For TrimUI Brick and Brick Hammer.", "SemiBold", 32, SUB),
-             ("github.com/howardhwt/bramley", "SemiBold", 28, (0, 113, 227))], "right", 0.15),
+             ("github.com/howardhwt/bramley", "SemiBold", 28, LINK)], "right", 0.15),
 }
 
 def title_layer(lines, anchor):
@@ -44,7 +48,7 @@ def title_layer(lines, anchor):
 
 def ease(t): return 1 - (1 - t) ** 3
 
-bg_white = np.array([245, 245, 247], np.float32)
+bg_white = np.array(BG, np.float32)
 if STILLS:
     os.makedirs(OUT, exist_ok=True)
 else:
@@ -63,14 +67,15 @@ for name in names:
         t = (int(fn[:-4]) - 1) / FPS             # time within the shot, from the frame number
         dev = Image.open(os.path.join(SHOTS, name, fn)).convert("RGBA")
         # the background: dark for the cold open, brightening to white as the screen wakes
-        if name == "s01": b = 0.0
+        if DARK: b = 1.0                               # black throughout, so the cold open flows straight on
+        elif name == "s01": b = 0.0
         elif name == "s02": b = ease(min(1.0, t / 0.8))   # brightens quickly as the camera pulls back
         else: b = 1.0
         base = np.full((H, W, 3), bg_white * b + np.array([0, 0, 0], np.float32) * (1 - b), np.float32)
         frame = Image.fromarray(base.astype(np.uint8)).convert("RGBA")
         # a soft contact shadow from the device's own silhouette
         a = dev.getchannel("A")
-        sh = a.filter(ImageFilter.GaussianBlur(int(28 * u))).point(lambda v: int(v * 0.22 * b))
+        sh = a.filter(ImageFilter.GaussianBlur(int(28 * u))).point(lambda v: 0 if DARK else int(v * 0.22 * b))   # no shadow on black
         shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0)); shadow.putalpha(sh)
         frame.alpha_composite(shadow, (0, int(22 * u)))
         frame.alpha_composite(dev)
@@ -80,10 +85,10 @@ for name in names:
                 lay = layer.filter(ImageFilter.GaussianBlur(4 * (1 - ease(k)))) if k < 1 else layer
                 lay = lay.copy(); lay.putalpha(lay.getchannel("A").point(lambda v: int(v * ease(k))))
                 frame.alpha_composite(lay, (0, int(10 * u * (1 - ease(k)))))
-        if name == names[-1] and name == "s10":   # the end: fade to white
+        if name == names[-1] and name == "s10":   # the end: fade to the background
             k = max(0.0, min(1.0, (t - (SHOT_SECS[name] - END_FADE)) / END_FADE))
             if k > 0:
-                frame = Image.blend(frame, Image.new("RGBA", (W, H), (245, 245, 247, 255)), ease(k))
+                frame = Image.blend(frame, Image.new("RGBA", (W, H), (*BG, 255)), ease(k))
         if STILLS:
             frame.convert("RGB").save(os.path.join(OUT, f"{name}-{fn}")); total += 1; continue
         enc.stdin.write(frame.convert("RGB").tobytes()); total += 1
