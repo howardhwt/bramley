@@ -133,6 +133,10 @@ def look(name):
     mood = name == "s09"
     led.inputs["Emission Color"].default_value = (*LED, 1)
     led.inputs["Emission Strength"].default_value = 3.0 if mood else 0.0
+    # the cold open is a black screen close up, where the glass mirrors the studio lights as a big
+    # diagonal glare; there the glass reflects almost nothing, so the logo is all that shows
+    for n_ in bpy.data.materials["screen"].node_tree.nodes:
+        if n_.type == "MATH": n_.inputs[1].default_value = 0.015 if name == "s01" else 0.12
 
 def clear_keys():
     for o in (cam, target, pivot):

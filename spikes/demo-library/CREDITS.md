@@ -8,6 +8,8 @@ images in `art/` are kept here: title screens and screenshots published by each 
 |---|---|---|---|---|
 | Freedoom: Phase 1, FreeDM | Doom | Freedoom project contributors | BSD-3-Clause | github.com/freedoom/freedoom (COPYING.adoc) |
 | Tobu Tobu Girl Deluxe | Game Boy | Tangram Games (Simon Larsen) | CC BY 4.0 | github.com/SimonLarsen/tobutobugirl-dx |
+| Tobu Tobu Girl | Game Boy | Tangram Games (Simon Larsen) | CC BY 4.0 | github.com/SimonLarsen/tobutobugirl |
+| Adjustris | Game Boy | Trad Banik (tbsp) | CC0 1.0 | github.com/tbsp/adjustris |
 | Libbet and the Magic Floor | Game Boy | Damian Yerrick | zlib | github.com/pinobatch/libbet (LICENSE) |
 | µCity | Game Boy Color | Antonio Niño Díaz | CC BY-SA 4.0 | github.com/AntonioND/ucity |
 | Thwaite | NES | Damian Yerrick | GPL-3.0 or later | github.com/pinobatch/thwaite-nes |
@@ -16,7 +18,7 @@ images in `art/` are kept here: title screens and screenshots published by each 
 | KleleAtoms MD | Mega Drive | Nightwolf-47, title art by GreffMASTER | MIT | github.com/Nightwolf-47/KleleAtoms-MD |
 
 Freedoom's BSD licence forbids using its contributors' names to endorse Bramley: credit them, never
-imply they endorse it. Tobu Tobu Girl Deluxe (CC BY 4.0) and µCity (CC BY-SA 4.0) need this credit
+imply they endorse it. Tobu Tobu Girl and Tobu Tobu Girl Deluxe (CC BY 4.0) and µCity (CC BY-SA 4.0) need this credit
 wherever their images appear, such as a video's description.
 
 ## Music

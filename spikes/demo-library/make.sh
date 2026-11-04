@@ -44,6 +44,8 @@ Doom (PRBOOM)|Freedoom Phase 1.wad|freedoom1.png
 Doom (PRBOOM)|FreeDM.wad|freedm.png
 Game Boy (GB)|Tobu Tobu Girl Deluxe.gb|tobu-dx.png
 Game Boy (GB)|Libbet and the Magic Floor.gb|libbet.png
+Game Boy (GB)|Tobu Tobu Girl.gb|tobu.png
+Game Boy (GB)|Adjustris.gb|adjustris.png
 Game Boy Color (GBC)|µCity.gbc|ucity.png
 Nintendo Entertainment System (FC)|Thwaite.nes|thwaite-game.png
 Nintendo Entertainment System (FC)|Concentration Room.nes|croom.png
