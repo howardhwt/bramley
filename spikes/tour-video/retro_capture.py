@@ -62,10 +62,40 @@ gi = GameInfo(os.path.abspath(rom_path).encode(), C.cast(rb, C.c_void_p), len(ro
 lib.retro_load_game.restype = C.c_bool
 assert lib.retro_load_game(C.byref(gi)), "load failed"
 
+# Optional autopilot for Tobu Tobu Girl Deluxe: from frame RETRO_STEER on, find the girl (her red hair)
+# and the nearest bat above her (magenta) in the last picture, and hold left or right toward it,
+# so she climbs from bat to bat on her own.
+STEER = int(os.environ.get("RETRO_STEER", "0"))
+HAIR, BAT = {(222, 40, 41), (222, 32, 32)}, (197, 24, 123)
+DASH = os.environ.get("RETRO_DASH", "1") == "1"
+
+prev_y = [None]
+
+def steer(im):
+    px, w = im.load(), min(im.width, 144)   # the status bar starts at x 144
+    girl = [(x, y) for y in range(im.height) for x in range(w) if px[x, y] in HAIR]
+    bats = [(x, y) for y in range(im.height) for x in range(w) if px[x, y] == BAT]
+    for b in ("left", "right", "up", "a"): held.discard(b)
+    if not girl or not bats: return
+    gx = sum(p[0] for p in girl) / len(girl); gy = min(p[1] for p in girl)
+    above = [p for p in bats if p[1] < gy - 6] or bats
+    tx, ty = min(above, key=lambda p: (gy - p[1]) ** 2 + 4 * (gx - p[0]) ** 2)
+    if tx > gx + 3: held.add("right")
+    elif tx < gx - 3: held.add("left")
+    rising = prev_y[0] is not None and gy < prev_y[0]
+    # touching a bat from below hurts her, so while rising keep clear of the bat overhead
+    if rising and ty < gy and gy - ty < 24 and abs(tx - gx) < 14:
+        held.discard("left"); held.discard("right"); held.add("left" if tx > gx else "right")
+    # at the top of a bounce, dash up past a bat that is above her and off to one side, then land on it
+    elif DASH and prev_y[0] is not None and gy >= prev_y[0] and 10 < gy - ty < 50 and 10 < abs(tx - gx) < 40:
+        held.add("up"); held.add("a")
+    prev_y[0] = gy
+
 for f in range(n_frames):
     for b in events.get(f, []):
         if b.endswith("-up"): held.discard(b[:-3])
         else: held.add(b)
+    if STEER and f >= STEER and last[0] is not None: steer(last[0])
     lib.retro_run()
     if last[0] is not None:
         last[0].save(os.path.join(out, f"{f:05d}.png"))

@@ -56,31 +56,46 @@ def show(kind, frames):
     if kind == "splash":
         tex.image = bpy.data.images.load(SPLASH, check_existing=True); return
     still = kind.startswith("still:")
-    folder = os.path.join(SCR, kind.split(":", 1)[1] if still else kind)
-    img = bpy.data.images.load(os.path.join(folder, "0001.png"))
+    kind = kind.split(":", 1)[1] if still else kind
+    first, last = 1, None
+    if "@" in kind:    # 's5@1-106': only those pictures of the recording, then hold the last
+        kind, rng = kind.split("@"); first, last = (int(x) for x in rng.split("-"))
+    folder = os.path.join(SCR, kind)
+    if not still:
+        # Blender's image user ignores offsets and holds badly, so each shot gets its own folder of links:
+        # the chosen pictures renumbered from 1, then the last repeated to the shot's end (the recordings run at 30 fps, so at 60 each picture fills two frames)
+        src = sorted(f for f in os.listdir(folder) if f.endswith(".png"))
+        src = src[first - 1:last or len(src)]
+        cut = os.path.join(OUT, "_scr", kind + "_%d_%d_%d" % (first, last or 0, FPS))
+        os.makedirs(cut, exist_ok=True)
+        for i in range(frames):
+            dst = os.path.join(cut, "%04d.png" % (i + 1))
+            if not os.path.exists(dst): os.symlink(os.path.join(folder, src[min(i * 30 // FPS, len(src) - 1)]), dst)
+        folder, first, last = cut, 1, frames
+    img = bpy.data.images.load(os.path.join(folder, "%04d.png" % first))
     if still:
         tex.image = img; return
     img.source = "SEQUENCE"; tex.image = img
-    n = len([f for f in os.listdir(folder) if f.endswith(".png")])
+    n = (last or len([f for f in os.listdir(folder) if f.endswith(".png")])) - first + 1
     iu = tex.image_user; iu.frame_duration = n; iu.frame_start = 1; iu.frame_offset = 0
     iu.use_auto_refresh = True; iu.use_cyclic = False
-    # the recordings run at 30 fps; at 60 each picture holds two frames
-    iu.frame_duration = n
 
 # shots: (name, seconds, screen, camera from, camera to, look-at from, look-at to, turn from, turn to (degrees about z), screen glow ramp)
 T = lambda x, z: (x, 0.0, z)
 SHOTS = [   # opens on the front, as Apple's launch films do: the screen waking up close, then the reveal
-    ("s01", 4.24, "splash", (0.07, -0.10, 0.10), (-0.05, -0.11, 0.094), T(0.0, SCREEN_Z), T(0.0, SCREEN_Z), 0, 0, (0.8, 2.6)),
-    ("s02", 4.09, "still:s3", (0.0, -0.16, 0.083), (-0.01, -0.40, 0.06), T(0.0, SCREEN_Z), T(0.034, 0.058), 0, 0, None),
-    ("s03", 4.08, "s3", (0.0, -0.30, 0.08), (0.0, -0.17, 0.083), T(0.0, SCREEN_Z - 0.004), T(0.0, SCREEN_Z), 0, 0, None),
-    ("s04", 3.80, "s4", (-0.12, -0.24, 0.10), (-0.09, -0.25, 0.095), T(-0.04, SCREEN_Z - 0.006), T(-0.04, SCREEN_Z - 0.006), 0, 0, None),
-    ("s05", 4.40, "s5", (0.07, -0.20, 0.06), (0.03, -0.19, 0.08), T(0.0, SCREEN_Z - 0.004), T(0.0, SCREEN_Z), 12, 0, None),
+    ("s01", 4.24, "splash", (0.07, -0.10, 0.10), (-0.05, -0.11, 0.094), T(0.0, SCREEN_Z), T(0.0, SCREEN_Z), 0, 0, (0.15, 1.1)),
+    ("s02", 4.09, "still:s3", (0.0, -0.16, 0.083), (-0.01, -0.40, 0.06), T(0.0, SCREEN_Z), T(0.034, 0.066), 0, 0, None),
+    ("s03", 4.08, "s3", (0.0, -0.30, 0.08), (-0.03, -0.17, 0.086), T(0.0, SCREEN_Z - 0.004), T(-0.004, SCREEN_Z), 0, 0, None),
+    ("s04", 3.80, "s4", (-0.12, -0.24, 0.10), (-0.09, -0.25, 0.095), T(-0.058, SCREEN_Z - 0.006), T(-0.058, SCREEN_Z - 0.006), 0, 0, None),
+    ("s05", 4.40, "s5@1-70", (0.07, -0.20, 0.06), (0.03, -0.19, 0.08), T(0.0, SCREEN_Z - 0.004), T(0.0, SCREEN_Z), 12, 0, None),
     ("s06", 4.00, "s6", (0.0, -0.26, 0.07), (0.0, -0.24, 0.072), T(0.032, SCREEN_Z - 0.006), T(0.032, SCREEN_Z - 0.006), 0, 0, None),
-    ("s07", 4.10, "s7", (0.10, -0.26, 0.09), (0.07, -0.27, 0.085), T(-0.032, SCREEN_Z - 0.006), T(-0.032, SCREEN_Z - 0.006), 0, 0, None),
+    ("s07", 4.10, "s7@45-126", (0.10, -0.26, 0.09), (0.07, -0.27, 0.085), T(-0.052, SCREEN_Z - 0.006), T(-0.052, SCREEN_Z - 0.006), 0, 0, None),
     ("s08", 4.10, "s8", (-0.10, -0.23, 0.12), (-0.06, -0.24, 0.11), T(-0.038, SCREEN_Z - 0.006), T(-0.038, SCREEN_Z - 0.006), 0, 0, None),
-    ("s09", 8.10, "still:s3", (0.11, 0.24, 0.12), (-0.11, 0.23, 0.11), (0.0, D2 / 2, 0.062), (0.0, D2 / 2, 0.058), 0, 0, None),
-    ("s10", 4.10, "still:s3", (0.0, -0.47, 0.06), (0.0, -0.43, 0.06), T(0.04, 0.055), T(0.04, 0.055), 28, 0, None),
+    ("s09", 8.10, "still:s3", (0.17, 0.31, 0.11), (-0.17, 0.30, 0.10), (0.0, D2 / 2, 0.056), (0.0, D2 / 2, 0.054), 0, 0, None),
+    ("s10", 4.10, "still:s3", (0.0, -0.35, 0.06), (0.0, -0.33, 0.06), T(0.046, 0.056), T(0.046, 0.056), 20, 0, None),
 ]
+# shots whose move finishes early and then holds, so their titles land on a still device
+MOVE = {"s02": 0.7, "s10": 0.55}
 
 def ease(t):  # cubic in-out
     return 4 * t ** 3 if t < 0.5 else 1 - (-2 * t + 2) ** 3 / 2
@@ -90,7 +105,7 @@ def key_shot(sh):
     n = int(round(secs * FPS))
     scene.frame_start, scene.frame_end = 1, n
     for f in range(1, n + 1):
-        k = ease((f - 1) / max(1, n - 1))
+        k = ease(min(1.0, (f - 1) / max(1, (n - 1) * MOVE.get(name, 1.0))))
         cam.location = Vector(c0).lerp(Vector(c1), k); cam.keyframe_insert("location", frame=f)
         target.location = Vector(t0).lerp(Vector(t1), k); target.keyframe_insert("location", frame=f)
         pivot.rotation_euler = (0, 0, math.radians(r0 + (r1 - r0) * k)); pivot.keyframe_insert("rotation_euler", frame=f)
@@ -100,9 +115,17 @@ def key_shot(sh):
             s = 2.0 * g
         emit.inputs["Strength"].default_value = s; emit.inputs["Strength"].keyframe_insert("default_value", frame=f)
     show(scr, n)
-    if scr not in ("black", "splash") and not scr.startswith("still:") and FPS == 60:
-        tex.image_user.frame_duration = n   # holds each 30 fps picture for two frames via the speed below
     return n
+
+led = bpy.data.materials["led"].node_tree.nodes["Principled BSDF"]
+LED = (0.86, 0.93, 1.0)
+label = bpy.data.materials["label"].node_tree.nodes["Principled BSDF"]
+label.inputs["Roughness"].default_value = 0.45
+label.inputs["Specular IOR Level"].default_value = 0.2    # black glass, but soft enough that its reflection does not flip as the camera moves
+def look(name):
+    mood = name == "s09"
+    led.inputs["Emission Color"].default_value = (*LED, 1)
+    led.inputs["Emission Strength"].default_value = 3.0 if mood else 0.0
 
 def clear_keys():
     for o in (cam, target, pivot):
@@ -126,12 +149,14 @@ cam.data.lens = 50
 
 for sh in SHOTS:
     if ONLY and sh[0] not in ONLY: continue
-    clear_keys()
+    clear_keys(); look(sh[0])
     n = key_shot(sh)
     os.makedirs(os.path.join(OUT, sh[0]), exist_ok=True)
-    if os.environ.get("FILM_STILLS"):   # one frame from the middle of each shot, to check the look quickly
-        scene.frame_set(n // 2); scene.render.filepath = os.path.join(OUT, sh[0] + ".png")
-        bpy.ops.render.render(write_still=True); continue
+    if os.environ.get("FILM_STILLS"):   # frames from the start, middle and end of each shot, to check before a full render
+        for fr in sorted({max(1, int(n * x)) for x in (0.08, 0.5, 0.96)}):
+            scene.frame_set(fr); scene.render.filepath = os.path.join(OUT, sh[0], "%04d.png" % fr)
+            bpy.ops.render.render(write_still=True)
+        continue
     scene.render.filepath = os.path.join(OUT, sh[0], "")
     bpy.ops.render.render(animation=True)
     print("rendered", sh[0], n, "frames")
