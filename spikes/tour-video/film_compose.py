@@ -8,7 +8,10 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 SHOTS, MUSIC, OUT, FPS = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
 STILLS = MUSIC == "-"
-SHOT_SECS = {"s01": 4.24, "s02": 4.09, "s03": 4.08, "s04": 3.80, "s05": 4.40, "s06": 4.00, "s07": 4.10, "s08": 4.10, "s09": 8.10, "s10": 4.10}
+SHOT_SECS = {"s01": 2.03, "s02": 4.09, "s03": 4.08, "s04": 3.80, "s05": 4.40, "s06": 4.00, "s07": 4.10, "s08": 4.10, "s09": 8.10, "s10": 4.10}
+# the cold open was cut from two bars (4.24 s) to one (2.03 s); the music skips the same 2.21 s,
+# so every later cut still lands on its beat
+MUSIC_SKIP = 4.24 - SHOT_SECS["s01"]
 END_FADE = 0.8                                  # the last shot fades to white over its final 0.8 s
 R = "/Users/howard/Documents/GitHub/brick-hammer-launcher/workspace/all/launcher/res/"
 F = lambda w, px: ImageFont.truetype(R + f"Inter-{w}.ttf", px)
@@ -54,7 +57,7 @@ if STILLS:
 else:
     film_len = sum(SHOT_SECS[n] for n in names)
     enc = subprocess.Popen(["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
-                            "-i", MUSIC, "-map", "0:v", "-map", "1:a", "-shortest",
+                            "-ss", f"{MUSIC_SKIP:.3f}", "-i", MUSIC, "-map", "0:v", "-map", "1:a", "-shortest",
                             "-af", f"afade=t=out:st={film_len - 1.5:.2f}:d=1.5",   # the music fades with the picture
                             "-c:v", "libx264", "-preset", "medium", "-crf", "18",
                             "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "256k", "-movflags", "+faststart", OUT], stdin=subprocess.PIPE)
