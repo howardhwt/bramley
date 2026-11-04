@@ -92,7 +92,8 @@ T = lambda x, z: (x, 0.0, z)
 SHOTS = [   # opens on the front, as Apple's launch films do: the screen waking up close, then the reveal
     ("s01", 2.03, "splash", (0.07, -0.10, 0.10), (-0.05, -0.11, 0.094), T(0.0, SCREEN_Z), T(0.0, SCREEN_Z), 0, 0, (0.15, 1.1)),
     ("s02", 4.09, "still:s3", (0.0, -0.16, 0.083), (-0.01, -0.40, 0.06), T(0.0, SCREEN_Z), T(0.034, 0.066), 0, 0, None),
-    ("s03", 4.08, "s3", (0.0, -0.30, 0.08), (-0.03, -0.17, 0.086), T(0.0, SCREEN_Z - 0.004), T(-0.004, SCREEN_Z), 0, 0, None),
+    # starts clearly closer than s02 ends, so the cut reads wide to medium, not as the same shot jumping
+    ("s03", 4.08, "s3", (0.0, -0.225, 0.082), (-0.03, -0.17, 0.086), T(0.0, SCREEN_Z - 0.004), T(-0.004, SCREEN_Z), 0, 0, None),
     ("s04", 3.80, "s4", (-0.12, -0.24, 0.10), (-0.09, -0.25, 0.095), T(-0.058, SCREEN_Z - 0.006), T(-0.058, SCREEN_Z - 0.006), 0, 0, None),
     # the library: close on the screen's upper half, where the row of tiles is, centred in frame
     ("s05", 4.40, "s5", (0.05, -0.15, 0.10), (0.02, -0.14, 0.104), T(0.002, SCREEN_Z + 0.010), T(0.002, SCREEN_Z + 0.012), 12, 0, None),
