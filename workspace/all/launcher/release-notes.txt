@@ -1,1 +1,1 @@
-Home has a new look: every console, collection and app is a colour tile like iOS Shortcuts, and the focused one shows large, with when you last played it.
+Game libraries and Music albums now show square tiles with each name underneath, like apps on iOS.
