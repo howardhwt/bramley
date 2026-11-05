@@ -1,0 +1,4 @@
+# Core sources and build output stay local; only the README, build script and notes are tracked.
+src/
+out/
+*.log

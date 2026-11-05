@@ -1,0 +1,465 @@
+diff --git a/src/frontend/sdl/CMakeLists.txt b/src/frontend/sdl/CMakeLists.txt
+index d82c2f4..13e06db 100644
+--- a/src/frontend/sdl/CMakeLists.txt
++++ b/src/frontend/sdl/CMakeLists.txt
+@@ -1,5 +1,5 @@
+ # SPDX-License-Identifier: GPL-3.0-or-later
+-add_executable(dsperate main.cpp config.cpp display.cpp audio.cpp input.cpp pad_faces.cpp menu.cpp settings.cpp lid.cpp mic_alsa.cpp loader_cart.cpp dmaheap.cpp
++add_executable(dsperate main.cpp bramley_power.cpp config.cpp display.cpp audio.cpp input.cpp pad_faces.cpp menu.cpp settings.cpp lid.cpp mic_alsa.cpp loader_cart.cpp dmaheap.cpp
+   display_drm.cpp display_disp.cpp display_fbdev.cpp)
+ # Required on older glibc toolchains where pthread symbols are not in libc.
+ set(THREADS_PREFER_PTHREAD_FLAG ON)
+diff --git a/src/frontend/sdl/bramley_power.cpp b/src/frontend/sdl/bramley_power.cpp
+new file mode 100644
+index 0000000..fa49801
+--- /dev/null
++++ b/src/frontend/sdl/bramley_power.cpp
+@@ -0,0 +1,303 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Bramley: the power key for DSperate on the TrimUI Brick. See bramley_power.h.
++#include "bramley_power.h"
++
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <string>
++#include <type_traits>
++#ifdef __linux__
++#include <dirent.h>
++#include <dlfcn.h>
++#include <fcntl.h>
++#include <linux/input.h>
++#include <sys/ioctl.h>
++#include <unistd.h>
++#endif
++
++namespace ds::sdl {
++
++namespace {
++
++// api.c: a release before this sleeps, a hold this long powers off, and a
++// press this soon after waking is ignored.
++constexpr u32 HOLD_MS = 1000;
++// api.c PWR_waitForWake(): how often the sleep loop looks for the power key,
++// and how long it waits before trying deep sleep again while charging.
++constexpr u32 WAKE_POLL_MS = 200;
++constexpr u32 RECHECK_MS = 60000;
++constexpr const char* ASLEEP_MARKER = "/tmp/bramley_dsperate_asleep";
++
++// libmsettings, the library keymon and the launcher use for brightness and
++// volume. Opened at run time so the build needs nothing from Bramley; it is
++// in $SYSTEM_PATH/lib, which MinUI.pak/launch.sh puts on LD_LIBRARY_PATH.
++struct Msettings {
++  void (*InitSettings)() = nullptr;
++  int (*GetBrightness)() = nullptr;
++  void (*SetBrightness)(int) = nullptr;
++  void (*SetRawBrightness)(int) = nullptr;
++  int (*GetVolume)() = nullptr;
++  void (*SetVolume)(int) = nullptr;
++  void (*SetRawVolume)(int) = nullptr;
++  bool loaded = false;
++};
++Msettings ms;
++
++bool load_msettings() {
++#ifdef __linux__
++  if (ms.loaded) return true;
++  void* lib = dlopen("libmsettings.so", RTLD_NOW);
++  if (!lib) { std::fprintf(stderr, "bramley power: %s\n", dlerror()); return false; }
++  bool ok = true;
++  auto sym = [&](auto& fn, const char* name) {
++    fn = reinterpret_cast<std::remove_reference_t<decltype(fn)>>(dlsym(lib, name));
++    ok = ok && fn;
++  };
++  sym(ms.InitSettings, "InitSettings");
++  sym(ms.GetBrightness, "GetBrightness");
++  sym(ms.SetBrightness, "SetBrightness");
++  sym(ms.SetRawBrightness, "SetRawBrightness");
++  sym(ms.GetVolume, "GetVolume");
++  sym(ms.SetVolume, "SetVolume");
++  sym(ms.SetRawVolume, "SetRawVolume");
++  if (!ok) { std::fprintf(stderr, "bramley power: libmsettings.so is missing a function\n"); dlclose(lib); return false; }
++  ms.InitSettings();
++  ms.loaded = true;
++  return true;
++#else
++  return false;
++#endif
++}
++
++void run(const char* cmd) {
++  if (std::system(cmd) != 0) { /* every helper here is optional */ }
++}
++
++// killall, as api.c does, for keymon, batmon and audiomon.
++void signal_helpers(const char* sig) {
++  for (const char* name : {"keymon.elf", "batmon.elf", "audiomon.elf"}) {
++    char cmd[96];
++    std::snprintf(cmd, sizeof cmd, "killall -%s %s 2>/dev/null", sig, name);
++    run(cmd);
++  }
++}
++
++void put_text(const char* path, const char* text) {
++  if (FILE* f = std::fopen(path, "w")) { std::fputs(text, f); std::fclose(f); }
++}
++
++int read_int(const char* path) {
++  int v = 0;
++  if (FILE* f = std::fopen(path, "r")) { if (std::fscanf(f, "%d", &v) != 1) v = 0; std::fclose(f); }
++  return v;
++}
++
++// PLAT_enableBacklight(1) and the end of PWR_exitSleep(): backlight, then the
++// speaker amplifier on while the volume is still zero, a 60 ms settle, then
++// the volume (a Bramley fix for the click as the amplifier powers up).
++void restore_screen_and_sound() {
++  const char* device = std::getenv("DEVICE");
++  if (device && (std::strcmp(device, "brick") == 0 || std::strcmp(device, "brickpro") == 0)) ms.SetRawBrightness(8);
++  ms.SetBrightness(ms.GetBrightness());
++  put_text("/sys/class/speaker/mute", "0");
++  usleep(60 * 1000);
++  ms.SetVolume(ms.GetVolume());
++}
++
++} // namespace
++
++void BramleyPower::open() {
++  // The settings Bramley's Settings app writes, with config.h's defaults.
++  if (const char* shared = std::getenv("SHARED_USERDATA_PATH")) {
++    const std::string path = std::string(shared) + "/minuisettings.txt";
++    if (FILE* f = std::fopen(path.c_str(), "r")) {
++      char line[128];
++      int v;
++      while (std::fgets(line, sizeof line, f)) {
++        if (std::sscanf(line, "screentimeout=%d", &v) == 1 && v >= 0) screen_ms_ = static_cast<u32>(v) * 1000;
++        else if (std::sscanf(line, "suspendTimeout=%d", &v) == 1 && v >= 0) suspend_ms_ = static_cast<u32>(v) * 1000;
++        else if (std::sscanf(line, "keepAwakeWhenUSB=%d", &v) == 1) keep_awake_usb_ = v != 0;
++      }
++      std::fclose(f);
++    }
++  }
++#ifdef __linux__
++  // The power key's node, found by what it reports. Read without a grab, as
++  // keymon reads the others, so SDL and keymon still see their keys.
++  if (DIR* d = opendir("/dev/input")) {
++    while (dirent* e = readdir(d)) {
++      if (fd_ >= 0) break;
++      if (std::strncmp(e->d_name, "event", 5) != 0) continue;
++      const std::string path = std::string("/dev/input/") + e->d_name;
++      const int fd = ::open(path.c_str(), O_RDONLY | O_NONBLOCK | O_CLOEXEC);
++      if (fd < 0) continue;
++      unsigned long keys[(KEY_MAX + 8 * sizeof(long)) / (8 * sizeof(long))] = {};
++      const bool has_power = ioctl(fd, EVIOCGBIT(EV_KEY, sizeof keys), keys) >= 0 &&
++                             ((keys[KEY_POWER / (8 * sizeof(long))] >> (KEY_POWER % (8 * sizeof(long)))) & 1);
++      if (has_power) {
++        char name[64] = "?";
++        ioctl(fd, EVIOCGNAME(sizeof name), name);
++        std::fprintf(stderr, "bramley power: power key on %s (%s)\n", path.c_str(), name);
++        fd_ = fd;
++      } else ::close(fd);
++    }
++    closedir(d);
++  }
++  if (fd_ < 0) { std::fprintf(stderr, "bramley power: no power key found\n"); return; }
++#endif
++  can_sleep_ = load_msettings();
++  if (!can_sleep_) std::fprintf(stderr, "bramley power: no libmsettings, so the power key only powers off\n");
++  last_input_ = SDL_GetTicks();
++  std::fprintf(stderr, "bramley power: screen timeout %u s, suspend timeout %u s\n", screen_ms_ / 1000, suspend_ms_ / 1000);
++}
++
++void BramleyPower::close() {
++#ifdef __linux__
++  if (fd_ >= 0) { ::close(fd_); fd_ = -1; }
++#endif
++}
++
++void BramleyPower::note_input(const SDL_Event& e) {
++  // Like PAD_anyPressed() in api.c: a held key keeps the Brick awake.
++  // Analog axes count only past half travel, so drift never does.
++  size_t bit;
++  bool down;
++  switch (e.type) {
++  case SDL_KEYDOWN: case SDL_KEYUP: bit = static_cast<size_t>(e.key.keysym.scancode) & 511; down = e.type == SDL_KEYDOWN; break;
++  case SDL_CONTROLLERBUTTONDOWN: case SDL_CONTROLLERBUTTONUP: bit = 512 + (e.cbutton.button & 63); down = e.type == SDL_CONTROLLERBUTTONDOWN; break;
++  case SDL_JOYBUTTONDOWN: case SDL_JOYBUTTONUP: bit = 576 + (e.jbutton.button & 63); down = e.type == SDL_JOYBUTTONDOWN; break;
++  case SDL_JOYHATMOTION: bit = 640 + (e.jhat.hat & 15); down = e.jhat.value != SDL_HAT_CENTERED; break;
++  case SDL_CONTROLLERAXISMOTION: bit = 656 + (e.caxis.axis & 15); down = std::abs(e.caxis.value) > 16000; break;
++  case SDL_JOYAXISMOTION: bit = 672 + (e.jaxis.axis & 31); down = std::abs(e.jaxis.value) > 16000; break;
++  default: return;
++  }
++  held_.set(bit, down);
++  if (down) last_input_ = SDL_GetTicks();
++}
++
++BramleyPower::Event BramleyPower::poll() {
++  const u32 now = SDL_GetTicks();
++#ifdef __linux__
++  input_event ev;
++  while (fd_ >= 0 && read(fd_, &ev, sizeof ev) == static_cast<ssize_t>(sizeof ev)) {
++    if (ev.type != EV_KEY || ev.code != KEY_POWER) continue;
++    last_input_ = now;
++    if (ev.value == 1) {   // press (2 is autorepeat)
++      if (now - resume_tick_ < HOLD_MS) { pressed_at_ = 0; std::fprintf(stderr, "bramley power: ignoring a press just after waking\n"); }
++      else pressed_at_ = now ? now : 1;
++    } else if (ev.value == 0 && pressed_at_) {   // release
++      const u32 held = now - pressed_at_;
++      pressed_at_ = 0;
++      if (held >= HOLD_MS) return Event::PowerOff;
++      if (can_sleep_) return Event::Sleep;
++    }
++  }
++#endif
++  if (pressed_at_ && now - pressed_at_ >= HOLD_MS) { pressed_at_ = 0; return Event::PowerOff; }
++  if (pressed_at_ || held_.any()) last_input_ = now;
++  if (can_sleep_ && screen_ms_ > 0 && now - last_input_ >= screen_ms_) {
++    last_input_ = now;   // checked again after another full timeout
++    if (!stay_awake()) { std::fprintf(stderr, "bramley power: no input for %u s, sleeping\n", screen_ms_ / 1000); return Event::Sleep; }
++  }
++  return Event::None;
++}
++
++// PWR_preventAutosleep() and the check in PWR_waitForWake(): charging
++// (PLAT_getBatteryStatusFine()), or on USB to a computer with "keep awake on
++// USB" set (PLAT_isUSBConnected()). The Brick has no HDMI.
++bool BramleyPower::stay_awake() const {
++  if (read_int("/sys/class/power_supply/axp2202-usb/online") == 1 &&
++      read_int("/sys/class/power_supply/axp2202-battery/time_to_full_now") > 0) return true;
++  if (!keep_awake_usb_) return false;
++#ifdef __linux__
++  bool configured = false;
++  if (DIR* d = opendir("/sys/class/udc")) {
++    while (dirent* e = readdir(d)) {
++      if (e->d_name[0] == '.') continue;
++      const std::string path = std::string("/sys/class/udc/") + e->d_name + "/state";
++      char state[32] = {};
++      if (FILE* f = std::fopen(path.c_str(), "r")) { if (!std::fgets(state, sizeof state, f)) state[0] = 0; std::fclose(f); }
++      if (std::strncmp(state, "configured", 10) == 0) configured = true;
++    }
++    closedir(d);
++  }
++  return configured;
++#else
++  return false;
++#endif
++}
++
++BramleyPower::Woke BramleyPower::sleep(const volatile std::sig_atomic_t& stop) {
++  std::fprintf(stderr, "bramley power: sleeping\n");
++  // PWR_sleep() and PWR_enterSleep(). The caller has already paused the game,
++  // stopped its audio and saved.
++  run("gametimectl.elf stop_all");
++  put_text(ASLEEP_MARKER, "1");
++  ms.SetRawVolume(0);
++  ms.SetRawBrightness(0);
++  signal_helpers("STOP");
++  ::sync();
++
++  // PWR_waitForWake(): a power tap wakes. After the suspend timeout, unless
++  // charging or kept awake on USB, bin/suspend does real suspend to RAM and
++  // returns once the power key has woken the Brick.
++  Woke woke = Woke::Normally;
++  u32 since = SDL_GetTicks();
++  while (!stop) {
++    SDL_Delay(WAKE_POLL_MS);
++    bool released = false;
++#ifdef __linux__
++    input_event ev;
++    while (fd_ >= 0 && read(fd_, &ev, sizeof ev) == static_cast<ssize_t>(sizeof ev))
++      if (ev.type == EV_KEY && ev.code == KEY_POWER && ev.value == 0) released = true;
++#endif
++    if (released) break;
++    if (suspend_ms_ == 0 || SDL_GetTicks() - since < suspend_ms_) continue;
++    if (stay_awake()) { since += RECHECK_MS; continue; }
++    const char* system_path = std::getenv("SYSTEM_PATH");
++    const std::string suspend = std::string(system_path ? system_path : "/mnt/SDCARD/.system/tg5040") + "/bin/suspend";
++    std::fprintf(stderr, "bramley power: deep sleep through %s\n", suspend.c_str());
++    const int ret = access(suspend.c_str(), X_OK) == 0 ? std::system(("'" + suspend + "'").c_str()) : -1;
++    if (ret == 0) { std::fprintf(stderr, "bramley power: woke from deep sleep\n"); break; }
++    std::fprintf(stderr, "bramley power: deep sleep failed (%d), powering off\n", ret);
++    woke = Woke::PowerOff;
++    break;
++  }
++
++  // PWR_exitSleep(). The press that woke the Brick is dropped, and presses in
++  // the next second are ignored, so it does not sleep again at once.
++#ifdef __linux__
++  input_event ev;
++  while (fd_ >= 0 && read(fd_, &ev, sizeof ev) == static_cast<ssize_t>(sizeof ev)) {}
++#endif
++  signal_helpers("CONT");
++  restore_screen_and_sound();
++  std::remove(ASLEEP_MARKER);
++  run("gametimectl.elf resume");
++  pressed_at_ = 0;
++  held_.reset();
++  resume_tick_ = last_input_ = SDL_GetTicks();
++  std::fprintf(stderr, "bramley power: awake\n");
++  return woke;
++}
++
++void BramleyPower::power_off() {
++  // PLAT_powerOff(): speaker and backlight off first, so the hold is
++  // answered at once while DSperate saves on its way out.
++  std::fprintf(stderr, "bramley power: powering off\n");
++  run("gametimectl.elf stop_all");
++  if (can_sleep_) { ms.SetRawVolume(0); ms.SetRawBrightness(0); }
++  put_text("/tmp/poweroff", "");
++  ::sync();
++}
++
++int BramleyPower::wake_after_crash() {
++  std::fprintf(stderr, "bramley power: DSperate exited while asleep; waking the screen, sound and helpers\n");
++  signal_helpers("CONT");
++  if (load_msettings()) restore_screen_and_sound();
++  std::remove(ASLEEP_MARKER);
++  return 0;
++}
++
++} // namespace ds::sdl
+diff --git a/src/frontend/sdl/bramley_power.h b/src/frontend/sdl/bramley_power.h
+new file mode 100644
+index 0000000..066ca92
+--- /dev/null
++++ b/src/frontend/sdl/bramley_power.h
+@@ -0,0 +1,71 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Bramley: the power key for DSperate on the TrimUI Brick (tg5040).
++//
++// Bramley's launcher and minarch handle the power key in PWR_update() and
++// PWR_sleep() (workspace/all/common/api.c in the Bramley repository).
++// DSperate runs instead of minarch, so this file repeats that sequence here,
++// with the same timings and the same settings from minuisettings.txt:
++//
++//  - A tap (released within a second) sleeps. The caller pauses the game and
++//    writes the auto state and the battery save first. sleep() then mutes the
++//    speaker, turns the backlight off and stops keymon, batmon and audiomon,
++//    as PWR_enterSleep() does. A power tap wakes. After the suspend timeout
++//    it runs $SYSTEM_PATH/bin/suspend (real suspend to RAM).
++//  - A one-second hold powers off. power_off() blanks the screen and touches
++//    /tmp/poweroff, and the caller quits through DSperate's normal exit, which
++//    writes the auto state and the battery save. MinUI.pak/launch.sh then runs
++//    poweroff_next.
++//  - No input for the screen timeout sleeps as a tap does, unless the Brick
++//    is charging or kept awake on USB (PWR_preventAutosleep()).
++//
++// Finding the power key's evdev node by capability and reading it without a
++// grab is ported from overlay/minui.cpp in josegonzalez/minui-nintendo-
++// dsperate-pak (commit 8c047207, GPL-3.0-or-later), with thanks.
++#pragma once
++#include "core/types.h"
++
++#include <SDL2/SDL.h>
++#include <bitset>
++#include <csignal>
++
++namespace ds::sdl {
++
++class BramleyPower {
++public:
++  enum class Event { None, Sleep, PowerOff };
++  // PowerOff: deep sleep failed, so the caller shuts down, as api.c does.
++  enum class Woke { Normally, PowerOff };
++
++  ~BramleyPower() { close(); }
++  void open();
++  void close();
++
++  // Every SDL event, for the idle timer.
++  void note_input(const SDL_Event& e);
++  // Once a frame, also while paused. Never blocks.
++  Event poll();
++  // Blocks until a power tap wakes the Brick, or until `stop` is set (a
++  // SIGTERM), and restores the screen, sound and helpers before returning.
++  Woke sleep(const volatile std::sig_atomic_t& stop);
++  // Screen and speaker off, then /tmp/poweroff for MinUI.pak/launch.sh.
++  void power_off();
++
++  // `dsperate --bramley-wake`: run.sh calls this if DSperate exited while
++  // asleep, so the screen, sound and helpers never stay off.
++  static int wake_after_crash();
++
++private:
++  bool stay_awake() const;
++
++  int fd_ = -1;              // the evdev node that reports KEY_POWER
++  bool can_sleep_ = false;   // libmsettings loaded
++  u32 pressed_at_ = 0;       // power press time, 0 when not pressed
++  u32 resume_tick_ = 0;      // presses within a second of waking are ignored
++  u32 last_input_ = 0;
++  u32 screen_ms_ = 60000;    // minuisettings.txt screentimeout, 0 = never
++  u32 suspend_ms_ = 30000;   // suspendTimeout, 0 = never
++  bool keep_awake_usb_ = false;
++  std::bitset<704> held_;    // keys, buttons, hats and axes held down
++};
++
++} // namespace ds::sdl
+diff --git a/src/frontend/sdl/main.cpp b/src/frontend/sdl/main.cpp
+index dbd914a..fda5c03 100644
+--- a/src/frontend/sdl/main.cpp
++++ b/src/frontend/sdl/main.cpp
+@@ -38,6 +38,7 @@
+ #include <arpa/inet.h>
+ #endif
+ #include "audio.h"
++#include "bramley_power.h"
+ #include "config.h"
+ #include "display.h"
+ #include "input.h"
+@@ -2162,6 +2163,9 @@ sdl_ready:
+   startup_off_rt.reset();
+   ds::sdl::Lid lid;
+   if (!replay) lid.open();
++  // Bramley: the power key (bramley_power.h).
++  ds::sdl::BramleyPower power;
++  if (!replay) power.open();
+   std::vector<s16> mic, mic_raw, mic_queue;
+   // ADC sits well off zero; one-pole DC blocker, ~25 Hz at 32768 Hz.
+   // audio.mic_gain scales what remains (default 0.25).
+@@ -3640,7 +3644,35 @@ sdl_ready:
+     if (frames == 120) ds::place_foreign_threads();
+     SDL_Event e;
+     input.set_menu_open(menu.open());
+-    while (SDL_PollEvent(&e)) input.handle(e, display, dual_window ? &display2 : nullptr);
++    while (SDL_PollEvent(&e)) { power.note_input(e); input.handle(e, display, dual_window ? &display2 : nullptr); }
++    // Bramley: the power key, before the paused branch below, so it also
++    // works with the pause menu open.
++    switch (power.poll()) {
++    case ds::sdl::BramleyPower::Event::Sleep: {
++      // Paused and saved before the screen goes dark, as minarch does.
++      const bool was_paused = paused;
++      set_paused(true);
++      autosave_now();
++      flush_save();
++      ::sync();
++      const ds::sdl::BramleyPower::Woke woke = power.sleep(g_signalled);
++      // api.c reopens audio after sleep, "otherwise it doesnt come back on sometimes".
++      if (audio.active() && !audio.capturing()) {
++        audio.close();
++        audio.open(cfg.flag("audio.native_rate", true));
++        audio.pause(true);
++      }
++      set_paused(was_paused);
++      if (woke == ds::sdl::BramleyPower::Woke::PowerOff) { power.power_off(); input.request_quit(); }
++      break;
++    }
++    case ds::sdl::BramleyPower::Event::PowerOff:
++      // The normal exit below writes the auto state and the battery save.
++      power.power_off();
++      input.request_quit();
++      break;
++    case ds::sdl::BramleyPower::Event::None: break;
++    }
+     for (ds::sdl::Action a : input.take_actions()) {
+       using A = ds::sdl::Action;
+       switch (a) {
+@@ -4458,6 +4490,8 @@ sdl_ready:
+ // RESET from a game the list started goes back via re-exec: launch_game is
+ // a one-way trip (a DSiWare pick swaps BIOS pair, firmware, NAND, machine).
+ int main(int argc, char** argv) {
++  // Bramley: run.sh calls this if DSperate exited while the Brick slept.
++  if (argc > 1 && std::strcmp(argv[1], "--bramley-wake") == 0) return ds::sdl::BramleyPower::wake_after_crash();
+ #if defined(__linux__)
+   // A crash's core without the guest memory's shared mappings (bit 1 of the
+   // default 0x33): fastmem lays guest pages into its views as MAP_SHARED

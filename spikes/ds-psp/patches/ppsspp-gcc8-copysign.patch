@@ -1,0 +1,19 @@
+diff --git a/GPU/Software/GEMath.h b/GPU/Software/GEMath.h
+index 0998a84..8418868 100644
+--- a/GPU/Software/GEMath.h
++++ b/GPU/Software/GEMath.h
+@@ -115,7 +115,13 @@ inline float GERecip(float w) {
+ 	const int32_t q = (64 * seg.b + 63 + seg.m * (int32_t)(i & 255)) >> 7;  // 1 / 1.i in units of 2^-16
+ 	if (e >= 126) {
+ 		// The result can be a denormal (q is at most 2^16).
+-		return copysign(ldexpf((float)q, -16 - e), w);
++		// Spike (tg5040): GCC 8.3 crashes expanding copysignf here, so set the sign bit by hand.
++		float r = ldexpf((float)q, -16 - e);
++		uint32_t rbits;
++		memcpy(&rbits, &r, sizeof(rbits));
++		rbits = (rbits & 0x7FFFFFFF) | (bits & 0x80000000);
++		memcpy(&r, &rbits, sizeof(r));
++		return r;
+ 	}
+ 	return ScaleByPow2((float)q, -16 - e, bits & 0x80000000);
+ }

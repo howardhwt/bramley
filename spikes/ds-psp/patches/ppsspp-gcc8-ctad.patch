@@ -1,0 +1,31 @@
+diff --git a/Common/Thread/Promise.h b/Common/Thread/Promise.h
+index 9a98ac1..939968c 100644
+--- a/Common/Thread/Promise.h
++++ b/Common/Thread/Promise.h
+@@ -23,6 +23,13 @@ class IndependentTask : public Task {
+ 	TaskPriority prio_;
+ };
+ 
++// Spike (tg5040): GCC 8.3 cannot deduce IndependentTask's argument from a lambda with move-only
++// captures, so callers in the libretro build use this helper instead of class template deduction.
++template<class T>
++IndependentTask<T> *NewIndependentTask(TaskType type, TaskPriority prio, T func) {
++	return new IndependentTask<T>(type, prio, std::move(func));
++}
++
+ template<class T>
+ class PromiseTask : public Task {
+ public:
+diff --git a/Core/Screenshot.cpp b/Core/Screenshot.cpp
+index 5401c55..fe4de46 100644
+--- a/Core/Screenshot.cpp
++++ b/Core/Screenshot.cpp
+@@ -396,7 +396,7 @@ bool ScreenshotNotifyPostGameRender(Draw::DrawContext *draw) {
+ }
+ 
+ static void SaveScreenshotAsync(GPUDebugBuffer &&buf, int w, int h, int maxRes) {
+-	g_threadManager.EnqueueTask(new IndependentTask(TaskType::IO_BLOCKING, TaskPriority::LOW,
++	g_threadManager.EnqueueTask(NewIndependentTask(TaskType::IO_BLOCKING, TaskPriority::LOW,
+ 		[filename = std::move(g_pendingScreenshot.path), buf = std::move(buf), callback = std::move(g_pendingScreenshot.callback), fmt = g_pendingScreenshot.format, w, h, maxRes]() {
+ 		u8 *flipbuffer = nullptr;
+ 		u32 width = w, height = h;

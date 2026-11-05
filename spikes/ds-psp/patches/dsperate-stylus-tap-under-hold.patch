@@ -1,0 +1,33 @@
+diff --git a/src/frontend/sdl/input.cpp b/src/frontend/sdl/input.cpp
+index 1f99fdc..a510732 100644
+--- a/src/frontend/sdl/input.cpp
++++ b/src/frontend/sdl/input.cpp
+@@ -362,7 +362,7 @@ void Input::warn_collisions() const {
+         if (same(pad_hot_[a][sl], pad_map_[i]) && !pad_hot_[a][sl].mod && pad_hot_[a][sl].with < 0)
+           std::fprintf(stderr, "config: padhotkeys.%s%s = %s shadows pad.%s; the game will never see it\n", kActionNames[a], hot_suffix(sl), pad_name(pad_hot_[a][sl]).c_str(), kButtonNames[i]);
+     for (int sl = 0; sl < HOT_SLOTS; ++sl)
+-      if (stylus_visible_binding() && same(stylus_button_[sl], pad_map_[i]))
++      if (stylus_visible_binding() && stylus_chord_.kind == Bind::None && same(stylus_button_[sl], pad_map_[i]))
+         std::fprintf(stderr, "config: pad.stylus_button%s = %s shadows pad.%s; the game will never see it\n", hot_suffix(sl), pad_name(stylus_button_[sl]).c_str(), kButtonNames[i]);
+     if (same(stylus_chord_, pad_map_[i]))
+       std::fprintf(stderr, "config: pad.stylus_hold = %s shadows pad.%s; the game will never see it\n", pad_name(stylus_chord_).c_str(), kButtonNames[i]);
+@@ -613,9 +613,18 @@ bool Input::pad_down(const Bind& b, bool down) {
+   }
+   // Tap button and d-pad chord yield to the pad modifier: mod+<tap button>
+   // can be a hotkey. A release always ends an in-progress tap or chord.
++  // Bramley spike: a tap control that is also a DS button's binding (pad.a = b
++  // with pad.stylus_button = b) touches only while stylus_hold is held, and is
++  // the game's button otherwise. So R2 + A taps and A alone is still A.
++  auto shares_ds_button = [&](const Bind& t) {
++    for (int i = 0; i < static_cast<int>(B::BTN_COUNT); ++i)
++      if (pad_map_[i].kind == t.kind && pad_map_[i].code == t.code && (t.kind != Bind::PadAxis || pad_map_[i].neg == t.neg)) return true;
++    return false;
++  };
+   for (int sl = 0; sl < HOT_SLOTS; ++sl) {
+     const u8 bit = static_cast<u8>(1u << sl);
+-    if (stylus_visible_binding() && same(stylus_button_[sl]) && ((stylus_down_ & bit) || (down && !pad_mod_down_))) {
++    if (stylus_visible_binding() && same(stylus_button_[sl]) &&
++        ((stylus_down_ & bit) || (down && !pad_mod_down_ && (stylus_chord_down_ || !shares_ds_button(stylus_button_[sl]))))) {
+       if (down) { stylus_down_ |= bit; touched_ = true; } else stylus_down_ &= static_cast<u8>(~bit);
+       return true;
+     }
