@@ -63,4 +63,16 @@ Bramley stays PolyForm Noncommercial 1.0.0, free, and credits NextUI. The cores 
 3. Content trim and core license check. Done 2026-10-29: licenses in `docs/plans/cores-licenses.md`; every core pinned and built by Bramley, matching NextUI 6.15.0's. Still open: the license texts on the card, and the legal question in that file. Note that the update zip (MinUI.zip) only carries the six system cores; the cores in `Emus/` are outside it, so the updater must handle them.
 4. Updater. Done 2026-10-29: `bramley_update.c`, Settings > System > Software Update, the daily check and the dot on Settings, and `bramley-update.txt` from card.sh. Tested on the Brick from 0.2.2 to a 0.2.3 test release. Each release must upload the card zip and `bramley-update.txt`, and be marked latest (the check reads `releases/latest`).
 5. First-boot setup.
-6. Upgrade path from 0.x, then a public beta. Upgrade path done 2026-10-29: extracting the card zip over a NextUI or 0.x card updates it, and `bramley-migrate.sh` tidies the card once (tested on Howard's Brick: 52 items removed, user Paks kept). A fresh card sets Bramley's start-up screens once (`bramley-startup-screens.sh`). Before the beta: a button to restore TrimUI's start-up screens, a fresh-install test on a spare card, the EU/UK trademark check, and a legal opinion on minarch loading GPL cores.
+5. First-boot setup. Done: `lsetup.c`, shipped in 0.9.0, the first standalone beta.
+6. Upgrade path from 0.x, then a public beta. Upgrade path done 2026-10-29: extracting the card zip over a NextUI or 0.x card updates it, and `bramley-migrate.sh` tidies the card once (tested on Howard's Brick: 52 items removed, user Paks kept). A fresh card sets Bramley's start-up screens once (`bramley-startup-screens.sh`).
+
+## Status (2026-11-05)
+
+The public beta shipped as 0.9.0, and 0.9.5 is the latest release. Engineering for v1.0 is done:
+- The button to restore TrimUI's start-up screens is in About (commit 6c501b6e).
+- Each core's licence files ship in `Licenses/` on the card (card.sh:89-100).
+
+Left before v1.0, none of it code:
+- A fresh-install test on a spare card, on a Brick with stock firmware.
+- The EU and UK trademark check for the name Bramley.
+- A legal opinion on minarch loading GPL cores (`docs/plans/cores-licenses.md`).
