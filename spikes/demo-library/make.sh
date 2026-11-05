@@ -28,7 +28,8 @@ rm -rf "$S/Roms"
 # the desktop build lists only consoles with an emulator Pak; Doom has none there
 P="$S/.system/desktop/paks/Emus"
 [ -d "$P/PRBOOM.pak" ] || cp -R "$P/GB.pak" "$P/PRBOOM.pak"
-# console folder | file name | art
+# console folder | file name | art. One Tobu Tobu Girl only (the Deluxe), and Continue Playing shows only
+# games the film's Game Boy library also shows (docs: bramley-film film-camera.md, D-LIB-1 and D-LIB-2)
 while IFS='|' read -r console file art; do
 	mkdir -p "$S/Roms/$console/.media"
 	: > "$S/Roms/$console/$file"
@@ -44,7 +45,6 @@ Doom (PRBOOM)|Freedoom Phase 1.wad|freedoom1.png
 Doom (PRBOOM)|FreeDM.wad|freedm.png
 Game Boy (GB)|Tobu Tobu Girl Deluxe.gb|tobu-dx.png
 Game Boy (GB)|Libbet and the Magic Floor.gb|libbet.png
-Game Boy (GB)|Tobu Tobu Girl.gb|tobu.png
 Game Boy (GB)|Adjustris.gb|adjustris.png
 Game Boy Color (GBC)|µCity.gbc|ucity.png
 Nintendo Entertainment System (FC)|Thwaite.nes|thwaite-game.png
@@ -54,7 +54,7 @@ Sega Genesis (MD)|KleleAtoms MD.md|klele.png
 LIST
 cat > "$S/.userdata/shared/.minui/recent.txt" <<'LIST'
 /Roms/Game Boy (GB)/Tobu Tobu Girl Deluxe.gb
-/Roms/Game Boy Color (GBC)/µCity.gbc
+/Roms/Game Boy (GB)/Adjustris.gb
 /Roms/Doom (PRBOOM)/Freedoom Phase 1.wad
 /Roms/Sega Genesis (MD)/KleleAtoms MD.md
 /Roms/Nintendo Entertainment System (FC)/Thwaite.nes
@@ -81,7 +81,7 @@ db.executescript("""CREATE TABLE rom(id INTEGER PRIMARY KEY, type TEXT, name TEX
   created_at INTEGER DEFAULT (strftime('%s', 'now')), updated_at INTEGER);
 CREATE TABLE play_activity(rom_id INTEGER, play_time INTEGER, created_at INTEGER DEFAULT (strftime('%s', 'now')),
   updated_at INTEGER);""")
-games = ["Game Boy (GB)/Tobu Tobu Girl Deluxe.gb", "Game Boy Color (GBC)/µCity.gbc", "Doom (PRBOOM)/Freedoom Phase 1.wad",
+games = ["Game Boy (GB)/Tobu Tobu Girl Deluxe.gb", "Game Boy (GB)/Adjustris.gb", "Doom (PRBOOM)/Freedoom Phase 1.wad",
          "Sega Genesis (MD)/KleleAtoms MD.md", "Nintendo Entertainment System (FC)/Thwaite.nes",
          "Game Boy (GB)/Libbet and the Magic Floor.gb"]
 for i, g in enumerate(games, 1):
